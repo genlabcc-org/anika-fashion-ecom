@@ -1044,7 +1044,7 @@ export default function ProductPage({ onBack }) {
                       <ul className='pp-policy-block-list'>
                         <li>⁠Return the item within 48 hrs of delivery.</li>
                         <li>You can use India Post, ST Courier, Franch Express or DTDC.</li>
-                        <li>Shipping cost of ₹80 will be reimbursed by us.</li>
+                        <li>Shipping cost of ₹70 will be reimbursed by us.</li>
                         <li>Our team will share the return address.</li>
                         <li>Kindly forward the tracking number on WhatsApp once dispatched.</li>
                       </ul>
