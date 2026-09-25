@@ -35,7 +35,8 @@ export default {
       const razorpayService = new RazorpayService(ctx.supabaseAdmin);
 
       if (action === "create_order") {
-        const { items, discountCode, discountPct, shippingFee } = body;
+        const { items, addressId, discountCode, discountPct, shippingFee } = body;
+
         if (!items || !Array.isArray(items) || items.length === 0) {
           return new Response(
             JSON.stringify({ error: "Missing or empty items array" }),
@@ -45,6 +46,7 @@ export default {
 
         const orderDetails = await razorpayService.createOrder({
           items,
+          addressId: addressId ? Number(addressId) : undefined,
           discountCode,
           discountPct,
           shippingFee,
@@ -86,7 +88,7 @@ export default {
           razorpay_payment_id,
           razorpay_signature,
           items,
-          addressId,
+          addressId: addressId ? Number(addressId) : undefined,
           discountCode,
           discountPct,
           shippingFee,

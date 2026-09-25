@@ -20,7 +20,7 @@ export class RazorpayClient {
     return !!(this.keyId && this.keySecret);
   }
 
-  async createOrder(amountInPaise: number, receiptId: string): Promise<RazorpayOrderResult> {
+  async createOrder(amountInPaise: number, receiptId: string, notes?: Record<string, string>): Promise<RazorpayOrderResult> {
     if (!this.hasKeysConfigured()) {
       throw new Error("Razorpay credentials are not configured in system environment variables");
     }
@@ -36,6 +36,7 @@ export class RazorpayClient {
         amount: amountInPaise,
         currency: "INR",
         receipt: receiptId,
+        ...(notes ? { notes } : {}),
       }),
     });
 

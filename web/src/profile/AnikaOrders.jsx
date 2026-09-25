@@ -120,9 +120,11 @@ export default function AnikaOrders() {
       status: item.status,
       order_items: item.order_items || [],
       deliveryProvider: item.delivery_provider,
+      courierName: item.courier_name,
       waybill: item.waybill,
       shipmentId: item.shipment_id,
       deliveryStatus: item.delivery_status,
+      trackingUrl: item.tracking_url,
       estimatedDeliveryDate: item.estimated_delivery_date
         ? new Date(item.estimated_delivery_date).toLocaleDateString("en-IN", {
           day: "numeric",
@@ -303,6 +305,50 @@ export default function AnikaOrders() {
                       {itemsSummary}
                     </div>
                   </div>
+
+                  {/* Shipment Tracking Info (only shown if waybill is present) */}
+                  {order.waybill && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        flexWrap: 'wrap',
+                        gap: '8px'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: '#475569' }}>
+                        <span><strong>Courier:</strong> {order.courierName || order.deliveryProvider || 'iCarry'}</span>
+                        <span style={{ color: '#cbd5e1' }}>·</span>
+                        <span><strong>AWB:</strong> {order.waybill}</span>
+                        <span style={{ color: '#cbd5e1' }}>·</span>
+                        <span><strong>Status:</strong> {order.deliveryStatus || 'Booked'}</span>
+                      </div>
+                      {order.trackingUrl && (
+                        <a
+                          href={order.trackingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: '#C42049',
+                            fontWeight: '600',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          Track Package ↗
+                        </a>
+                      )}
+                    </div>
+                  )}
 
                   {/* Bottom Line: Status Badge & Actions */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', width: '100%', paddingTop: '2px' }}>

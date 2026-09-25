@@ -5,6 +5,7 @@ import { orderService } from "../services/orderService";
 import { emailService } from "../services/emailService";
 import { useStore } from "../hooks/useStore";
 import { supabase } from "../lib/supabase";
+import { icarryService } from "../services/icarryService";
 import "./shippingAddress.css";
 import Navbar from "./SiteHeader";
 import Footer from "./SiteFooter";
@@ -42,6 +43,9 @@ const indianStates = [
   "Delhi", "Jammu & Kashmir",
 ];
 
+// Fallback pincode validation regex helper
+const isValidPincodeRegex = (pin) => /^\d{6}$/.test(String(pin || '').trim());
+
 const emptyForm = {
   firstName: "",
   lastName: "",
@@ -73,10 +77,8 @@ export default function ShippingAddress() {
   const [appliedDiscount, setAppliedDiscount] = useState(null);
 
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  // const [pincodeServiceability, setPincodeServiceability] = useState('unchecked');
-  // const [serviceabilityError, setServiceabilityError] = useState("");
-  // const [selectedAddrServiceable, setSelectedAddrServiceable] = useState(true);
-  // const [selectedAddrChecking, setSelectedAddrChecking] = useState(false);
+  const [pincodeServiceable, setPincodeServiceable] = useState(null); // null: untested/fallback, true: serviceable, false: unserviceable
+  const [pincodeChecking, setPincodeChecking] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -145,7 +147,11 @@ export default function ShippingAddress() {
     if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) e.email = "Valid email is required";
     if (!form.mobile.trim() || !/^\d{10}$/.test(form.mobile.replace(/\D/g, ""))) e.mobile = "Valid 10-digit phone is required";
     if (!form.flat.trim()) e.flat = "Address is required";
-    if (!form.pinCode.trim() || !/^\d{6}$/.test(form.pinCode)) e.pinCode = "Valid 6-digit PIN required";
+    if (!form.pinCode.trim() || !isValidPincodeRegex(form.pinCode)) {
+      e.pinCode = "Valid 6-digit PIN required";
+    } else if (pincodeServiceable === false) {
+      e.pinCode = "Pincode not serviceable for delivery";
+    }
     return e;
   };
 
@@ -194,6 +200,75 @@ export default function ShippingAddress() {
     }
   };
 
+  // Debounced iCarry pincode serviceability check
+  useEffect(() => {
+    const pin = (form.pinCode || "").trim();
+    if (!isValidPincodeRegex(pin)) {
+      setPincodeServiceable(null);
+      setPincodeChecking(false);
+      return;
+    }
+
+    let active = true;
+    setPincodeChecking(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Pincode check timed out")), 5000)
+        );
+        const res = await Promise.race([
+          icarryService.checkPincode(pin),
+          timeoutPromise
+        ]);
+
+        if (!active) return;
+
+        // Response shape: { success: 1, msg: [{ prepaid, cod, pickup }] }
+        // success: 0 or empty msg means not serviceable.
+        // Treat 'U' (unknown) as serviceable, don't block on it.
+        if (res && res.success === 1 && Array.isArray(res.msg) && res.msg.length > 0) {
+          const hasService = res.msg.some(
+            (m) => m.prepaid === 'Y' || m.prepaid === 'U' || !m.prepaid
+          );
+          if (hasService) {
+            setPincodeServiceable(true);
+            setErrors((prev) => ({ ...prev, pinCode: undefined }));
+          } else {
+            setPincodeServiceable(false);
+            setErrors((prev) => ({
+              ...prev,
+              pinCode: "Pincode not serviceable for delivery",
+            }));
+          }
+        } else if (res && (res.success === 0 || (Array.isArray(res.msg) && res.msg.length === 0))) {
+          setPincodeServiceable(false);
+          setErrors((prev) => ({
+            ...prev,
+            pinCode: "Pincode not serviceable for delivery",
+          }));
+        } else {
+          // Fall back to regex (fail open)
+          setPincodeServiceable(isValidPincodeRegex(pin));
+        }
+      } catch (err) {
+        console.warn("iCarry pincode check failed or timed out, failing open to regex:", err);
+        if (active) {
+          setPincodeServiceable(isValidPincodeRegex(pin));
+        }
+      } finally {
+        if (active) {
+          setPincodeChecking(false);
+        }
+      }
+    }, 400);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [form.pinCode]);
+
   const handleApplyDiscount = () => {
     const code = discountInput.trim().toUpperCase();
     if (code === "WELCOME10") {
@@ -225,8 +300,7 @@ export default function ShippingAddress() {
     ? Math.round((subtotal * appliedDiscount.pct) / 100)
     : 0;
 
-  // const isAddressServiceable = pincodeServiceability === 'serviceable' || (selectedId && selectedAddrServiceable);
-  const isAddressServiceable = /^\d{6}$/.test(form.pinCode);
+  const isAddressServiceable = isValidPincodeRegex(form.pinCode) && pincodeServiceable !== false;
   const shippingFee = isAddressServiceable ? 1 : 0;
 
   const gst = Math.round((subtotal - discountAmount) * 0.03);
@@ -236,6 +310,11 @@ export default function ShippingAddress() {
 
   const handleCheckoutSubmit = async (e) => {
     if (e) e.preventDefault();
+
+    if (pincodeChecking) {
+      showToast("Verifying delivery pincode, please wait a moment...", "warning");
+      return;
+    }
 
     // 1. Validate form fields
     const eErrors = validate();
@@ -248,13 +327,20 @@ export default function ShippingAddress() {
     setIsProcessingPayment(true);
 
     try {
+      const session = await authService.getSession();
+      const currentUserId = session?.user?.id || userId;
+      if (!currentUserId) {
+        showToast("You must be logged in to place an order.", "error");
+        setIsProcessingPayment(false);
+        return;
+      }
       let activeAddrId = selectedId;
       const fullName = `${form.firstName} ${form.lastName}`.trim();
 
       if (!selectedId) {
         // Create new address in database
         const inserted = await orderService.createAddress({
-          user_id: userId,
+          user_id: currentUserId,
           full_name: fullName,
           phone_number: form.mobile,
           address_line1: form.flat,
@@ -345,6 +431,7 @@ export default function ShippingAddress() {
           .from("orders")
           .insert({
             user_id: userId,
+            address_id: addressId ? Number(addressId) : null,
             item_name: checkoutItems.length > 1
               ? `${mainItem.name} + ${checkoutItems.length - 1} other(s)`
               : mainItem.name,
@@ -439,6 +526,7 @@ export default function ShippingAddress() {
           body: {
             action: "create_order",
             items: paymentItems,
+            addressId: addressId ? Number(addressId) : null,
             discountCode: appliedDiscount?.code || null,
             discountPct: appliedDiscount?.pct || 0,
             shippingFee: shippingFee || 0,
@@ -472,7 +560,7 @@ export default function ShippingAddress() {
                   razorpay_payment_id: response.razorpay_payment_id,
                   razorpay_signature: response.razorpay_signature,
                   items: paymentItems,
-                  addressId: addressId,
+                  addressId: addressId ? Number(addressId) : null,
                   discountCode: appliedDiscount?.code || null,
                   discountPct: appliedDiscount?.pct || 0,
                   shippingFee: shippingFee || 0,
@@ -480,7 +568,14 @@ export default function ShippingAddress() {
               });
 
               if (verifyError) {
-                throw new Error(verifyError.message || "Payment verification failed.");
+                let errMsg = verifyError.message;
+                if (verifyError.context && typeof verifyError.context.json === 'function') {
+                  try {
+                    const errJson = await verifyError.context.json();
+                    if (errJson?.error) errMsg = errJson.error;
+                  } catch (_) {}
+                }
+                throw new Error(errMsg || "Payment verification failed.");
               }
 
               if (!checkoutProduct) {
@@ -725,6 +820,11 @@ export default function ShippingAddress() {
                         maxLength={6}
                         className={`checkout-input ${errors.pinCode ? "error" : ""}`}
                       />
+                      {pincodeChecking && (
+                        <span style={{ fontSize: '11px', color: '#666', marginTop: '2px', display: 'block' }}>
+                          Checking serviceability...
+                        </span>
+                      )}
                       {errors.pinCode && <span className="checkout-err-msg">{errors.pinCode}</span>}
                     </div>
                   </div>

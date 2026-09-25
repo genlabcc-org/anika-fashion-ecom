@@ -22,6 +22,7 @@ export interface Address {
 export interface Order {
   id: string;
   user_id: string;
+  address_id?: number | null;
   item_name: string;
   quantity: number;
   total_price: number;
@@ -36,6 +37,11 @@ export interface Order {
   shipment_id?: string | null;
   delivery_status?: string | null;
   estimated_delivery_date?: string | null;
+  courier_name?: string | null;
+  tracking_url?: string | null;
+  shipment_error?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
 }
 
 export interface OrderItem {

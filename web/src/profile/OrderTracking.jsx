@@ -467,6 +467,63 @@ export default function OrderTracking() {
                       </div>
                     </div>
                   )}
+
+                  {/* Shipment Tracking Info (only shown if waybill is present) */}
+                  {order.waybill && (
+                    <div
+                      style={{
+                        marginTop: "16px",
+                        padding: "14px 18px",
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "8px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "12px",
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <div style={{ fontSize: "13.5px", color: "#334155" }}>
+                          <span style={{ color: "#64748b" }}>Courier: </span>
+                          <strong>{order.courier_name || order.delivery_provider || "iCarry"}</strong>
+                        </div>
+                        <div style={{ fontSize: "13.5px", color: "#334155" }}>
+                          <span style={{ color: "#64748b" }}>Waybill (AWB): </span>
+                          <strong style={{ letterSpacing: "0.5px" }}>{order.waybill}</strong>
+                        </div>
+                        <div style={{ fontSize: "13.5px", color: "#334155" }}>
+                          <span style={{ color: "#64748b" }}>Delivery Status: </span>
+                          <strong style={{ color: "#0f766e" }}>{order.delivery_status || "Booked"}</strong>
+                        </div>
+                      </div>
+                      {order.tracking_url && (
+                        <a
+                          href={order.tracking_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="track-primary-btn"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            textDecoration: "none",
+                            padding: "9px 18px",
+                            fontSize: "13px",
+                            fontWeight: "600",
+                          }}
+                        >
+                          <span>Track Package</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Tracking Stepper / Timeline */}

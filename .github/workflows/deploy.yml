@@ -262,6 +262,10 @@ jobs:
           
           echo "Deploying razorpay function..."
           supabase functions deploy razorpay --project-ref "$supabase_ref"
+          echo "Deploying icarry function..."
+          supabase functions deploy icarry --no-verify-jwt --project-ref "$supabase_ref"
+          echo "Deploying icarry-webhook function..."
+          supabase functions deploy icarry-webhook --no-verify-jwt --project-ref "$supabase_ref"
 
   # deploy_storefront:
   #   name: Deploy Storefront Portal

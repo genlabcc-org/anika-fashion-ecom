@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { RazorpayClient } from "./client.ts";
 import { Product, Order } from "../../_shared/types.ts";
+import { bookShipmentForOrder } from "../../_shared/bookShipment.ts";
 
 export interface CreateOrderInput {
   items: Array<{
@@ -9,6 +10,7 @@ export interface CreateOrderInput {
     size?: string | null;
     color?: string | null;
   }>;
+  addressId?: number | string;
   discountCode?: string | null;
   discountPct?: number;
   shippingFee?: number;
@@ -32,7 +34,7 @@ export interface VerifyPaymentInput {
     size?: string | null;
     color?: string | null;
   }>;
-  addressId?: string;
+  addressId?: number | string;
   discountCode?: string | null;
   discountPct?: number;
   shippingFee?: number;
@@ -111,7 +113,11 @@ export class RazorpayService {
 
     // 3. Create order on Razorpay
     const receiptId = `receipt_order_${Date.now()}`;
-    const rzOrder = await this.client.createOrder(amountInPaise, receiptId);
+    const notes: Record<string, string> = {};
+    if (input.addressId) {
+      notes.address_id = String(input.addressId);
+    }
+    const rzOrder = await this.client.createOrder(amountInPaise, receiptId, notes);
 
     const mainItem = items[0];
     const mainProduct = products.find(p => String(p.product_id) === String(mainItem.productId));
@@ -226,11 +232,29 @@ export class RazorpayService {
       ? `${mainItem?.name} + ${resolvedItemDetails.length - 1} other(s)`
       : mainItem?.name || "Anika Order";
 
-    // 3. Insert order record using admin client (bypasses RLS limits if any)
+    // 3. Verify address ownership if addressId was provided (falls back to null without throwing)
+    let safeAddressId: number | null = null;
+    if (input.addressId) {
+      try {
+        const { data: addr } = await this.supabaseAdmin
+          .from("addresses")
+          .select("address_id")
+          .eq("address_id", Number(input.addressId))
+          .eq("user_id", input.userId)
+          .maybeSingle();
+        safeAddressId = addr?.address_id ?? null;
+      } catch (err) {
+        console.warn("Failed to verify address ownership, falling back to null:", err);
+        safeAddressId = null;
+      }
+    }
+
+    // 4. Insert order record using admin client (bypasses RLS limits if any)
     const { data: rawOrder, error: insertError } = await this.supabaseAdmin
       .from("orders")
       .insert({
         user_id: input.userId,
+        address_id: safeAddressId,
         item_name: itemName,
         quantity: resolvedItemDetails.reduce((sum, item) => sum + item.quantity, 0),
         total_price: grandTotal,
@@ -267,6 +291,25 @@ export class RazorpayService {
 
     if (itemsInsertError) {
       throw new Error(`Failed to insert order items: ${itemsInsertError.message}`);
+    }
+
+    // 5. Automatically book shipment with iCarry after order and payment are confirmed
+    try {
+      const bookingResult = await bookShipmentForOrder(this.supabaseAdmin, order.id);
+      if (bookingResult.ok) {
+        order.waybill = bookingResult.waybill;
+        order.shipment_id = bookingResult.shipment_id;
+        order.courier_name = bookingResult.courier_name;
+        order.tracking_url = bookingResult.tracking_url;
+        order.delivery_status = "Booked";
+      } else {
+        console.warn(`[iCarry] Auto-booking after payment failed for order ${order.id}:`, bookingResult.error);
+        order.delivery_status = "Booking Failed";
+        order.shipment_error = bookingResult.error;
+      }
+    } catch (bookingErr) {
+      console.error(`[iCarry] Unexpected error during auto-booking for order ${order.id}:`, bookingErr);
+      // Never throw — the customer's payment succeeded and order is saved
     }
 
     return order;

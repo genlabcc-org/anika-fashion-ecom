@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { orderService } from "../../services/orderService";
 import { productService } from "../../services/productService";
+import { icarryService } from "../../services/icarryService";
 import { useStore } from "../../hooks/useStore";
 import Toast from "../../components/Toast";
 import ThermalInvoice from "../components/ThermalInvoice";
@@ -45,9 +46,13 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
   const [invoicePrinted, setInvoicePrinted] = useState(order?.invoice_printed || false);
   const [printing, setPrinting] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [retryingBooking, setRetryingBooking] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState(false);
+  const [cancellingShipment, setCancellingShipment] = useState(false);
   const invoiceRef = useRef(null);
 
   const setSelectedProduct = useStore(state => state.setSelectedProduct);
+  const setSelectedAdminOrder = useStore(state => state.setSelectedAdminOrder);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -226,6 +231,86 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
       showToast("Failed to mark invoice: " + err.message, "error");
     } finally {
       setTimeout(() => setPrinting(false), 1000);
+    }
+  };
+
+  const handleRetryBooking = async () => {
+    if (!o?.id) return;
+    try {
+      setRetryingBooking(true);
+      const res = await icarryService.retryBooking(o.id);
+      if (res && res.error) {
+        showToast("Retry booking failed: " + res.error, "error");
+      } else {
+        showToast("Shipment booking retried successfully!", "success");
+      }
+      // Refresh order row
+      const { data: refreshedOrder } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", o.id)
+        .single();
+      if (refreshedOrder) {
+        setCurrentOrder((prev) => ({ ...(prev || {}), ...refreshedOrder }));
+        if (setSelectedAdminOrder) setSelectedAdminOrder(refreshedOrder);
+      }
+    } catch (err) {
+      showToast("Failed to retry booking: " + err.message, "error");
+    } finally {
+      setRetryingBooking(false);
+    }
+  };
+
+  const handlePrintLabel = async () => {
+    if (!o?.id) return;
+    try {
+      setLoadingLabel(true);
+      const res = await icarryService.label(o.id);
+      const labelUrl =
+        res?.shipment_label?.[0]?.url ||
+        res?.shipment_label?.url ||
+        res?.url;
+      if (labelUrl) {
+        window.open(labelUrl, "_blank");
+      } else {
+        showToast("No shipping label URL returned from carrier.", "warning");
+      }
+    } catch (err) {
+      showToast("Failed to fetch shipping label: " + err.message, "error");
+    } finally {
+      setLoadingLabel(false);
+    }
+  };
+
+  const handleCancelShipment = async () => {
+    if (!o?.id) return;
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this shipment with iCarry?\n\nWarning: If the parcel has already been picked up by the courier, Return-to-Origin (RTO) charges may apply."
+    );
+    if (!confirmed) return;
+
+    try {
+      setCancellingShipment(true);
+      const res = await icarryService.cancel(o.id);
+      if (res && res.error) {
+        showToast("Failed to cancel shipment: " + res.error, "error");
+      } else {
+        showToast("Shipment cancelled successfully.", "success");
+        // Refresh order row
+        const { data: refreshedOrder } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("id", o.id)
+          .single();
+        if (refreshedOrder) {
+          setCurrentOrder((prev) => ({ ...(prev || {}), ...refreshedOrder }));
+          if (setSelectedAdminOrder) setSelectedAdminOrder(refreshedOrder);
+        }
+      }
+    } catch (err) {
+      showToast("Failed to cancel shipment: " + err.message, "error");
+    } finally {
+      setCancellingShipment(false);
     }
   };
 
@@ -497,18 +582,38 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
           <div className="od__card-title">Logistics & Delivery</div>
           <div className="od__info-grid">
             <span className="od__info-label">Carrier</span>
-            <span className="od__info-value">{o.delivery_provider || "Ekart"}</span>
+            <span className="od__info-value">{o.courier_name || o.delivery_provider || "iCarry"}</span>
             <span className="od__info-label">Status</span>
-            <span className="od__info-value" style={{ fontWeight: '600', color: o.delivery_status === 'Booked' ? '#27ae60' : '#d35400' }}>
+            <span
+              className="od__info-value"
+              style={{
+                fontWeight: '600',
+                color:
+                  o.delivery_status === 'Booked' || o.delivery_status === 'Delivered'
+                    ? '#27ae60'
+                    : o.delivery_status === 'Booking Failed' || o.delivery_status === 'Cancelled'
+                      ? '#dc2626'
+                      : '#d35400'
+              }}
+            >
               {o.delivery_status || "Pending Booking"}
             </span>
             {o.waybill && (
               <>
                 <span className="od__info-label">Waybill</span>
                 <span className="od__info-value">
-                  <a href={`https://ekartlogistics.com/ekartlogistics-web/shipmenttrack/${o.waybill}`} target="_blank" rel="noopener noreferrer" style={{ color: '#8b0030', textDecoration: 'underline', fontWeight: '500' }}>
-                    {o.waybill}
-                  </a>
+                  {o.tracking_url ? (
+                    <a
+                      href={o.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#8b0030', textDecoration: 'underline', fontWeight: '500' }}
+                    >
+                      {o.waybill} ↗
+                    </a>
+                  ) : (
+                    <span>{o.waybill}</span>
+                  )}
                 </span>
               </>
             )}
@@ -518,12 +623,83 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
                 <span className="od__info-value">{o.shipment_id}</span>
               </>
             )}
+            {o.shipment_error && (
+              <>
+                <span className="od__info-label" style={{ color: '#dc2626' }}>Shipment Error</span>
+                <span className="od__info-value" style={{ color: '#dc2626', wordBreak: 'break-word', fontSize: '12.5px' }}>
+                  {o.shipment_error}
+                </span>
+              </>
+            )}
             {o.estimated_delivery_date && (
               <>
                 <span className="od__info-label">Est. Delivery</span>
                 <span className="od__info-value">
                   {new Date(o.estimated_delivery_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                 </span>
+              </>
+            )}
+          </div>
+
+          {/* Shipment Actions */}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
+            {o.delivery_status === 'Booking Failed' && (
+              <button
+                onClick={handleRetryBooking}
+                disabled={retryingBooking}
+                style={{
+                  backgroundColor: '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '7px 14px',
+                  fontSize: '12.5px',
+                  fontWeight: '600',
+                  cursor: retryingBooking ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {retryingBooking ? 'Retrying Booking...' : '🔄 Retry Booking'}
+              </button>
+            )}
+
+            {o.waybill && o.delivery_status !== 'Cancelled' && (
+              <>
+                <button
+                  onClick={handlePrintLabel}
+                  disabled={loadingLabel}
+                  style={{
+                    backgroundColor: '#fff',
+                    color: '#1c1c1e',
+                    border: '1px solid #d4d4d8',
+                    borderRadius: '6px',
+                    padding: '7px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: '600',
+                    cursor: loadingLabel ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  {loadingLabel ? 'Loading Label...' : '🏷️ Print Label'}
+                </button>
+
+                <button
+                  onClick={handleCancelShipment}
+                  disabled={cancellingShipment}
+                  style={{
+                    backgroundColor: '#fff',
+                    color: '#dc2626',
+                    border: '1px solid #fca5a5',
+                    borderRadius: '6px',
+                    padding: '7px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: '600',
+                    cursor: cancellingShipment ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {cancellingShipment ? 'Cancelling...' : 'Cancel Shipment'}
+                </button>
               </>
             )}
           </div>
