@@ -130,6 +130,11 @@ Deno.serve(async (req: Request) => {
         updates.delivered_at = new Date().toISOString();
       }
 
+      // If status === 7 (Canceled) or 16 (Voided), mark order status as Cancelled
+      if (statusCode === 7 || statusCode === 16) {
+        updates.status = "Cancelled";
+      }
+
       const { error: updateErr } = await supabaseAdmin
         .from("orders")
         .update(updates)

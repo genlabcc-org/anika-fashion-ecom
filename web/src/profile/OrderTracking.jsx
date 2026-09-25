@@ -193,7 +193,10 @@ export default function OrderTracking() {
     fetchDbAddress();
   }, [order?.user_id, order?.address_id, user?.id]);
 
-  const isCancelled = (order?.status || "").toLowerCase() === "cancelled" ||
+  const isCancelled =
+    (order?.status || "").toLowerCase().includes("cancel") ||
+    (order?.delivery_status || order?.deliveryStatus || "").toLowerCase().includes("cancel") ||
+    (order?.delivery_status || order?.deliveryStatus || "").toLowerCase() === "voided" ||
     (order?.status || "").toLowerCase() === "refund completed";
   const isRefundCompleted = (order?.status || "").toLowerCase() === "refund completed";
 
@@ -304,7 +307,12 @@ export default function OrderTracking() {
       ];
     }
 
-    if (s === "cancelled") {
+    const isOrderCancelled =
+      s.includes("cancel") ||
+      d.includes("cancel") ||
+      d === "voided";
+
+    if (isOrderCancelled) {
       const steps = [
         {
           key: "placed",
@@ -320,8 +328,8 @@ export default function OrderTracking() {
           desc: isCod
             ? "Order was cancelled. No payment was collected (Cash on Delivery)."
             : "This order has been cancelled upon request.",
-          isDone: false,
-          isCurrent: isCod,
+          isDone: true,
+          isCurrent: true,
           isCancelled: true,
         },
       ];
@@ -333,7 +341,7 @@ export default function OrderTracking() {
           title: "Refund Processing",
           desc: "Refund initiated to original payment source (3-5 business days).",
           isDone: false,
-          isCurrent: true,
+          isCurrent: false,
           isCancelled: false,
         });
       }
@@ -341,18 +349,22 @@ export default function OrderTracking() {
       return steps;
     }
 
-    // Active order progression: all 4 timeline steps are displayed
-    const isPlacedDone = true; // Order has been placed
+    // Active order progression
+    const isPlacedDone = true;
 
     const isConfirmedDone = [
       "confirmed", "processing", "packed", "shipped", "delivered", "returned"
-    ].includes(s);
+    ].includes(s) || !!order?.waybill || ["booked", "pending pickup", "shipped", "in transit", "out for delivery", "delivered"].some(x => d.includes(x));
 
     const isShippedDone = [
       "shipped", "delivered", "returned"
-    ].includes(s) || d.includes("shipped") || d.includes("transit") || d === "delivered";
+    ].includes(s) || ["shipped", "in transit", "out for delivery", "delivered"].some(x => d.includes(x));
 
+    const isOutForDeliveryDone = d.includes("out for delivery") || d === "delivered" || s === "delivered";
+    const isNdr = d.startsWith("ndr");
     const isDeliveredDone = ["delivered", "returned"].includes(s) || d === "delivered";
+
+    const carrierName = order?.courier_name || order?.courierName || deliveryCarrier || "iCarry";
 
     const steps = [
       {
@@ -365,33 +377,54 @@ export default function OrderTracking() {
         key: "confirmed",
         title: "Order Confirmed",
         desc: isConfirmedDone
-          ? "Order confirmed & verified by seller"
-          : "",
+          ? (order?.waybill ? `Order verified & manifest assigned (AWB: ${order.waybill})` : "Order confirmed & verified by seller")
+          : "Seller is verifying your order",
         isDone: isConfirmedDone,
       },
       {
         key: "shipped",
         title: "Shipped",
         desc: isShippedDone
-          ? (deliveryCarrier ? `Shipped via ${deliveryCarrier}${order?.waybill ? ` (AWB: ${order.waybill})` : ""}` : "Dispatched with logistics partner")
-          : "",
+          ? `Dispatched via ${carrierName}${order?.waybill ? ` · AWB: ${order.waybill}` : ""}`
+          : (order?.waybill || d === "booked" || d === "pending pickup"
+            ? `Packed & awaiting courier pickup by ${carrierName}`
+            : ""),
         isDone: isShippedDone,
       },
       {
-        key: "delivered",
-        title: "Delivered",
-        desc: isDeliveredDone
-          ? (s === "returned" ? "Package delivered to customer" : "Package delivered safely")
-          : (estimatedDate ? `Expected delivery: ${estimatedDate}` : ""),
-        isDone: isDeliveredDone,
-      },
+        key: "out_for_delivery",
+        title: "Out for Delivery",
+        desc: isOutForDeliveryDone
+          ? "Courier delivery partner is out to deliver your package"
+          : (isShippedDone ? `Package in transit with ${carrierName}` : ""),
+        isDone: isOutForDeliveryDone,
+      }
     ];
 
-    if (s === "returned") {
+    if (isNdr) {
+      steps.push({
+        key: "ndr",
+        title: "Delivery Exception",
+        desc: `Carrier reported: ${order?.delivery_status || order?.deliveryStatus || "Undelivered attempt"}. A reattempt is typically scheduled.`,
+        isDone: false,
+        isWarning: true,
+      });
+    }
+
+    steps.push({
+      key: "delivered",
+      title: "Delivered",
+      desc: isDeliveredDone
+        ? (s === "returned" ? "Package delivered to customer" : "Package delivered safely")
+        : (estimatedDate ? `Expected delivery: ${estimatedDate}` : "Delivered to your address"),
+      isDone: isDeliveredDone,
+    });
+
+    if (s === "returned" || d.includes("rto") || d === "returned") {
       steps.push({
         key: "returned",
-        title: "Returned",
-        desc: "Package returned to seller",
+        title: "Returned to Origin",
+        desc: "Package returned back to seller",
         isDone: true,
       });
     }
@@ -469,61 +502,73 @@ export default function OrderTracking() {
                   )}
 
                   {/* Shipment Tracking Info (only shown if waybill is present) */}
-                  {order.waybill && (
-                    <div
-                      style={{
-                        marginTop: "16px",
-                        padding: "14px 18px",
-                        background: "#f8fafc",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "8px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: "12px",
-                      }}
-                    >
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        <div style={{ fontSize: "13.5px", color: "#334155" }}>
-                          <span style={{ color: "#64748b" }}>Courier: </span>
-                          <strong>{order.courier_name || order.delivery_provider || "iCarry"}</strong>
+                  {order.waybill && (() => {
+                    const statusStr = (order.delivery_status || "").trim();
+                    const isDeliveryCancelled = statusStr === "Cancelled";
+                    const isNDR = statusStr.toUpperCase().startsWith("NDR");
+
+                    const boxBg = isDeliveryCancelled ? "#fef2f2" : isNDR ? "#fffbeb" : "#f8fafc";
+                    const boxBorder = isDeliveryCancelled ? "#fecaca" : isNDR ? "#fde68a" : "#e2e8f0";
+                    const textColor = isDeliveryCancelled ? "#991b1b" : isNDR ? "#92400e" : "#334155";
+                    const statusColor = isDeliveryCancelled ? "#dc2626" : isNDR ? "#d97706" : "#0f766e";
+
+                    return (
+                      <div
+                        style={{
+                          marginTop: "16px",
+                          padding: "14px 18px",
+                          background: boxBg,
+                          border: `1px solid ${boxBorder}`,
+                          borderRadius: "8px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "12px",
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          <div style={{ fontSize: "13.5px", color: textColor }}>
+                            <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Courier: </span>
+                            <strong>{order.courier_name || order.delivery_provider || "iCarry"}</strong>
+                          </div>
+                          <div style={{ fontSize: "13.5px", color: textColor }}>
+                            <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Waybill (AWB): </span>
+                            <strong style={{ letterSpacing: "0.5px" }}>{order.waybill}</strong>
+                          </div>
+                          <div style={{ fontSize: "13.5px", color: textColor }}>
+                            <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Delivery Status: </span>
+                            <strong style={{ color: statusColor }}>{statusStr || "Booked"}</strong>
+                          </div>
                         </div>
-                        <div style={{ fontSize: "13.5px", color: "#334155" }}>
-                          <span style={{ color: "#64748b" }}>Waybill (AWB): </span>
-                          <strong style={{ letterSpacing: "0.5px" }}>{order.waybill}</strong>
-                        </div>
-                        <div style={{ fontSize: "13.5px", color: "#334155" }}>
-                          <span style={{ color: "#64748b" }}>Delivery Status: </span>
-                          <strong style={{ color: "#0f766e" }}>{order.delivery_status || "Booked"}</strong>
-                        </div>
+                        {order.tracking_url && (
+                          <a
+                            href={order.tracking_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="track-primary-btn"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              textDecoration: "none",
+                              padding: "9px 18px",
+                              fontSize: "13px",
+                              fontWeight: "600",
+                              background: isDeliveryCancelled ? "#dc2626" : isNDR ? "#d97706" : undefined,
+                            }}
+                          >
+                            <span>Track Package</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                              <polyline points="15 3 21 3 21 9" />
+                              <line x1="10" y1="14" x2="21" y2="3" />
+                            </svg>
+                          </a>
+                        )}
                       </div>
-                      {order.tracking_url && (
-                        <a
-                          href={order.tracking_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="track-primary-btn"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            textDecoration: "none",
-                            padding: "9px 18px",
-                            fontSize: "13px",
-                            fontWeight: "600",
-                          }}
-                        >
-                          <span>Track Package</span>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                            <polyline points="15 3 21 3 21 9" />
-                            <line x1="10" y1="14" x2="21" y2="3" />
-                          </svg>
-                        </a>
-                      )}
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* Tracking Stepper / Timeline */}
@@ -567,18 +612,22 @@ export default function OrderTracking() {
                     {timelineSteps.map((step, idx) => {
                       const isDone = step.isDone;
                       const isCancelledStep = step.isCancelled;
+                      const isWarningStep = step.isWarning;
                       const nextStep = timelineSteps[idx + 1];
-                      const isConnectorDone = isDone && nextStep?.isDone;
+                      const isConnectorDone = isDone && nextStep?.isDone && !nextStep?.isCancelled;
+                      const isConnectorCancelled = isDone && nextStep?.isCancelled;
 
                       return (
                         <div
-                          key={step.key}
-                          className={`track-timeline-item ${isDone ? "is-done" : "is-pending"} ${isCancelledStep ? "is-cancelled-step" : ""}`}
+                          key={step.key || idx}
+                          className={`track-timeline-item ${isDone ? "is-done" : "is-pending"} ${isCancelledStep ? "is-cancelled-step" : ""} ${isWarningStep ? "is-warning-step" : ""}`}
                         >
                           <div className="track-node-col">
                             <div className="track-node">
                               {isCancelledStep ? (
-                                <span>✕</span>
+                                <span style={{ fontWeight: "900", color: "#ffffff" }}>✕</span>
+                              ) : isWarningStep ? (
+                                <span>⚠️</span>
                               ) : isDone ? (
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                   <polyline points="20 6 9 17 4 12" />
@@ -588,11 +637,14 @@ export default function OrderTracking() {
                               )}
                             </div>
                             {idx < timelineSteps.length - 1 && (
-                              <div className={`track-connector ${isConnectorDone ? "is-done" : ""}`}></div>
+                              <div className={`track-connector ${isConnectorDone ? "is-done" : ""} ${isConnectorCancelled ? "is-cancelled" : ""}`}></div>
                             )}
                           </div>
                           <div className="track-step-info">
-                            <div className="track-step-title">{step.title}</div>
+                            <div className="track-step-title">
+                              <span>{step.title}</span>
+                              {isWarningStep && <span className="track-warning-tag">Attention</span>}
+                            </div>
                             <div className="track-step-desc">{step.desc}</div>
                           </div>
                         </div>

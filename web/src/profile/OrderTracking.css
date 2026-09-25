@@ -361,17 +361,25 @@
 }
 
 .track-timeline-item.is-cancelled-step .track-node {
-  background: #d63031;
-  border-color: #d63031;
-  color: #ffffff;
+  background: #dc2626 !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 4px #fee2e2 !important;
 }
 
-.track-timeline-item.is-cancelled-step .track-connector {
-  background: #f8d7da;
+.track-timeline-item.is-cancelled-step .track-connector,
+.track-connector.is-cancelled {
+  background: #fca5a5 !important;
 }
 
 .track-timeline-item.is-cancelled-step .track-step-title {
-  color: #d63031;
+  color: #dc2626 !important;
+  font-weight: 700 !important;
+}
+
+.track-timeline-item.is-cancelled-step .track-step-desc {
+  color: #ef4444 !important;
+  font-weight: 500 !important;
 }
 
 .track-cancelled-tag {
@@ -379,6 +387,35 @@
   background: #ffe8e8;
   color: #d63031;
   border: none;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-weight: 600;
+}
+
+.track-timeline-item.is-warning-step .track-node {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.track-timeline-item.is-warning-step .track-connector {
+  background: #fde68a;
+}
+
+.track-timeline-item.is-warning-step .track-step-title {
+  color: #b45309;
+}
+
+.track-timeline-item.is-warning-step .track-step-desc {
+  color: #92400e;
+}
+
+.track-warning-tag {
+  font-size: 10.5px;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
   border-radius: 12px;
   padding: 2px 8px;
   font-weight: 600;

@@ -26,7 +26,10 @@
   margin-bottom: 10px;
   transition: color 0.15s;
 }
-.od__back-btn:hover { color: #111; }
+
+.od__back-btn:hover {
+  color: #111;
+}
 
 .od__header-row {
   display: flex;
@@ -60,6 +63,7 @@
   font-weight: 600;
   white-space: nowrap;
 }
+
 .od__status-dot {
   width: 6px;
   height: 6px;
@@ -74,9 +78,11 @@
   border-radius: 12px;
   padding: 16px 22px;
 }
+
 .od__card--section {
   margin-bottom: 16px;
 }
+
 .od__card-title {
   font-size: 13px;
   font-weight: 700;
@@ -99,18 +105,21 @@
   row-gap: 6px;
   column-gap: 16px;
 }
+
 .od__info-label {
   font-size: 12.5px;
   color: #999;
   white-space: nowrap;
   padding-top: 1px;
 }
+
 .od__info-value {
   font-size: 13px;
   color: #222;
   font-weight: 500;
   word-break: break-word;
 }
+
 .od__info-value--wrap {
   word-break: break-all;
 }
@@ -122,6 +131,7 @@
   color: #111;
   margin-bottom: 8px;
 }
+
 .od__address-lines div {
   font-size: 13.5px;
   color: #555;
@@ -134,6 +144,7 @@
   flex-direction: column;
   gap: 0;
 }
+
 .od__item-row {
   display: flex;
   align-items: center;
@@ -141,7 +152,10 @@
   padding: 13px 0;
   border-bottom: 1px solid #f3f3f3;
 }
-.od__item-row:last-child { border-bottom: none; }
+
+.od__item-row:last-child {
+  border-bottom: none;
+}
 
 .od__item-row--clickable {
   cursor: pointer;
@@ -150,9 +164,11 @@
   margin: 0 -8px;
   transition: background-color 0.2s ease;
 }
+
 .od__item-row--clickable:hover {
   background-color: #f7f7f8;
 }
+
 .od__item-row--clickable:hover .od__view-link {
   text-decoration: underline;
 }
@@ -168,7 +184,12 @@
   font-size: 20px;
   flex-shrink: 0;
 }
-.od__item-info { flex: 1; min-width: 0; }
+
+.od__item-info {
+  flex: 1;
+  min-width: 0;
+}
+
 .od__item-name {
   font-size: 13.5px;
   font-weight: 600;
@@ -178,6 +199,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .od__item-sku {
   font-size: 12px;
   color: #aaa;
@@ -185,6 +207,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .od__item-price {
   font-size: 14px;
   font-weight: 700;
@@ -209,22 +232,26 @@
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
+
 .od__status-label {
   font-size: 13px;
   color: #666;
 }
+
 .od__option-label {
   font-size: 12px;
   font-weight: 600;
   color: #333;
   margin-bottom: 7px;
 }
+
 .od__option-input-row {
   display: flex;
   gap: 8px;
   margin-bottom: 7px;
   flex-wrap: wrap;
 }
+
 .od__option-input {
   flex: 1;
   min-width: 0;
@@ -237,8 +264,14 @@
   background: #fafafa;
   transition: border-color 0.15s;
 }
-.od__option-input:focus { border-color: #aaa; }
-.od__option-input::placeholder { color: #ccc; }
+
+.od__option-input:focus {
+  border-color: #aaa;
+}
+
+.od__option-input::placeholder {
+  color: #ccc;
+}
 
 .od__add-option-btn {
   background: #111;
@@ -253,7 +286,10 @@
   transition: background 0.15s;
   flex-shrink: 0;
 }
-.od__add-option-btn:hover { background: #333; }
+
+.od__add-option-btn:hover {
+  background: #333;
+}
 
 .od__option-hint {
   font-size: 11.5px;
@@ -273,12 +309,15 @@
   scrollbar-color: #e0e0e0 transparent;
   position: relative;
 }
+
 .od__timeline::-webkit-scrollbar {
   height: 4px;
 }
+
 .od__timeline::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .od__timeline::-webkit-scrollbar-thumb {
   background: #e0e0e0;
   border-radius: 2px;
@@ -303,6 +342,7 @@
   z-index: 1;
   transform: translateY(-50%);
 }
+
 .od__tl-line--done {
   background: #16a34a;
 }
@@ -323,28 +363,47 @@
   box-shadow: 0 0 0 3px #fff;
   transition: all 0.25s ease;
 }
+
 .od__tl-circle--done {
   background: #16a34a;
   border-color: #16a34a;
   box-shadow: 0 0 0 3px #fff;
   color: #fff;
 }
+
 .od__tl-circle--cancelled {
-  background: #fee2e2;
-  border-color: #ef4444;
-  box-shadow: 0 0 0 3px #fff;
-  color: #dc2626;
+  background: #dc2626 !important;
+  border-color: #b91c1c !important;
+  box-shadow: 0 0 0 4px #fee2e2 !important;
+  color: #ffffff !important;
 }
+
+.od__tl-step--cancelled .od__tl-label {
+  color: #dc2626 !important;
+  font-weight: 700 !important;
+}
+
+.od__tl-step--cancelled .od__tl-date {
+  color: #ef4444 !important;
+  font-weight: 600 !important;
+}
+
+.od__tl-line--cancelled {
+  background: #fca5a5 !important;
+}
+
 .od__tl-num {
   font-size: 12px;
   font-weight: 700;
   color: #bbb;
 }
+
 .od__tl-circle--done .od__tl-num {
   color: #fff;
 }
+
 .od__tl-circle--cancelled .od__tl-num {
-  color: #dc2626;
+  color: #ffffff !important;
 }
 
 .od__tl-label {
@@ -355,6 +414,7 @@
   margin-bottom: 4px;
   max-width: 110px;
 }
+
 .od__tl-date {
   font-size: 11px;
   color: #aaa;
@@ -378,8 +438,14 @@
   background: #fafafa;
   transition: border-color 0.15s;
 }
-.od__admin-notes:focus { border-color: #bbb; }
-.od__admin-notes::placeholder { color: #ccc; }
+
+.od__admin-notes:focus {
+  border-color: #bbb;
+}
+
+.od__admin-notes::placeholder {
+  color: #ccc;
+}
 
 /* ── Footer Actions ──────────────────────────────── */
 .od__footer {
@@ -402,7 +468,11 @@
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
-.od__cancel-btn:hover { border-color: #aaa; color: #111; }
+
+.od__cancel-btn:hover {
+  border-color: #aaa;
+  color: #111;
+}
 
 .od__read-btn {
   background: #111;
@@ -415,7 +485,10 @@
   cursor: pointer;
   transition: background 0.15s;
 }
-.od__read-btn:hover { background: #333; }
+
+.od__read-btn:hover {
+  background: #333;
+}
 
 /* ═══════════════════════════════════════════════════
    RESPONSIVE BREAKPOINTS
@@ -463,6 +536,7 @@
   .od__timeline {
     --circle-size: 36px;
   }
+
   .od__tl-step {
     min-width: 80px;
   }
@@ -470,6 +544,7 @@
   .od__footer {
     justify-content: stretch;
   }
+
   .od__cancel-btn,
   .od__read-btn {
     flex: 1;
@@ -510,9 +585,11 @@
     column-gap: 10px;
     row-gap: 5px;
   }
+
   .od__info-label {
     font-size: 11.5px;
   }
+
   .od__info-value {
     font-size: 12px;
   }
@@ -521,6 +598,7 @@
   .od__address-name {
     font-size: 13px;
   }
+
   .od__address-lines div {
     font-size: 12.5px;
   }
@@ -531,15 +609,19 @@
     height: 38px;
     font-size: 17px;
   }
+
   .od__item-name {
     font-size: 12.5px;
   }
+
   .od__item-sku {
     font-size: 11px;
   }
+
   .od__item-price {
     font-size: 13px;
   }
+
   .od__item-row {
     gap: 10px;
     padding: 10px 0;
@@ -549,16 +631,20 @@
   .od__timeline {
     --circle-size: 32px;
   }
+
   .od__tl-num {
     font-size: 10px;
   }
+
   .od__tl-step {
     min-width: 72px;
   }
+
   .od__tl-label {
     font-size: 11px;
     max-width: 80px;
   }
+
   .od__tl-date {
     font-size: 10px;
     max-width: 80px;
@@ -568,6 +654,7 @@
   .od__option-input-row {
     flex-direction: column;
   }
+
   .od__add-option-btn {
     width: 100%;
     padding: 9px 14px;
@@ -578,6 +665,7 @@
     gap: 10px;
     padding: 16px 0 8px;
   }
+
   .od__cancel-btn,
   .od__read-btn {
     padding: 10px 16px;
@@ -614,6 +702,7 @@
   }
 
   .od__tl-date {
-    display: none; /* hide dates on very small screens to prevent overflow */
+    display: none;
+    /* hide dates on very small screens to prevent overflow */
   }
 }

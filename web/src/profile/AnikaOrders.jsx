@@ -121,10 +121,14 @@ export default function AnikaOrders() {
       order_items: item.order_items || [],
       deliveryProvider: item.delivery_provider,
       courierName: item.courier_name,
+      courier_name: item.courier_name,
       waybill: item.waybill,
       shipmentId: item.shipment_id,
+      shipment_id: item.shipment_id,
       deliveryStatus: item.delivery_status,
+      delivery_status: item.delivery_status,
       trackingUrl: item.tracking_url,
+      tracking_url: item.tracking_url,
       estimatedDeliveryDate: item.estimated_delivery_date
         ? new Date(item.estimated_delivery_date).toLocaleDateString("en-IN", {
           day: "numeric",
@@ -279,14 +283,14 @@ export default function AnikaOrders() {
                         const product = productsMap[item.product_name];
                         const image = item.image_url || product?.image_url || (product?.images && product.images[0]) || '/src/assets/cart/bangle1.webp';
                         return (
-                          <div 
-                            key={imgIdx} 
-                            style={{ 
-                              width: '44px', 
-                              height: '44px', 
-                              borderRadius: '8px', 
-                              overflow: 'hidden', 
-                              border: '2px solid #fff', 
+                          <div
+                            key={imgIdx}
+                            style={{
+                              width: '44px',
+                              height: '44px',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              border: '2px solid #fff',
                               boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
                               background: '#f4f4f5',
                               marginLeft: imgIdx > 0 ? '-14px' : '0',
@@ -307,106 +311,169 @@ export default function AnikaOrders() {
                   </div>
 
                   {/* Shipment Tracking Info (only shown if waybill is present) */}
-                  {order.waybill && (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '6px',
-                        padding: '6px 12px',
-                        fontSize: '12px',
-                        flexWrap: 'wrap',
-                        gap: '8px'
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: '#475569' }}>
-                        <span><strong>Courier:</strong> {order.courierName || order.deliveryProvider || 'iCarry'}</span>
-                        <span style={{ color: '#cbd5e1' }}>·</span>
-                        <span><strong>AWB:</strong> {order.waybill}</span>
-                        <span style={{ color: '#cbd5e1' }}>·</span>
-                        <span><strong>Status:</strong> {order.deliveryStatus || 'Booked'}</span>
+                  {order.waybill && (() => {
+                    const statusStr = (order.delivery_status || order.deliveryStatus || '').trim();
+                    const isCancelled = statusStr.toLowerCase().includes('cancel');
+                    const isNDR = statusStr.toUpperCase().startsWith('NDR');
+                    const isDelivered = statusStr.toLowerCase() === 'delivered' || (order.status || '').toLowerCase() === 'delivered';
+
+                    const boxBg = isCancelled ? '#fef2f2' : isNDR ? '#fffbeb' : isDelivered ? '#f0fdf4' : '#f8fafc';
+                    const boxBorder = isCancelled ? '#fecaca' : isNDR ? '#fde68a' : isDelivered ? '#bbf7d0' : '#e2e8f0';
+                    const textColor = isCancelled ? '#991b1b' : isNDR ? '#92400e' : isDelivered ? '#166534' : '#475569';
+                    const badgeBg = isCancelled ? '#fee2e2' : isNDR ? '#fef3c7' : isDelivered ? '#dcfce7' : '#e2e8f0';
+                    const badgeText = isCancelled ? '#b91c1c' : isNDR ? '#b45309' : isDelivered ? '#15803d' : '#334155';
+
+                    return (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: boxBg,
+                          border: `1px solid ${boxBorder}`,
+                          borderRadius: '6px',
+                          padding: '7px 12px',
+                          fontSize: '12px',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: textColor }}>
+                          <span><strong>Courier:</strong> {order.courier_name || order.courierName || order.deliveryProvider || 'iCarry'}</span>
+                          <span style={{ color: boxBorder }}>·</span>
+                          <span><strong>AWB:</strong> {order.waybill}</span>
+                          <span style={{ color: boxBorder }}>·</span>
+                          <span>
+                            <strong>Status:</strong>{' '}
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              background: badgeBg,
+                              color: badgeText,
+                              border: isDelivered ? '1px solid #bbf7d0' : undefined
+                            }}>
+                              {isDelivered ? 'Delivered' : (statusStr || 'Booked')}
+                            </span>
+                          </span>
+                        </div>
+                        {(order.tracking_url || order.trackingUrl) && (
+                          <a
+                            href={order.tracking_url || order.trackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              color: isCancelled ? '#dc2626' : isNDR ? '#b45309' : isDelivered ? '#15803d' : '#C42049',
+                              fontWeight: '600',
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '3px 8px',
+                              borderRadius: '4px',
+                              background: isCancelled ? '#fee2e2' : isNDR ? '#fef3c7' : isDelivered ? '#dcfce7' : '#fff',
+                              border: `1px solid ${boxBorder}`
+                            }}
+                          >
+                            Track Package ↗
+                          </a>
+                        )}
                       </div>
-                      {order.trackingUrl && (
-                        <a
-                          href={order.trackingUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            color: '#C42049',
-                            fontWeight: '600',
-                            textDecoration: 'none',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          Track Package ↗
-                        </a>
-                      )}
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Bottom Line: Status Badge & Actions */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', width: '100%', paddingTop: '2px' }}>
-                    <span className={`ao-order-status ao-status--${order.status.toLowerCase()}`} style={{ fontSize: '11px', padding: '4px 9px', borderRadius: '12px', fontWeight: '500' }}>
-                      {order.status}
-                    </span>
+                  {(() => {
+                    const isDelivered =
+                      (order.delivery_status || order.deliveryStatus || "").toLowerCase() === "delivered" ||
+                      (order.status || "").toLowerCase() === "delivered";
+                    const isCancelled =
+                      (order.delivery_status || order.deliveryStatus || "").toLowerCase().includes("cancel") ||
+                      (order.status || "").toLowerCase().includes("cancel");
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleViewInvoice(order)}
-                        title="View and print invoice"
-                        style={{
-                          background: '#fff',
-                          border: '1px solid #d4d4d8',
-                          borderRadius: '6px',
-                          padding: '4px 10px',
-                          fontSize: '11.5px',
-                          fontWeight: '500',
-                          color: '#333',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          height: '28px',
-                          boxSizing: 'border-box'
-                        }}
-                      >
-                        <span>🧾</span> Invoice
-                      </button>
+                    const displayStatus = isCancelled ? "Cancelled" : isDelivered ? "Delivered" : order.status;
+                    const statusClass = displayStatus.toLowerCase().replace(/\s+/g, '-');
 
-                      {(order.status === "Pending" || order.status === "Confirmed") && (
-                        <button
-                          className="ao-cancel-order-btn"
-                          onClick={() => handleCancelOrder(order.id)}
-                          disabled={cancellingOrderId === order.id}
-                          style={{ height: '28px', padding: '4px 10px', fontSize: '11.5px' }}
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', width: '100%', paddingTop: '2px' }}>
+                        <span
+                          className={`ao-order-status ao-status--${statusClass}`}
+                          style={{
+                            fontSize: '11px',
+                            padding: '4px 9px',
+                            borderRadius: '12px',
+                            fontWeight: '600',
+                            ...(isDelivered
+                              ? {
+                                  background: '#dcfce7',
+                                  color: '#15803d',
+                                  border: '1px solid #bbf7d0'
+                                }
+                              : {})
+                          }}
                         >
-                          {cancellingOrderId === order.id ? 'Cancelling...' : 'Cancel'}
-                        </button>
-                      )}
+                          {displayStatus}
+                        </span>
 
-                      <span
-                        onClick={() => handleTrackOrder(order, orderItems[0])}
-                        style={{
-                          fontSize: '12px',
-                          color: '#C42049',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '2px',
-                          marginLeft: '4px'
-                        }}
-                      >
-                        Track →
-                      </span>
-                    </div>
-                  </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => handleViewInvoice(order)}
+                            title="View and print invoice"
+                            style={{
+                              background: '#fff',
+                              border: '1px solid #d4d4d8',
+                              borderRadius: '6px',
+                              padding: '4px 10px',
+                              fontSize: '11.5px',
+                              fontWeight: '500',
+                              color: '#333',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              height: '28px',
+                              boxSizing: 'border-box'
+                            }}
+                          >
+                            <span>🧾</span> Invoice
+                          </button>
+
+                          {(order.status === "Pending" || order.status === "Confirmed") &&
+                            !isDelivered &&
+                            !isCancelled && (
+                            <button
+                              className="ao-cancel-order-btn"
+                              onClick={() => handleCancelOrder(order.id)}
+                              disabled={cancellingOrderId === order.id}
+                              style={{ height: '28px', padding: '4px 10px', fontSize: '11.5px' }}
+                            >
+                              {cancellingOrderId === order.id ? 'Cancelling...' : 'Cancel'}
+                            </button>
+                          )}
+
+                          <span
+                            onClick={() => handleTrackOrder(order, orderItems[0])}
+                            style={{
+                              fontSize: '12px',
+                              color: '#C42049',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '2px',
+                              marginLeft: '4px'
+                            }}
+                          >
+                            Track →
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}

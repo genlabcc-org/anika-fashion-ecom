@@ -33,13 +33,11 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const OrderDetails = ({ order, onStatusChange, onBack }) => {
+const OrderDetails = ({ order, onBack }) => {
   const [currentOrder, setCurrentOrder] = useState(order || null);
   const [adminNote, setAdminNote] = useState(order?.admin_notes || "");
   const [address, setAddress] = useState(null);
   const [addressLoading, setAddressLoading] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState(order?.status || "Order Placed");
-  const [updating, setUpdating] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "" });
   const [productsMap, setProductsMap] = useState({});
@@ -58,9 +56,6 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
   useEffect(() => {
     if (order) {
       setCurrentOrder(order);
-      if (order.status) {
-        setSelectedStatus(order.status);
-      }
       if (order.admin_notes !== undefined) {
         setAdminNote(order.admin_notes || "");
       }
@@ -91,9 +86,6 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
               ...(prev || {}),
               ...payload.new
             }));
-            if (payload.new.status) {
-              setSelectedStatus(payload.new.status);
-            }
           }
         }
       )
@@ -160,12 +152,6 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
   };
 
   useEffect(() => {
-    if (o.status) {
-      setSelectedStatus(o.status);
-    }
-  }, [o.status]);
-
-  useEffect(() => {
     setAdminNote(o.admin_notes || "");
   }, [o.admin_notes]);
 
@@ -186,23 +172,6 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
       fetchAddress();
     }
   }, [o.user_id]);
-
-  const handleUpdateStatus = async () => {
-    if (!o?.id || !onStatusChange || !selectedStatus) return;
-    try {
-      setUpdating(true);
-      await onStatusChange(o.id, selectedStatus);
-      setCurrentOrder((prev) => ({
-        ...(prev || o),
-        status: selectedStatus
-      }));
-      showToast("Order status updated successfully!", "success");
-    } catch (err) {
-      showToast("Failed to update status: " + err.message, "error");
-    } finally {
-      setUpdating(false);
-    }
-  };
 
   const handleSaveNote = async () => {
     if (!o?.id) return;
@@ -234,6 +203,29 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
     }
   };
 
+  const fetchFreshOrder = async () => {
+    if (!o?.id) return;
+    try {
+      const { data: refreshedOrder, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", o.id)
+        .single();
+      if (!error && refreshedOrder) {
+        const { data: items } = await supabase
+          .from("order_items")
+          .select("*")
+          .eq("order_id", o.id);
+        const fullOrder = { ...refreshedOrder, order_items: items || [] };
+        setCurrentOrder(fullOrder);
+        if (setSelectedAdminOrder) setSelectedAdminOrder(fullOrder);
+        return fullOrder;
+      }
+    } catch (err) {
+      console.error("Error refetching order:", err);
+    }
+  };
+
   const handleRetryBooking = async () => {
     if (!o?.id) return;
     try {
@@ -243,16 +235,7 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
         showToast("Retry booking failed: " + res.error, "error");
       } else {
         showToast("Shipment booking retried successfully!", "success");
-      }
-      // Refresh order row
-      const { data: refreshedOrder } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", o.id)
-        .single();
-      if (refreshedOrder) {
-        setCurrentOrder((prev) => ({ ...(prev || {}), ...refreshedOrder }));
-        if (setSelectedAdminOrder) setSelectedAdminOrder(refreshedOrder);
+        await fetchFreshOrder();
       }
     } catch (err) {
       showToast("Failed to retry booking: " + err.message, "error");
@@ -263,6 +246,8 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
 
   const handlePrintLabel = async () => {
     if (!o?.id) return;
+    // Open blank tab synchronously within user click event context to avoid browser popup blockers
+    const win = window.open("", "_blank");
     try {
       setLoadingLabel(true);
       const res = await icarryService.label(o.id);
@@ -271,11 +256,17 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
         res?.shipment_label?.url ||
         res?.url;
       if (labelUrl) {
-        window.open(labelUrl, "_blank");
+        if (win) {
+          win.location.href = labelUrl;
+        } else {
+          window.location.href = labelUrl;
+        }
       } else {
+        if (win) win.close();
         showToast("No shipping label URL returned from carrier.", "warning");
       }
     } catch (err) {
+      if (win) win.close();
       showToast("Failed to fetch shipping label: " + err.message, "error");
     } finally {
       setLoadingLabel(false);
@@ -285,7 +276,7 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
   const handleCancelShipment = async () => {
     if (!o?.id) return;
     const confirmed = window.confirm(
-      "Are you sure you want to cancel this shipment with iCarry?\n\nWarning: If the parcel has already been picked up by the courier, Return-to-Origin (RTO) charges may apply."
+      "Are you sure you want to cancel this shipment with iCarry?\n\nWarning: Cancelling this shipment after courier assignment or pickup may incur Return to Origin (RTO) charges from the courier. Are you sure you want to proceed?"
     );
     if (!confirmed) return;
 
@@ -295,21 +286,21 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
       if (res && res.error) {
         showToast("Failed to cancel shipment: " + res.error, "error");
       } else {
-        showToast("Shipment cancelled successfully.", "success");
-        // Refresh order row
-        const { data: refreshedOrder } = await supabase
-          .from("orders")
-          .select("*")
-          .eq("id", o.id)
-          .single();
-        if (refreshedOrder) {
-          setCurrentOrder((prev) => ({ ...(prev || {}), ...refreshedOrder }));
-          if (setSelectedAdminOrder) setSelectedAdminOrder(refreshedOrder);
+        try {
+          await supabase
+            .from("orders")
+            .update({ status: "Cancelled", delivery_status: "Cancelled" })
+            .eq("id", o.id);
+        } catch (dbErr) {
+          console.warn("Could not update order status in DB:", dbErr);
         }
+        showToast("Shipment and order cancelled successfully.", "success");
       }
     } catch (err) {
       showToast("Failed to cancel shipment: " + err.message, "error");
     } finally {
+      // Refetch the order row on success/failure either way, so the panel always reflects true DB state
+      await fetchFreshOrder();
       setCancellingShipment(false);
     }
   };
@@ -346,6 +337,11 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
       !o.payment_id &&
       !o.razorpay_payment_id;
 
+    const isCancelled =
+      s.includes("cancel") ||
+      d.includes("cancel") ||
+      d === "voided";
+
     if (s === "refund completed") {
       return [
         {
@@ -358,7 +354,7 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
           label: "Order cancelled",
           date: "Order Cancelled",
           done: true,
-          isCancelled: false
+          isCancelled: true
         },
         {
           label: "Refund completed",
@@ -369,7 +365,7 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
       ];
     }
 
-    if (s === "cancelled") {
+    if (isCancelled) {
       const steps = [
         {
           label: "Order placed",
@@ -380,7 +376,7 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
         {
           label: "Order cancelled",
           date: "Order Cancelled",
-          done: false,
+          done: true,
           isCancelled: true
         }
       ];
@@ -400,13 +396,17 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
     const isPlacedDone = true;
     const isConfirmedDone = [
       "confirmed", "processing", "packed", "shipped", "delivered", "returned"
-    ].includes(s);
+    ].includes(s) || !!o.waybill || ["booked", "pending pickup", "shipped", "in transit", "out for delivery", "delivered"].some(x => d.includes(x));
 
     const isShippedDone = [
       "shipped", "delivered", "returned"
-    ].includes(s) || d.includes("shipped") || d.includes("transit") || d === "booked" || d === "delivered";
+    ].includes(s) || ["shipped", "in transit", "out for delivery", "delivered"].some(x => d.includes(x));
 
+    const isOutForDeliveryDone = d.includes("out for delivery") || d === "delivered" || s === "delivered";
+    const isNdr = d.startsWith("ndr");
     const isDeliveredDone = ["delivered", "returned"].includes(s) || d === "delivered";
+
+    const carrierInfo = o.courier_name || o.delivery_provider || "iCarry";
 
     const steps = [
       {
@@ -417,31 +417,54 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
       },
       {
         label: "Order confirmed",
-        date: isConfirmedDone ? "Confirmed" : "",
+        date: isConfirmedDone
+          ? (o.waybill ? `AWB: ${o.waybill}` : "Confirmed")
+          : "Pending confirmation",
         done: isConfirmedDone,
         isCancelled: false
       },
       {
         label: "Shipped",
         date: isShippedDone
-          ? (o.delivery_provider ? `${o.delivery_provider}${o.waybill ? ` (${o.waybill})` : ""}` : "Dispatched")
-          : "",
+          ? `${carrierInfo}${o.waybill ? ` (${o.waybill})` : ""}`
+          : (o.waybill || d === "booked" || d === "pending pickup"
+            ? `Packed for ${carrierInfo}`
+            : ""),
         done: isShippedDone,
         isCancelled: false
       },
       {
-        label: "Delivered",
-        date: isDeliveredDone
-          ? (s === "returned" ? "Delivered to Customer" : "Delivered")
-          : (o.estimated_delivery_date
-            ? `Est: ${new Date(o.estimated_delivery_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
-            : ""),
-        done: isDeliveredDone,
+        label: "Out for delivery",
+        date: isOutForDeliveryDone
+          ? "Out for Delivery"
+          : (isShippedDone ? `In transit with ${carrierInfo}` : ""),
+        done: isOutForDeliveryDone,
         isCancelled: false
       }
     ];
 
-    if (s === "returned") {
+    if (isNdr) {
+      steps.push({
+        label: "Delivery exception",
+        date: o.delivery_status || "NDR",
+        done: false,
+        isWarning: true,
+        isCancelled: false
+      });
+    }
+
+    steps.push({
+      label: "Delivered",
+      date: isDeliveredDone
+        ? (s === "returned" ? "Delivered to Customer" : "Delivered safely")
+        : (o.estimated_delivery_date
+          ? `Est: ${new Date(o.estimated_delivery_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+          : ""),
+      done: isDeliveredDone,
+      isCancelled: false
+    });
+
+    if (s === "returned" || d.includes("rto") || d === "returned") {
       steps.push({
         label: "Returned",
         date: "Returned to Origin",
@@ -452,6 +475,15 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
 
     return steps;
   };
+
+  const isOrderCancelled =
+    (o?.status || "").toLowerCase().includes("cancel") ||
+    (o?.delivery_status || "").toLowerCase().includes("cancel") ||
+    (o?.delivery_status || "").toLowerCase() === "voided";
+
+  const isDelivered =
+    (o?.status || "").toLowerCase() === "delivered" ||
+    (o?.delivery_status || "").toLowerCase() === "delivered";
 
   const timelineSteps = getTimelineSteps();
 
@@ -467,7 +499,7 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
         </button>
         <div className="od__header-row">
           <h1 className="od__title">Order Details</h1>
-          <StatusBadge status={o.status} />
+          <StatusBadge status={isOrderCancelled ? "Cancelled" : o.status} />
         </div>
         <p className="od__date-placed">Placed on {o.order_date ? new Date(o.order_date).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}</p>
       </div>
@@ -590,24 +622,26 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
                 fontWeight: '600',
                 color:
                   o.delivery_status === 'Booked' || o.delivery_status === 'Delivered'
-                    ? '#27ae60'
+                    ? '#16a34a'
                     : o.delivery_status === 'Booking Failed' || o.delivery_status === 'Cancelled'
                       ? '#dc2626'
-                      : '#d35400'
+                      : o.delivery_status?.toUpperCase()?.startsWith('NDR')
+                        ? '#ea580c'
+                        : '#d97706'
               }}
             >
               {o.delivery_status || "Pending Booking"}
             </span>
             {o.waybill && (
               <>
-                <span className="od__info-label">Waybill</span>
+                <span className="od__info-label">AWB / Waybill</span>
                 <span className="od__info-value">
                   {o.tracking_url ? (
                     <a
                       href={o.tracking_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ color: '#8b0030', textDecoration: 'underline', fontWeight: '500' }}
+                      style={{ color: '#8b0030', textDecoration: 'underline', fontWeight: '600' }}
                     >
                       {o.waybill} ↗
                     </a>
@@ -617,17 +651,32 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
                 </span>
               </>
             )}
+            {o.tracking_url && (
+              <>
+                <span className="od__info-label">Tracking</span>
+                <span className="od__info-value">
+                  <a
+                    href={o.tracking_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#C42049', textDecoration: 'none', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    Track Package ↗
+                  </a>
+                </span>
+              </>
+            )}
             {o.shipment_id && (
               <>
                 <span className="od__info-label">Shipment ID</span>
                 <span className="od__info-value">{o.shipment_id}</span>
               </>
             )}
-            {o.shipment_error && (
+            {(o.delivery_status === 'Booking Failed' || o.shipment_error) && (
               <>
-                <span className="od__info-label" style={{ color: '#dc2626' }}>Shipment Error</span>
-                <span className="od__info-value" style={{ color: '#dc2626', wordBreak: 'break-word', fontSize: '12.5px' }}>
-                  {o.shipment_error}
+                <span className="od__info-label" style={{ color: '#dc2626', fontWeight: '600' }}>Shipment Error</span>
+                <span className="od__info-value" style={{ color: '#dc2626', wordBreak: 'break-word', fontSize: '12.5px', background: '#fef2f2', padding: '6px 10px', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                  {o.shipment_error || "Carrier booking failed. Please check address details and retry booking."}
                 </span>
               </>
             )}
@@ -640,6 +689,20 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
               </>
             )}
           </div>
+
+          {o.delivery_status?.toUpperCase()?.startsWith('NDR') && (
+            <div style={{ marginTop: '12px', padding: '9px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', color: '#92400e', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>⚠️</span>
+              <span><strong>Delivery Exception (NDR):</strong> The carrier reported: <em>{o.delivery_status}</em>. Please review or coordinate with the customer.</span>
+            </div>
+          )}
+
+          {o.delivery_status === 'Cancelled' && (
+            <div style={{ marginTop: '12px', padding: '9px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#b91c1c', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>✕</span>
+              <span><strong>Shipment Cancelled:</strong> The shipping order has been cancelled with the carrier.</span>
+            </div>
+          )}
 
           {/* Shipment Actions */}
           <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
@@ -684,75 +747,27 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
                   {loadingLabel ? 'Loading Label...' : '🏷️ Print Label'}
                 </button>
 
-                <button
-                  onClick={handleCancelShipment}
-                  disabled={cancellingShipment}
-                  style={{
-                    backgroundColor: '#fff',
-                    color: '#dc2626',
-                    border: '1px solid #fca5a5',
-                    borderRadius: '6px',
-                    padding: '7px 14px',
-                    fontSize: '12.5px',
-                    fontWeight: '600',
-                    cursor: cancellingShipment ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {cancellingShipment ? 'Cancelling...' : 'Cancel Shipment'}
-                </button>
+                {!isDelivered && !isOrderCancelled && (
+                  <button
+                    onClick={handleCancelShipment}
+                    disabled={cancellingShipment}
+                    style={{
+                      backgroundColor: '#fff',
+                      color: '#dc2626',
+                      border: '1px solid #fca5a5',
+                      borderRadius: '6px',
+                      padding: '7px 14px',
+                      fontSize: '12.5px',
+                      fontWeight: '600',
+                      cursor: cancellingShipment ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {cancellingShipment ? 'Cancelling...' : 'Cancel Shipment'}
+                  </button>
+                )}
               </>
             )}
           </div>
-        </div>
-
-        {/* Update Order Status */}
-        <div className="od__card">
-          <div className="od__card-title">Update Order Status</div>
-          <div className="od__status-update-row" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-            <span className="od__status-label" style={{ color: '#888', fontSize: '13px' }}>Current</span>
-            <StatusBadge status={o.status} />
-          </div>
-          <div className="od__option-label" style={{ color: '#888', fontSize: '13px', marginBottom: '6px' }}>Change Status to</div>
-          <div className="od__status-select-row" style={{ display: 'flex', gap: '10px' }}>
-            <select
-              value={selectedStatus}
-              onChange={e => setSelectedStatus(e.target.value)}
-              style={{
-                flex: 1,
-                height: '34px',
-                borderRadius: '8px',
-                border: '1px solid #e5e5e5',
-                padding: '0 10px',
-                outline: 'none',
-                background: '#fff'
-              }}
-            >
-              <option value="Order Placed">Order Placed</option>
-              <option value="Confirmed">Confirmed</option>
-              <option value="Shipped">Shipped</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Cancelled">Cancelled</option>
-              <option value="Returned">Returned</option>
-              <option value="Refund Completed">Refund Completed</option>
-            </select>
-            <button
-              onClick={handleUpdateStatus}
-              disabled={updating}
-              style={{
-                backgroundColor: '#1c1c1e',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '0 16px',
-                cursor: 'pointer',
-                fontWeight: '500',
-                fontSize: '13px'
-              }}
-            >
-              {updating ? 'Updating...' : 'Update'}
-            </button>
-          </div>
-          <div className="od__option-hint" style={{ color: '#aaa', fontSize: '11px', marginTop: '10px' }}>Customer will see the status change immediately.</div>
         </div>
       </div>
 
@@ -763,20 +778,25 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
           {timelineSteps.map((step, i) => {
             const isDone = step.done;
             const isCancelled = step.isCancelled;
+            const isWarning = step.isWarning;
             const nextStep = timelineSteps[i + 1];
-            const isConnectorDone = isDone && nextStep?.done;
+            const isConnectorDone = isDone && nextStep?.done && !nextStep?.isCancelled;
+            const isConnectorCancelled = isDone && nextStep?.isCancelled;
 
             return (
-              <div key={i} className="od__tl-step">
+              <div key={i} className={`od__tl-step ${isCancelled ? "od__tl-step--cancelled" : ""}`}>
                 {i < timelineSteps.length - 1 && (
-                  <div className={`od__tl-line ${isConnectorDone ? "od__tl-line--done" : ""}`} />
+                  <div
+                    className={`od__tl-line ${isConnectorDone ? "od__tl-line--done" : ""} ${isConnectorCancelled ? "od__tl-line--cancelled" : ""}`}
+                  />
                 )}
                 <div
-                  className={`od__tl-circle ${isDone ? "od__tl-circle--done" : ""} ${isCancelled ? "od__tl-circle--cancelled" : ""
-                    }`}
+                  className={`od__tl-circle ${isCancelled ? "od__tl-circle--cancelled" : isDone ? "od__tl-circle--done" : ""} ${isWarning ? "od__tl-circle--warning" : ""}`}
                 >
                   {isCancelled ? (
-                    <span style={{ fontSize: "14px", fontWeight: "bold" }}>✕</span>
+                    <span style={{ fontSize: "14px", fontWeight: "900", color: "#ffffff" }}>✕</span>
+                  ) : isWarning ? (
+                    <span style={{ fontSize: "14px" }}>⚠️</span>
                   ) : isDone ? (
                     <svg
                       width="14"
@@ -794,8 +814,24 @@ const OrderDetails = ({ order, onStatusChange, onBack }) => {
                     <span className="od__tl-num">{String(i + 1).padStart(2, "0")}</span>
                   )}
                 </div>
-                <div className="od__tl-label">{step.label}</div>
-                <div className="od__tl-date">{step.date}</div>
+                <div
+                  className="od__tl-label"
+                  style={{
+                    color: isCancelled ? "#dc2626" : isWarning ? "#b45309" : undefined,
+                    fontWeight: isCancelled ? "700" : undefined
+                  }}
+                >
+                  {step.label}
+                </div>
+                <div
+                  className="od__tl-date"
+                  style={{
+                    color: isCancelled ? "#ef4444" : isWarning ? "#b45309" : undefined,
+                    fontWeight: isCancelled ? "600" : undefined
+                  }}
+                >
+                  {step.date}
+                </div>
               </div>
             );
           })}

@@ -205,11 +205,11 @@ Deno.serve(async (req: Request) => {
 
       const data = await icarryCall(ENDPOINTS.cancel, { shipment_id: shipmentId });
 
-      // On successful cancellation from iCarry, mark delivery_status = 'Cancelled'
+      // On successful cancellation from iCarry, mark delivery_status = 'Cancelled' and status = 'Cancelled'
       if (!data?.error) {
         const updateQuery = orderId
-          ? supabaseAdmin.from("orders").update({ delivery_status: "Cancelled" }).eq("id", orderId)
-          : supabaseAdmin.from("orders").update({ delivery_status: "Cancelled" }).eq("shipment_id", shipmentId);
+          ? supabaseAdmin.from("orders").update({ delivery_status: "Cancelled", status: "Cancelled" }).eq("id", orderId)
+          : supabaseAdmin.from("orders").update({ delivery_status: "Cancelled", status: "Cancelled" }).eq("shipment_id", shipmentId);
         await updateQuery;
       }
 
