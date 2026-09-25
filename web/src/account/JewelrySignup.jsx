@@ -26,6 +26,7 @@ export default function JewelrySignup() {
   }, [location.state]);
 
   const handleSendOTP = async () => {
+    if (loading) return;
     if (!email) {
       showToast("Please enter your email.", "error");
       return;
@@ -49,9 +50,8 @@ export default function JewelrySignup() {
       }
     } catch (error) {
       showToast(error.message, "error");
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -78,12 +78,29 @@ export default function JewelrySignup() {
             className="jewelry-input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !loading) {
+                handleSendOTP();
+              }
+            }}
             placeholder=""
             maxLength={32}
+            disabled={loading}
           />
 
-          <button className="jewelry-btn-otp" onClick={handleSendOTP}>
-            Send OTP
+          <button
+            className="jewelry-btn-otp"
+            onClick={handleSendOTP}
+            disabled={loading}
+          >
+            {loading ? (
+              <span className="jewelry-btn-loading">
+                <span className="jewelry-spinner" />
+                Sending OTP...
+              </span>
+            ) : (
+              "Send OTP"
+            )}
           </button>
 
           <div className="jewelry-divider">

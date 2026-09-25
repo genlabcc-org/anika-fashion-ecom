@@ -1,0 +1,2294 @@
+API Document v16.0
+(updated May 27, 2026)
+
+
+
+
+  iCarry.in Proprietary & Confidential   1
+Table of Contents
+
+1.     Authentication................................................................................................................................................................. 3
+     LOGIN .................................................................................................................................................................................. 3
+2.     Shipment ......................................................................................................................................................................... 5
+     Get ESTIMATE Single Shipment (India Rate Calculator) ...................................................................................................... 5
+     Get ESTIMATE Multi-Box Shipment (India Rate Calculator) ................................................................................................ 8
+     Get ESTIMATE (India to Foreign Country Rate Calculator)................................................................................................ 12
+     Book SINGLE Shipment ...................................................................................................................................................... 14
+     Book MULTI-BOX Shipment............................................................................................................................................... 19
+     Book Shipment - INTERNATIONAL..................................................................................................................................... 21
+     CANCEL Shipment .............................................................................................................................................................. 25
+     REVERSE Shipment ............................................................................................................................................................ 26
+     TRACK a Shipment ............................................................................................................................................................. 27
+     SYNC Shipment STATUS..................................................................................................................................................... 33
+     Webhook / POST Call Back on change in Shipment STATUS ............................................................................................. 35
+     Webhook / POST Call Back for NDR events ....................................................................................................................... 36
+     Webhook / POST Call Back for Weight Dispute events ..................................................................................................... 38
+     SYNC Shipment CHARGES .................................................................................................................................................. 39
+     PRINT Shipment Label ....................................................................................................................................................... 40
+3.     Pincode .......................................................................................................................................................................... 41
+     Check SERVICEABILITY by PINCODE .................................................................................................................................. 41
+4.     Pickup Address .............................................................................................................................................................. 42
+     ADD a new PICKUP POINT for your shipments ................................................................................................................. 42
+     UPDATE an existing PICKUP ADDRESS ............................................................................................................................... 45
+     DELETE an existing PICKUP ADDRESS ................................................................................................................................ 48
+5.     Appendix ....................................................................................................................................................................... 49
+     State Codes ........................................................................................................................................................................ 49
+
+
+
+
+     iCarry.in Proprietary & Confidential                                                                                                                             2
+       1. Authentication
+
+  LOGIN
+
+Before any other operation, Login is needed to establish an authenticated session with iCarry.in server. Authentication
+requests sent to the iCarry.in API URL:
+
+Must be made via SSL encrypted connection
+Must use HTTP POST
+Must contain username and key for the user account that will be submitting API requests
+
+Login requests that meet these criteria will be granted an api_token id. This will be used as a URL parameter during
+subsequent API requests.
+
+
+Request URL : https://www.icarry.in/api_login
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter     Required     Description
+
+
+                            The API username
+ username      Yes
+                            Example: ela10
+
+
+                            The API key generated for the API user
+
+                            Example:
+ Key           Yes          sELj4wHd45xTE5CwWgvt2G25xoVgGXYhnNZdIxhA73Q01d265VjoZCBF0f6AST
+                            3Gi
+                            GkY56rLROjBiDt5BCvTbcaD7OhDV5CYqOVU5Ld4gqCyEQPikv0FdS1dqjOo2u44
+                            mK
+                            Lb5y8jfBkwSHpG2co7WRLRB46ijkfyCm3IMdbGfNlyVqeIzRexkmFc1mNJmNqH
+                            BelTV
+                            WHlsTCP6P22fxA5l3O7gHpdAplM0eLPMFUANMDZ4qUuyT4qp8ANHjGfxu6V
+
+
+Sample Successful Response
+{
+"success": "Success: API session successfully started!", "api_token": "42b1731751593218bd256cbf01"
+}
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                 3
+Sample Error Response
+{
+"error": {
+"ip": "Warning: Your IP 172.68.46.114 is not allowed to access this API!", "key": "Warning: Incorrect API Key!"
+}
+}
+
+
+Note: BOTH USERNAME AND API KEY ARE UNIQUE TO INDIVIDUAL USERS. API TOKEN ID ARE VALID FOR 60
+MINUTES. IN CONTRAST, USER KEYS ARE VALID INDEFINITELY WHICH YOU CAN REGENERATE AS NEEDED.
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                4
+      2. Shipment
+  Get ESTIMATE Single Shipment (India Rate Calculator)
+
+You can get estimated cost of a shipment by providing certain shipment details. In the response you will get the list of
+couriers which can provide you service along with associated cost. This is just an estimate and actual costs deducted
+will be dependent on the actual shipment data and any other services availed during delivery.
+
+Request URL :
+
+https://www.icarry.in/api_get_estimate&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter                   Required    Description
+
+
+                                         Data type: integer
+
+                                         Notes: Length in centimeters of the parcel being shipped
+ length                      Yes
+                                         Example:
+
+                                         $shipment[‘length’] = 10;
+
+                                         Data type: integer
+
+                                         Notes: Breadth in centimeters of the parcel being shipped
+ breadth                     Yes
+                                         Example:
+
+                                         $shipment[‘breadth’] = 10;
+
+                                         Data type: integer
+
+                                         Notes: Height in centimeters of the parcel being shipped
+ height                      Yes
+                                         Example:
+
+                                         $shipment[‘height’] = 25;
+
+ weight                      Yes         Data type: integer
+
+                                         Notes: Weight in grams of the parcel being shipped
+
+                                         Example:
+
+                                         $shipment[‘weight’] = 520;
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                  5
+Parameter                   Required    Description
+
+
+                                        Data type: integer
+
+                                        Notes: Postal code of recipient
+destination_pincode         Yes
+                                        Example:
+                                        $shipment[‘destination_pincode’] = ‘560068’;
+
+                                        Data type: integer
+
+                                        Notes: Postal code of pickup (sender)
+origin_pincode              Yes
+                                        Example:
+                                        $shipment[‘origin_pincode’] = ‘400081’;
+
+                                        Data type: 2 characters
+
+                                        Notes: Country Code of Destination address
+destination_country_code    Yes
+                                        Example:
+
+                                        $shipment[‘destination_country_code’] = ‘IN’; (only IN is supported)
+
+                                        Data type: 2 characters
+
+                                        Notes: Country Code of Pickup address
+origin_country_code         Yes
+                                        Example:
+
+                                        $shipment[‘origin_country_code’] = ‘IN’; (only IN is supported)
+                                        Data type: 1 character enum ( E | P | H ) Notes: E – Express / Air, S
+shipment_mode               Yes         – Surface, H – Hyperlocal (Same Day)
+
+                                        Example:
+                                        $shipment[‘shipment_mode’] = ‘E’;
+
+shipment_type               Yes         Data type: 1 character enum ( C | P )
+
+                                        Notes: C – COD, P - Prepaid
+
+                                        Example:
+
+                                        $shipment[‘shipment_type’] = ‘P’;
+
+                                        Data type: float
+
+                                        Notes: Declared value of shipment. In case of COD shipment the
+                                        amount mentioned here will be collected from the shipment recipient
+shipment_value              Yes         at time of delivery
+
+                                        Example:
+
+                                        $shipment[‘shipment_value’] = ‘1000’;
+
+
+
+
+ iCarry.in Proprietary & Confidential                                                                6
+ Parameter                   Required    Description
+
+
+ sender_address              Yes (only   Data type: alphanumeric characters
+                             for mode
+                             ‘H’)        Notes: Detailed and Complete address of the sender
+
+                                         Example:
+
+                                         $shipment[‘sender_address’] = ‘B-307 Ravi Sagar Apartment, Sunder
+                                         Nager locality’;
+
+ sender_city                 Yes (only   Data type: alphanumeric characters
+                             for mode
+                             ‘H’)        Notes: Sender city name
+
+                                         Example:
+
+                                         $shipment[‘sender_city’] = ‘Mumbai’;
+
+ consignee_address           Yes (only   Data type: alphanumeric characters
+                             for mode
+                             ‘H’)        Notes: Detailed and Complete address of the sender
+
+                                         Example:
+
+                                         $shipment[‘consignee_address’] = ‘B-307 Ravi Sagar Apartment,
+                                         Sunder Nager locality’;
+
+ consignee_city              Yes (only   Data type: alphanumeric characters
+                             for mode
+                             ‘H’)        Notes: Detailed and Complete address of the sender
+
+                                         Example:
+
+                                         $shipment[‘consignee_city’] = ‘Mumbai’;
+
+
+
+Successful Response
+{
+  "success": 1,
+  "error": "",
+  "estimate": [
+     {
+        "courier_id": "29",
+        "courier_name": "Xpressbees Surface",
+        "courier_group_name": "Xpressbees",
+        "courier_cost": "26.52"
+     },
+     {
+        "courier_id": "33",
+        "courier_name": "",
+        "courier_group_name": "Bluedart",
+        "courier_cost": "41.31"
+     }
+  ]
+}
+
+
+  iCarry.in Proprietary & Confidential                                                            7
+  Get ESTIMATE Multi-Box Shipment (India Rate Calculator)
+
+You can get estimated cost of a shipment by providing certain shipment details. In the response you will get the list of
+couriers which can provide you service along with associated cost. This is just an estimate and actual costs deducted
+will be dependent on the actual shipment data and any other services availed during delivery.
+
+Request URL :
+
+https://www.icarry.in/api_get_estimate_b2b&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter                   Required    Description
+
+
+                                         Data type: alphanumeric characters
+
+                                         Notes: Postal code of recipient
+ destination_pincode         Yes
+                                         Example:
+                                         $shipment[‘destination_pincode’] = ‘560068’;
+
+                                         Data type: alphanumeric characters
+
+                                         Notes: Postal code of pickup (sender)
+ origin_pincode              Yes
+                                         Example:
+                                         $shipment[‘origin_pincode’] = ‘400081’;
+
+                                         Data type: 2 characters
+
+                                         Notes: Country Code of Destination address
+ destination_country_code    Yes
+                                         Example:
+
+                                         $shipment[‘destination_country_code’] = ‘IN’; (only IN is supported)
+
+                                         Data type: 2 characters
+
+                                         Notes: Country Code of Pickup address
+ origin_country_code         Yes
+                                         Example:
+
+                                         $shipment[‘origin_country_code’] = ‘IN’; (only IN is supported)
+                                         Data type: 1 character enum ( E | P ) Notes: E – Express / Air, S -
+ shipment_mode               Yes         Surface
+
+                                         Example:
+                                         $shipment[‘shipment_mode’] = ‘E’;
+
+ shipment_type               Yes         Data type: 1 character enum ( C | P )
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                  8
+Parameter                   Required    Description
+
+
+                                        Notes: C – COD, P - Prepaid
+
+                                        Example:
+
+                                        $shipment[‘shipment_type’] = ‘P’;
+
+
+                                        Data type: float
+
+                                        Notes: Declared value of shipment. In case of COD shipment the
+                                        amount mentioned here will be collected from the shipment recipient
+shipment_value              Yes         at time of delivery
+
+                                        Example:
+
+                                        $shipment[‘shipment_value’] = ‘1000’;
+
+
+                                        Data Type: Array
+
+                                          Parameter         Required        Description
+                                          quantity          Yes             Positive integer
+boxes                       Yes           length            Yes             Positive decimal
+                                          breadth           Yes             Positive decimal
+                                          height            Yes             Positive decimal
+                                          dimension_unit    Yes             Can be ‘cm’ only
+                                          weight            Yes             Positive decimal
+                                          weight_unit       Yes             Can be ‘gm’ or ‘kg’
+
+
+                                        $box_type_1 = array(
+                                        ‘quantity’ => ‘2’
+                                        ‘length’ => ‘10’,
+                                        ‘breadth’ => ‘4’,
+                                        ‘height’ => ‘20’,
+                                        ‘dimension_unit’ => ‘cm’,
+                                        ‘weight’ => ‘20000’,
+                                        ‘weight_unit’ => ‘gm
+                                        );
+
+                                        $box_type_2 = array(
+                                        ‘quantity’ => ‘3’
+                                        ‘length’ => ‘10’,
+                                        ‘breadth’ => ‘4’,
+                                        ‘height’ => ‘20’,
+                                        ‘dimension_unit’ => ‘cm’,
+                                        ‘weight’ => ‘30000’,
+                                        ‘weight_unit’ => ‘gm
+                                        );
+
+                                        $boxes = array();
+                                        $boxes[] = $box_type_1;
+                                        $boxes[] = $box_type_2;
+
+
+
+
+ iCarry.in Proprietary & Confidential                                                               9
+                                              $shipment[‘parcel’][‘boxes’] = $boxes;
+
+
+                                              Above means there are 2 boxes of 20 Kg each and 3 boxes of 30 Kg
+                                              each. Total weight is 2 x 20 + 3 x 30 = 40 + 90 = 130 Kg
+
+
+
+
+Postman Screenshot of Request Sample
+
+
+
+
+Successful Response
+{
+     "error": "",
+     "success": 1,
+     "estimate": {
+         "Ekart LTL": {
+             "courier_group_name": "Ekart LTL",
+            "courier_cost": 2050.84,
+            "freight_cost": 2050.84,
+            "cod_cost": 0,
+            "courier_group_id": 25
+         },
+         "Wheelex Kargo": {
+            "courier_group_name": "Wheelex Kargo",
+
+
+
+    iCarry.in Proprietary & Confidential                                                                10
+              "courier_cost": 2347.76,
+              "freight_cost": 2347.76,
+              "cod_cost": 0,
+              "courier_group_id": 22
+         },
+         "Delhivery LTL Dense": {
+              "courier_group_name": "Delhivery LTL Dense",
+              "courier_cost": 1960.85,
+              "freight_cost": 1960.85,
+              "cod_cost": 0,
+              "courier_group_id": 21
+         },
+         "Aerex Kargo": {
+             "courier_group_name": "Aerex Kargo",
+              "courier_cost": 12505.58,
+              "freight_cost": 12505.58,
+              "cod_cost": 0,
+              "courier_group_id": 23
+         },
+         "Delhivery LTL": {
+              "courier_group_name": "Delhivery LTL",
+              "courier_cost": 2410.65,
+              "freight_cost": 2410.65,
+              "cod_cost": 0,
+              "courier_group_id": 17
+         }
+     }
+}
+
+
+
+
+    iCarry.in Proprietary & Confidential                     11
+  Get ESTIMATE (India to Foreign Country Rate Calculator)
+
+You can get estimated cost of a shipment by providing certain shipment details. This is just an estimate and actual
+costs deducted will be dependent on the actual shipment data and any other services availed during delivery.
+
+Request URL :
+
+https://www.icarry.in/api_get_estimate_international&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter                   Required    Description
+
+
+ weight                      Yes         Data type: integer
+                                         Weight in grams is provided as input
+
+                                         Notes: Weight in grams of the parcel being shipped
+
+                                         Example:
+
+                                         $shipment[‘weight’] = 520;
+
+                                         Data type: integer
+
+                                         Notes: Length in centimeters of the parcel being shipped
+ length                      Yes
+                                         Example:
+
+                                         $shipment[‘length’] = 10;
+
+
+                                         Data type: integer
+
+                                         Notes: Breadth in centimeters of the parcel being shipped
+ breadth                     Yes
+                                         Example:
+
+                                         $shipment[‘breadth’] = 10;
+
+
+                                         Data type: integer
+
+                                         Notes: Height in centimeters of the parcel being shipped
+ height                      Yes
+                                         Example:
+
+                                         $shipment[‘height’] = 25;
+
+
+                                         Data type: alphanumeric characters
+
+                                         Notes: Postal code of pickup (sender)
+ origin_pincode              Yes
+                                         Example:
+                                         $shipment[‘origin_pincode’] = ‘400081’;
+
+
+
+  iCarry.in Proprietary & Confidential                                                                 12
+                                         Data type: 2 characters
+
+                                         Notes: ISO2 Country Code of Destination address
+ destination_country_code    Yes
+                                         Example:
+
+                                         $shipment[‘destination_country_code’] = ‘US’;
+
+
+
+
+Successful Response
+
+ {
+       "success": 1,
+       "estimates": [
+           {
+               "courier_name": "Aramex International",
+               "courier_id": "17-34",
+               "total": 2156.7,
+               "shipping": 1827.71,
+               "tax": 328.99,
+               "surcharge": 0,
+               "fsc": 0
+           }
+       ]
+ }
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                     13
+  Book SINGLE Shipment
+
+Create a new shipment by choosing your courier while booking. On successful creation a shipment_id is returned
+along with the pickup request id.
+
+Request
+
+Request URL for Surface or Hyperlocal Shipment:
+
+https://www.icarry.in/api_add_shipment_surface&api_token=<api_token>
+
+Request URL for Air Shipment:
+
+https://www.icarry.in/api_add_shipment_air&api_token=<api_token obtained on successful Login>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter            Required     Description
+
+
+                                   Data_type: integer
+
+                                   Notes: Address id can be found in your list of My Account -> My Addresses ->
+ pickup_address_id    Yes          Pick up address
+
+                                   Example:
+
+                                   $shipment[‘pickup_address_id’] = 10;
+
+                                   Data_type: integer
+
+                                   Notes: If this is empty then the FROM address on shipment label is same as
+                                   pickup address. If you need the from address to be a different one then choose the
+ return_address_id    No           appropriate address id from list of addresses in My Account -> My Addresses ->
+                                   Registered Address
+
+                                   Example:
+
+                                   $shipment[‘return_address_id’] = ‘’; /* this means that the From Address printed
+                                   on shipment label is the same as pickup address */
+
+
+                                   Data_type: integer
+
+                                   Notes: If this is empty then the RTO address is same as pickup address. If you
+                                   need the RTO address to be a different one then choose the appropriate address id
+ rto_address_id       No           from list of addresses in My Account -> My Addresses -> RTO Address
+
+                                   Example:
+
+                                   $shipment[‘rto_address_id’] = ‘’; /* this means that the RTO will be done to an
+                                   address different from default pickup address */
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                 14
+                                  Data_type: string
+
+                                  Notes: This is order id in client system and can be used for co-relating with
+                                  shipment_id on the iCarry end.
+client_order_id      No
+                                  Example:
+
+                                  $shipment[‘client_order_id] = ‘146255’;
+
+save_only            No           Datetype: integer
+
+                                  Notes: If this parameter is set then the order details are saved and courier is not
+                                  assigned. Use this parameter if you want to save orders but not book them. If you
+                                  want bookings then this parameter should NOT be sent in the payload. Any value
+                                  in this parameters is considered as indication to save the order only and not book
+                                  it.
+
+
+                                  Data_type: integer
+
+                                  Notes: This is the value of one of the courier options returned via the
+                                  get_estimate_by_courier API end point. If this is not provided then a courier
+courier_id           No           option is auto chosen during booking.
+
+                                  Example:
+
+                                  $shipment[‘courier_id] = 7;
+
+shipment_mode        Yes (only  Only valid value is ‘H’ for hyperlocal or ‘S’ for surface. If not present it is defaulted
+                     for        to ‘S’
+                     Hyperlocal
+                     shipment)
+                                Data Type: Array
+
+                                   Parameter       Required Description
+                                   name
+consignee            Yes
+                                   name            Yes          First name and Last name of the consignee
+                                   mobile          Yes          10 digit mobile number of consignee without 0 or
+                                                                +91 prefix
+
+                                   alt_mobile      No           10 digit mobile number of consignee without 0 or
+                                                                +91 prefix
+
+                                   address         Yes          Address of the consignee including house or flat
+                                                                number, street name or number, locality and
+                                                                landmark
+
+                                   city            Yes          Name of city
+                                   pincode         Yes          Postal code
+                                   state           Yes          State code. The code should be the 2 character
+                                                                code from the supported list of states in Appendix.
+
+                                    country_code         Yes    ‘IN’ (only supported country at this time)
+
+
+
+ iCarry.in Proprietary & Confidential                                                                     15
+                                  PHP Example :
+
+                                  $shipment[‘consignee] = array(
+                                  ‘name’ => ‘Uma Shankar’, ‘mobile’ => ‘6362182960’,
+                                  ‘address’ => ‘No 10 Charconil street, Laxmi nagar, next to Nandini Milk Parlor’,
+                                  ‘city’ => ‘Mumbai’,
+                                  ‘pincode’ => ‘400081’, ‘state’ => ‘MA’,
+                                  ‘country_code’ => ‘IN’ );
+
+
+
+                                  Data Type: Array
+
+                                   Parameter       Require Description
+                                                   d
+                                   type            Yes     Prepaid / COD (parcel type can have one of
+                                                           two values ‘Prepaid’ or ‘COD’
+
+                                                            Positive decimal (value of shipment. In case of
+                                   value           Yes      COD type this is the amount to be collected from
+                                                            consignee)
+parcel               Yes
+
+                                   currency        No       ‘INR’ (only INR is supported and is default)
+                                   contents        Yes      string with max length 255 (brief description
+                                                            of contents)
+
+                                   items           No
+                                                            Data Type: Array
+
+                                                            Optional parameter array providing the details of
+                                                            the contents
+
+                                                              Paramet      Required     Description
+                                                              er
+                                                              name         Yes          Product name max
+                                                                                        50 chars
+                                                              pid          Yes          Unique product
+                                                                                        identifier
+                                                              price        Yes          Product price
+                                                              quantity     Yes          Number of units in
+                                                                                        parcel
+
+                                                            Data Type: Array
+
+                                                              Paramet      Required     Description
+                                   dimensions      Yes        er
+                                                              length       Yes          Positive decimal
+                                                              breadth      Yes          Positive decimal
+                                                              height       Yes          Positive decimal
+                                                              unit         Yes          ‘cm’ (only)
+
+
+
+
+ iCarry.in Proprietary & Confidential                                                                  16
+                                    weight             Yes   Data Type: Array
+
+                                                                Paramet     Required      Description
+                                                                er
+                                                                weight      Yes           Positive decimal
+                                                                unit        Yes           ‘gm (only)
+
+
+
+
+                                   PHP Example 1 :
+
+                                   Only minimum required parameters used for this example
+
+                                   $shipment[‘parcel’] = array(
+                                   ‘type’ => ‘Prepaid’, ‘currency’ => ‘INR’, ‘value’ => ‘1200’,
+                                   ‘contents’ => ‘Fashion Jewellery’);
+
+
+
+
+                                   PHP Example 2 :
+
+                                   All parameters including optional parameters are used for this example.
+
+                                   $dims = array(
+                                   ‘length’ => ‘10’,
+                                   ‘breadth’ => ‘4’,
+                                   ‘height’ => ‘20’,
+                                   ‘unit’ => ‘cm’
+                                   );
+
+
+
+                                   $shipment[‘parcel’] = array(
+                                   ‘type’ => ‘Prepaid’, ‘currency’ => ‘INR’, ‘value’ => ‘1200’,
+                                   ‘contents’ => ‘Fashion Jewellery’, ‘dimensions’ => $dims,
+                                   ‘weight’ => $wt
+                                   );
+
+
+
+
+Example JSON
+
+{
+"pickup_address_id":"55",
+"consignee[name]":"Osama",
+"consignee[mobile]":"7794845315",
+"consignee[address]":"XYZ123 benson Street",
+"consignee[city]":"Delhi",
+"consignee[pincode]":"110001",
+"consignee[state]":"DL",
+"consignee[country_code]":"IN",
+"parcel[type]":"C",
+
+
+  iCarry.in Proprietary & Confidential                                                                   17
+"parcel[value]":"1500",
+"parcel[currency]":"INR",
+"parcel[contents]":"1 x Ayurvedic Chaay",
+"parcel[weight][weight]":"500",
+"parcel[weight][unit]":"gm",
+"parcel[dimensions][length]":"10",
+"parcel[dimensions][breadth]":"10",
+"parcel[dimensions][height]":"10",
+"parcel[dimensions][unit]":"cm",
+"courier_id":1
+}
+
+Successful Response
+{
+"error": "",
+"success": "Success: You have added a new shipment with id 352. | Successfully created Pickup Id 13784202 |
+Shipments Expected : 1 | Pick up scheduled for : 2019-06-14 16:00:00 | Pickup center : Bengaluru_Bomsndra_PC",
+"shipment_id": 352,
+"pickup_id": 13784202,
+"courier_id": 7,
+"courier_name": "Shadowfax",
+"awb": 345642367564,
+"cost_estimate": 41.3,
+"tracking_url": "https://www.icarry.in/track- shipment?shipment_id=352&awb=345642367564&courier_id=7"
+}
+
+Sample Error Response 1
+{
+
+"error": "Pickup Address is mandatory. Consignee array is mandatory. Parcel array is mandatory. "
+
+}
+
+Sample Error Response 2
+{
+
+"error": "Consignee name is mandatory. Consignee address is mandatory. Consignee city is mandatory. Consignee
+country is mandatory. Consignee pincode is mandatory. Consignee mobile is mandatory. Consignee state is
+mandatory. Parcel type is mandatory. Parcel value is mandatory. Parcel contents is mandatory. "
+
+}
+
+Sample Error Response 3
+{
+
+"error": "Telephone must be 10 digits without any spaces or other characters and excluding starting 0 or starting +91
+country code.
+
+    }
+
+
+
+
+    iCarry.in Proprietary & Confidential                                                              18
+  Book MULTI-BOX Shipment
+
+Create a new MPS (Multi Box Shipment) shipment by choosing your courier while booking. On successful creation a
+shipment_id is returned along with the pickup request id.
+
+Request URL for Multi-Box Shipment:
+
+https://www.icarry.in/api_add_multibox_shipment&api_token=<api_token obtained on successful Login>
+
+Method: POST
+
+Request Body Parameters
+
+The same parameters used for booking Single box shipment can be used with following change.
+
+ Parameter Required Description
+
+
+                          Data type: 1 character enum ( E | P )
+
+                          Notes: E – Air, S - Surface
+ mode         Yes
+                          Example:
+                          $shipment[‘mode’] = ‘S’;
+
+                          Data Type: Array
+
+                             Parameter Require Description
+                                       d
+                                               Data Type: Array
+
+                             boxes       Yes            Parameter        Required   Description
+                                                        quantity         Yes        Positive integer
+                                                        length           Yes        Positive decimal
+                                                        breadth          Yes        Positive decimal
+                                                        height           Yes        Positive decimal
+ parcel       Yes
+                                                        dimension_unit   Yes        Can be ‘cm’ only
+                                                        weight           Yes        Positive decimal
+                                                        weight_unit      Yes        Can be ‘gm’ or ‘kg’
+
+
+                                                  $box_type_1 = array(
+                                                  ‘quantity’ => ‘2’
+                                                  ‘length’ => ‘10’,
+                                                  ‘breadth’ => ‘4’,
+                                                  ‘height’ => ‘20’,
+                                                  ‘dimension_unit’ => ‘cm’,
+                                                  ‘weight’ => ‘20000’,
+                                                  ‘weight_unit’ => ‘gm
+                                                  );
+
+                                                  $box_type_2 = array(
+                                                  ‘quantity’ => ‘3’
+                                                  ‘length’ => ‘10’,
+                                                  ‘breadth’ => ‘4’,
+                                                  ‘height’ => ‘20’,
+                                                  ‘dimension_unit’ => ‘cm’,
+                                                  ‘weight’ => ‘30000’,
+
+
+  iCarry.in Proprietary & Confidential                                                              19
+                                             ‘weight_unit’ => ‘gm
+                                             );
+
+                                             $boxes = array();
+                                             $boxes[] = $box_type_1;
+                                             $boxes[] = $box_type_2;
+
+                                             $shipment[‘parcel’][‘boxes’] = $boxes;
+
+
+                                             Above means there are 2 boxes of 20 Kg each and 3 boxes
+                                             of 30 Kg each. Total weight is 2 x 20 + 3 x 30 = 40 + 90 =
+                                             130 Kg
+
+
+
+                           type        Yes   Prepaid / COD (parcel type can have one of
+                                             two values ‘Prepaid’ or ‘COD’
+
+                                             Positive decimal (value of shipment. In case of COD type
+                           value       Yes   this is the amount to be collected from consignee)
+
+                           currency    No    ‘INR’ (only INR is supported and is default)
+                           contents    Yes   string with max length 255 (brief description
+                                             of contents)
+
+                           ewbn        No    Eway bill number
+
+
+                           eway_filen No     Url link for Eway bill pdf
+                           ame
+
+                           invoice_file No   Url link for invoice pdf
+                           name
+
+
+
+
+iCarry.in Proprietary & Confidential                                                            20
+  Book Shipment - INTERNATIONAL
+
+Create a new International shipment (India to foreign country). This API is available only for GOLD and PLATINUM
+plan members. Prior to calling this API you need to check whether service to the destination foreign country is
+available from your India pincode. If available then you can call this API with the courier_id of the chosen courier
+partner.
+
+Request
+
+https://www.icarry.in/api_add_shipment_international&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+Parameter           Require Description
+                    d
+                              Data_type: integer
+
+                              Notes: Address id can be found in your list of My Account -> Pick up address
+pickup_address_id   Yes
+                              Example:
+
+                              $shipment[‘pickup_address_id’] = 10;
+
+
+                              Data_type: string
+
+                              Notes: courier_id is the chosen string which is obtained from the International
+courier_id          Yes       Shipment Estimate and Serviceability API
+
+                              Example:
+
+                              $shipment[‘courier_id’] = ‘12’;
+
+                              Data_type: integer
+
+                              Notes: If this is empty then the from address is same as pickup address. If you
+                              need the from address to be a different one then choose the appropriate address
+return_address_id   No        id from list of addresses in My Account -> Registered Address
+
+                              Example:
+
+                              $shipment[‘return_address_id’] = ‘’; /* this means that the From Address
+                              printed on shipment label is the same as pickup address */
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                 21
+                              Data_type: integer
+
+                              Notes: If this is empty then the RTO address is same as pickup address. If you
+                              need the RTO address to be a different one then choose the appropriate address
+rto_address_id      No        id from list of addresses in My Account -> My Addresses -> RTO Address
+
+                              Example:
+
+                              $shipment[‘rto_address_id’] = ‘’; /* this means that the RTO will be done to an
+                              address different from default pickup address */
+
+                              Data_type: string
+
+                              Notes: This is order id in client system and can be used for co-relating with
+                              shipment_id on the iCarry end.
+client_order_id     No
+                              Example:
+
+                              $shipment[‘client_order_id] = ‘146255’;
+
+
+parcel              Yes       Data Type: Array
+
+                               Parameter      Required     Description
+                               type           Yes          Prepaid (parcel type can have only one value i.e.
+                                                           ‘Prepaid’
+                               value          Yes          Positive decimal (value of shipment)
+                               currency       No           ‘INR’ (only INR is supported and is default)
+                               contents       Yes          string with max length 255 (brief description
+                                                           of contents)
+                               dimensions     Yes          Data Type: Array
+
+                                                             Paramet      Required     Description
+                                                             er
+                                                             length       Yes          Positive decimal
+                                                             breadth      Yes          Positive decimal
+                                                             height       Yes          Positive decimal
+                                                             unit         Yes          ‘cm’ (only)
+
+                               weight         Yes          Data Type: Array
+
+                                                             Paramet      Required     Description
+                                                             er
+                                                             weight       Yes          Positive decimal
+                                                             unit         Yes          ‘gm (only)
+
+
+
+                              PHP Example 1 :
+
+                              Only minimum required parameters used for this example
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                    22
+                              $shipment[‘parcel’] = array(
+                              ‘type’ => ‘Prepaid’, ‘currency’ => ‘INR’, ‘value’ => ‘1200’,
+                              ‘contents’ => ‘Fashion Jewellery’);
+
+
+
+
+                              PHP Example 2 :
+
+                              All parameters including optional parameters are used for this example.
+
+                              $dims = array(
+                              ‘length’ => ‘10’,
+                              ‘breadth’ => ‘4’,
+                              ‘height’ => ‘20’,
+                              ‘unit’ => ‘cm’
+                              );
+
+
+
+                              $wt = array(
+                              ‘weight’ => ‘1250’, ‘unit’ => ‘gm’
+                              );
+
+                              $shipment[‘parcel’] = array(
+                              ‘type’ => ‘Prepaid’, ‘currency’ => ‘INR’, ‘value’ => ‘1200’,
+                              ‘contents’ => ‘Fashion Jewellery’, ‘dimensions’ => $dims,
+                              ‘weight’ => $wt
+                              );
+                              Data Type: Array
+
+                              Parameter           Required Description
+
+consignee           Yes
+                              name                Yes      First name and Last name of the consignee
+                              mobile              Yes      Mobile number or Telephone number of the
+                                                           recipient
+
+                              address             Yes      Address of the consignee including house or flat
+                                                           number, street name or number, locality and
+                                                           landmark
+
+                              city                Yes      Name of city
+                              pincode             Yes      Postal code
+                              state                Yes     State / Region / Province name in the destination
+                                                           country.
+
+                                                           Example: California or New York etc.
+
+
+                              country_code        Yes
+                                                           2 character standardized ISO2 country code
+
+                                                           Example - US
+
+
+
+  iCarry.in Proprietary & Confidential                                                                  23
+                                PHP Example :
+
+                                $shipment[‘consignee] = array(
+                                ‘name’ => ‘Uma Shankar’, ‘mobile’ => ‘4082307380’,
+                                ‘address’ => ‘No 10 Charconil street, Next to Golf Center’,
+                                ‘city’ => ‘Fremont’,
+                                ‘pincode’ => ‘94536’, ‘state’ => ‘California’,
+                                ‘country_code’ => ‘US’ );
+
+
+Successful Response
+{
+"error": "",
+"success": "Success: You have added a new shipment with id 352. | Successfully created Pickup Id 13784202 |
+Shipments Expected : 1 | Pick up scheduled for : 2019-06-14 16:00:00 | Pickup center : Bengaluru_Bomsndra_PC",
+"shipment_id": 352,
+"pickup_id": 13784202,
+"courier_id": 7,
+"courier_name": "Shadowfax",
+"awb": 345642367564,
+"tracking_url": "https://www.icarry.in/track- shipment?shipment_id=352&awb=345642367564&courier_id=7"
+}
+
+Sample Error Response 1
+{
+
+"error": "Pickup Address is mandatory. Consignee array is mandatory. Parcel array is mandatory. "
+
+}
+
+Sample Error Response 2
+{
+
+"error": "Consignee name is mandatory. Consignee address is mandatory. Consignee city is mandatory. Consignee
+country is mandatory. Consignee pincode is mandatory. Consignee mobile is mandatory. Consignee state is
+mandatory. Parcel type is mandatory. Parcel value is mandatory. Parcel contents is mandatory. "
+
+}
+
+
+
+
+    iCarry.in Proprietary & Confidential                                                            24
+     CANCEL Shipment
+
+You can cancel an existing shipment. In case this is already picked up then it will be returned back and RTO charges
+will apply. If the parcel was not shipped then no charges apply. If a cancelled parcel is accidentally shipped then it will
+be returned back and RTO charges may apply.
+
+Request
+
+Request URL : https://www.icarry.in/api_cancel_shipment&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+    Parameter      Required      Description
+
+
+                                 Data type: integer
+
+                                 Notes: Shipment id can be found in your list of My Account -> My Shipments
+    shipment_id    Yes
+                                 Example:
+
+                                 $shipment[‘shipment_id’] = 10;
+
+
+
+
+Successful Response
+
+{
+"success": “Cancelled iCarry Shipment Id 252”,
+"shipment_id": "252",
+}
+
+
+
+Sample Error Response 1
+{
+
+"error": "Shipment id not found. "
+
+}
+
+
+
+
+     iCarry.in Proprietary & Confidential                                                                  25
+     REVERSE Shipment
+
+You can reverse pickup an existing shipment that has been delivered.
+
+Request URL : https://www.icarry.in/api_add_reverse_shipment&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+    Parameter      Required      Description
+
+
+                                 Data type: integer
+
+                                 Notes: Shipment id can be found in your list of My Account -> My Shipments
+    shipment_id    Yes
+                                 Example:
+
+                                 $shipment[‘shipment_id’] = 10;
+
+
+
+
+Successful Response
+
+{
+"success": “Successfully generated reverse pickup shipment for iCarry Shipment Id 252”,
+"shipment_id": "252",
+"courier_id": "7",
+"courier_name": "Delhivery",
+"awb": "25234543425",
+"tracking_url": " https://www.icarry.in/track- shipment?shipment_id=252&awb=25234543425&courier_id=7",
+"pickup_id": "2345252",
+}
+
+Sample Error Response 1
+{
+
+"error": "Shipment id not found. "
+
+}
+
+
+
+
+     iCarry.in Proprietary & Confidential                                                             26
+  TRACK a Shipment
+
+You can track an existing shipment using shipment_id returned by Create Shipment api call.
+
+Request URL : https://www.icarry.in/api_track_shipment&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter      Required       Description
+
+
+                               Data type: integer
+
+                               Notes: Shipment id can be found in your list of My Account -> My Shipments
+ shipment_id    Yes
+                               Example:
+
+                               $shipment[‘shipment_id’] = 10;
+
+
+
+
+On success returns an array.
+
+Sample Successful Response for Delivered shipment
+  {
+      "courier_name": "DELHIVERY SURFACE",
+      "success": 1,
+      "eta_datetime": "",
+      "picked_datetime": "",
+      "delivered_datetime": "",
+      "receiver": "",
+      "status": "Delivered",
+      "location": "Bengaluru_South_D_20 (Karnataka)",
+      "datetime": "2019-08-16T16:02:52.002000",
+      "details": [
+          {
+              "datetime": "2019-08-12T13:36:10.268000",
+              "location": "Bengaluru_Bomsndra_PC (Karnataka)",
+              "notes": "Consignment Manifested"
+          },
+          {
+              "datetime": "2019-08-13T21:19:36",
+              "location": "Bengaluru_Nelmngla_P (Karnataka)",
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                              27
+"notes": "Shipment Picked Up from Client Location"
+},
+{
+"datetime": "2019-08-13T22:27:52",
+"location": "Bengaluru_Nelmngla_P (Karnataka)", "notes": "Vehicle Reached at Origin Center"
+},
+{
+"datetime": "2019-08-14T06:33:26.037000",
+"location": "Bengaluru_Nelmngla_P (Karnataka)", "notes": "Shipment Recieved at Origin Center"
+},
+{
+"datetime": "2019-08-14T06:56:22.827000",
+"location": "Bangalore_Nelmngla_H (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T08:16:31.933000",
+"location": "Bangalore_Nelmngla_H (Karnataka)", "notes": "Connected to destination"
+},
+{
+"datetime": "2019-08-14T10:45:46.187000",
+"location": "BLR_HSR_Layout_PC (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T10:49:17.957000",
+"location": "BLR_HSR_Layout_PC (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T11:07:57.030000",
+"location": "BLR_HSR_Layout_PC (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T12:20:22.684000",
+"location": "BLR_HSR_Layout_PC (Karnataka)", "notes": "Connected to destination"
+},
+{
+"datetime": "2019-08-14T13:16:47.131000",
+"location": "Bengaluru_Agrahara_DC (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T13:19:54.102000",
+"location": "Bengaluru_Agrahara_DC (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                          28
+{
+"datetime": "2019-08-14T13:32:36.583000",
+"location": "Bengaluru_Agrahara_DC (Karnataka)", "notes": "Received at destination city"
+},
+{
+"datetime": "2019-08-14T14:40:55.427000",
+"location": "Bengaluru_Agrahara_DC (Karnataka)", "notes": "Misrouted"
+},
+{
+"datetime": "2019-08-14T15:28:05.042000",
+"location": "Bengaluru_Agrahara_DC (Karnataka)", "notes": "Connected to destination"
+},
+{
+"datetime": "2019-08-14T16:24:37.613000",
+"location": "BLR_HSR_Layout_PC (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T16:25:24.906000",
+"location": "BLR_HSR_Layout_PC (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T17:17:52.108000",
+"location": "BLR_HSR_Layout_PC (Karnataka)", "notes": "Connected to destination"
+},
+{
+"datetime": "2019-08-14T17:44:09.009000",
+"location": "Bengaluru_South_D_20 (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-14T17:45:39.692000",
+"location": "Bengaluru_South_D_20 (Karnataka)", "notes": "Received At Delhivery Hub"
+},
+{
+"datetime": "2019-08-16T06:35:46.240000",
+"location": "Bengaluru_South_D_20 (Karnataka)", "notes": "Received at destination city"
+},
+{
+"datetime": "2019-08-16T07:35:12.841000",
+"location": "Bengaluru_South_D_20 (Karnataka)", "notes": "Out for delivery"
+},
+{
+"datetime": "2019-08-16T16:02:04.002000",
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                     29
+                   "location": "Bengaluru_South_D_20 (Karnataka)",
+                   "notes": "Customer call placed"
+              },
+              {
+                   "datetime": "2019-08-16T16:02:52.002000",
+                   "location": "Bengaluru_South_D_20 (Karnataka)",
+                   "notes": "Delivered to consignee"
+              }
+        ]
+}
+
+Another sample :
+    {
+            "courier_name": "FEDEX PRIORITY",
+            "success": 1,
+            "details": [
+                {
+                    "datetime": "2019-08-27T13:00:00+05:30",
+                    "location": "DELIVERY_LOCATION",
+                    "notes": "Delivered"
+                },
+                {
+                    "datetime": "2019-08-27T12:47:00+05:30",
+                    "location": "VEHICLE",
+                    "notes": "On FedEx vehicle for delivery"
+                },
+                {
+                    "datetime": "2019-08-27T12:17:00+05:30",
+                    "location": "DESTINATION_FEDEX_FACILITY",
+                    "notes": "At local FedEx facility"
+                },
+                {
+                    "datetime": "2019-08-27T10:59:00+05:30",
+                    "location": "FEDEX_FACILITY",
+                    "notes": "In transit"
+                },
+                {
+                    "datetime": "2019-08-27T10:58:00+05:30",
+                    "location": "FEDEX_FACILITY",
+                    "notes": "Departed FedEx location"
+                },
+                {
+                    "datetime": "2019-08-27T09:54:00+05:30",
+                    "location": "FEDEX_FACILITY",
+                    "notes": "In transit"
+                },
+                {
+                    "datetime": "2019-08-27T01:49:00+05:30",
+                    "location": "FEDEX_FACILITY",
+                    "notes": "In transit"
+                },
+                {
+                    "datetime": "2019-08-27T01:48:00+05:30",
+                    "location": "FEDEX_FACILITY",
+                    "notes": "In transit"
+                },
+
+
+
+    iCarry.in Proprietary & Confidential                             30
+         {
+              "datetime": "2019-08-26T23:26:00+05:30",
+              "location": "FEDEX_FACILITY",
+              "notes": "Arrived at FedEx location"
+         },
+         {
+              "datetime": "2019-08-26T22:31:00+05:30",
+              "location": "ORIGIN_FEDEX_FACILITY",
+              "notes": "Left FedEx origin facility"
+         },
+         {
+              "datetime": "2019-08-26T16:20:00+05:30",
+              "location": "PICKUP_LOCATION",
+              "notes": "Picked up"
+         },
+         {
+              "datetime": "2019-08-25T21:47:18-05:00",
+              "location": "CUSTOMER",
+              "notes": "Shipment information sent to FedEx"
+         }
+     ],
+     "datetime": "",
+     "eta_datetime": "",
+     "picked_datetime": "2019-08-26T16:20:00+05:30",
+     "delivered_datetime": "2019-08-27T13:00:00+05:30",
+     "location": "Hyderabad, TS, India",
+     "receiver": "SIGN",
+     "status": "Delivered"
+}
+
+Sample Successful Response for Manifested shipment which has not been picked up yet
+{
+"success": 1,
+"status": "Manifested",
+"location": "Bengaluru_Bomsndra_PC (Karnataka)", "datetime": "2019-06-14T14:21:37.852000",
+"details": [
+{
+"datetime": "2019-06-14T14:21:37.852000",
+"location": "Bengaluru_Bomsndra_PC (Karnataka)", "notes": "Consignment Manifested"
+}
+]
+}
+
+Sample Successful Response for shipment that was cancelled
+{
+"success": 1,
+"status": "Manifested",
+"location": "Bengaluru_Bomsndra_PC (Karnataka)", "datetime": "2019-06-11T09:37:20.094000",
+"details": [
+
+
+
+
+    iCarry.in Proprietary & Confidential                                                     31
+{
+"datetime": "2019-06-11T09:16:14.967000",
+"location": "Bengaluru_Bomsndra_PC (Karnataka)", "notes": "Consignment Manifested"
+},
+{
+"datetime": "2019-06-11T09:37:20.094000",
+"location": "Bengaluru_Bomsndra_PC (Karnataka)", "notes": "Seller cancelled the order"
+}
+]
+}
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                   32
+  SYNC Shipment STATUS
+
+You can sync the shipment status, pickup and delivery dates of multiple shipments with the iCarry.in server using
+shipment_id returned by Create Shipment api call.
+
+Request URL :
+
+https://www.icarry.in/api_shipment_status_sync&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter       Required      Description
+
+
+                               Data type: Array
+
+                               Notes: Shipment id can be found in your list of My Account -> My Shipments
+
+ shipment_ids    Yes           Example:
+
+                               $shipment_ids = array ( 10, 11, 45 );
+
+                               /* 10, 11, 45 are the shipment_id in iCarry */
+
+
+
+
+On success returns an array. In response below, 10 is Shipped but not Delivered yet. 11 is picked and delivered. 45 is
+still pending pickup.
+
+Sample Successful Response for Sync’ed shipments
+{
+"success": “Shipment statuses synced successfully”, "msg": [
+{
+"shipment_id": "10",
+"status": "3", "date_delivered": "",
+"date_picked ": "2019-06-06T21:15:31.780000"
+},
+{
+"shipment_id": "11",
+"status": "21",
+"date_delivered": "2019-06-09T21:15:31.780000", "date_picked ": "2019-06-06T21:15:31.780000"          },
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                 33
+{
+"shipment_id": "45",
+"status": "1", "date_delivered": "", "date_picked ": ""   },
+]
+}
+
+
+
+List of Shipment status returned in the ‘status’ field are below:
+
+Status    Name
+1         Pending Pickup
+2         Processing
+3         Shipped
+7         Canceled
+12        Damaged
+14        Lost
+16        Voided
+21        Delivered
+22        In Transit
+23        Returned to Origin
+24        Manifested
+25        Pickup Scheduled
+26        Out For Delivery
+27        Pending Return
+
+
+
+
+  iCarry.in Proprietary & Confidential                              34
+  Webhook / POST Call Back on change in Shipment STATUS
+
+You can save a callback url to be called when there is change in shipment status. The webhook url is saved in Account
+Menu > Integrations > API Credentials
+
+
+Method: POST
+
+Post Body Parameters
+
+ Parameter       Description
+
+
+
+ client_name     icarry
+
+
+  callback_type sync_status
+
+
+  awb            The AWB / Tracking number of the shipment.
+                 Example: 14100040123332
+
+
+
+  status         Integer indicating the shipment status as per the Status codes table in Sync
+                 STATUS api. (previous page)
+
+                 Example: 3
+                 This indicates shipment has now moved to ‘Shipped’.
+
+
+
+  token          This is the API key setup with us via My Account Menu > Integrations > API
+                 Credentials. It is expected that the call back code will verify this token to ensure
+                 that the callback is being made by trusted partner icarry and not someone else.
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                  35
+  Webhook / POST Call Back for NDR events
+
+You can save a callback url to be called when there is change in shipment status. The webhook url is saved in Account
+Menu > Integrations > API Credentials
+
+Once a day all the NDR events will be consolidated and sent for NDR detected on that day as well as previous day (in
+case this was missed). The list of NDR event types is mentioned below:
+
+ NDR Event                       Description
+                                 Consignee address incomplete / wrong or not reachable on given mobile. Delivery
+                                 executive is facing difficult contacting the consignee or location the delivery
+ REATTEMPT-CONTACT               address
+ REATTEMPT                       Delivery attempt failed
+
+                                 Shipment is in wrong delivery pincode - either courier error or wrong pincode
+ MISROUTE                        given during booking
+
+
+                                 Delivery address is ODA - either due to remote location or due to incorrect nearby
+                                 pincode given by consignee during booking. Shipment has to be self collected by
+ DC-ADDRESS                      consignee.
+ URGENT-DELIVERY                 Delivery is detected as beyond EDD
+
+ REATTEMPT-COD-NOT-READY         Consignee did not have COD amount ready or asked to come later
+ RTO-MISSING                     Shipment is missing while in return
+
+ OPEN-DELIVERY                   Consignee asked for Open Delivery before accepting parcel
+ CONSIGNEE-OPENED-
+ REFUSED                         Consignee opened the parcel and refused to accept delivery
+ RTO-REATTEMPT                   Return shipment delivery attempt failed
+ REATTEMPT-NEW-DATE              Consignee has asked for a future delivery date
+ REATTEMPT-RESTRICTED-
+ ENTRY                           Consignee address entry is restricted and delivery executive unable to deliver
+
+ RTO-PACKING                     Return shipment could not be completed due to improper packaging
+
+ REATTEMPT-CUST-REFUSED          Consignee has refused to accept shipment. Reattempt requested
+ REATTEMPT-OTP                   Consignee did not have OTP to accept delivery
+
+ MANUAL-VERIFY                   Unknown NDR event. Manual verification of shipment needed
+
+                                 Shipment has been returned by courier due to security reason such as X-Ray
+ RTO-SECURITY                    mismatch or banned substance etc.
+
+ FINANCE-EMBARGO                 Shipment has been held by courier due to payment issue
+
+  iCarry.in Proprietary & Confidential                                                                  36
+EWAY-SEND                        Shipment is held pending receipt of E-Way bill information
+REATTEMPT-DAMAGE                 Shipment is damaged
+
+REATTEMPT-RTO-REFUSED            Return shipment has been refused by the shipper
+
+REATTEMPT-OUTOFSTN               Shipment could not be delivered as consignee is not at the delivery address
+
+
+Method: POST
+
+Post Body Parameters (this is sent as a JSON)
+
+ Parameter       Description
+
+
+
+ client_name     icarry
+
+
+  callback_type ndr_status
+
+
+  ndr_data       Array containing list of AWB and NDR events along with the date when event was
+                 detected.
+
+                 Example:
+
+                 2025-01-24 8:04:55 - webhook_test data = Array
+                 (
+                   [client_name] => icarry
+                   [callback_type] => ndr_status
+                   [ndr_data] => Array
+                       (
+                         [0] => Array
+                            (
+                              [shipment_id] => 249772
+                              [awb] => 162419608174
+                              [type] => REATTEMPT-CONTACT
+                              [date_added] => 23/01/2025
+                            )
+                         [1] => Array
+                            (
+                              [shipment_id] => 252546
+                              [awb] => 17883091940
+                              [type] => REATTEMPT-CONTACT
+                              [date_added] => 23/01/2025
+                            )
+                       )
+                 )
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                  37
+  Webhook / POST Call Back for Weight Dispute events
+
+You can save a callback url to be notified when a weight discrepancy is detected for one of your shipments. The
+webhook url is saved in Account Menu > Integrations > API Credentials
+
+Weight discrepancy events are sent within a few hours of detection. Each shipment is notified only once.
+
+Method: POST
+
+Post Body Parameters
+
+Parameter                  Description
+client_name                icarry
+callback_type              new_weight_discrepancy
+awb                        The AWB / Tracking number of the shipment. Example: 14100040123332
+shipment_id                The iCarry shipment ID.
+status                     1 (new weight discrepancy detected)
+old_weight                 Original billed weight in grams as booked.
+old_dimensions             Original dimensions (LxBxH cm) as booked.
+new_weight                 Revised weight in grams as measured by courier.
+new_dimensions             Revised dimensions (LxBxH cm) as measured by courier and if provided.
+courier_products           Product description
+token                      API key from My Account > Integrations > API Credentials. Verify this
+                           token to confirm the callback is from iCarry.
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                     38
+  SYNC Shipment CHARGES
+
+You can sync the shipment charges of multiple shipments with the iCarry.in server using shipment_id returned by
+Create Shipment api call.
+
+Request URL :
+
+https://www.icarry.in/api_shipment_billing_sync&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter       Required      Description
+
+
+                               Data type: Array
+
+                               Notes: Shipment id can be found in your list of My Account -> My Shipments
+
+ shipment_ids    Yes           Example:
+
+                               $shipment_ids = array ( 10, 11);
+
+                               /* 10, 11 are the shipment_id in iCarry */
+
+
+
+
+On success returns an array. Shipment id 10 has been charged Rs.45.5 and shipment id 11 has been charged Rs.
+100.24. If a query is made before shipment has been billed then the shipment charge returned will be zero.
+
+Sample Successful Response for Sync’ed shipments
+{
+      "success": “Shipment billing synced successfully”, "msg": [
+      {
+             "shipment_id": "10",
+             "awb": "7734222323423",
+             "date": "2019-06-09T21:15:31.780000",
+             "miles": "45.5",
+             "mode": "S",
+             "zone": "A",
+             "weight": "300"
+      },
+      {
+             "shipment_id": "11",
+             "awb": "773469023423",
+             "date": "2019-06-09T21:15:31.780000", "miles": "100.24",
+             "mode": "E",
+             "zone": "C",
+             "weight": "1300"
+      },
+      ]
+}
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                              39
+     PRINT Shipment Label
+
+You can print shipping label of existing shipment using shipment_id returned by Create Shipment api call.
+
+Request URL :
+
+https://www.icarry.in/api_print_shipment_label&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+    Parameter      Required      Description
+
+
+                                 Data type: integer
+
+                                 Notes: Shipment id can be found in your list of My Account -> My Shipments
+    shipment_id    Yes
+                                 Example:
+
+                                 $shipment[‘shipment_id’] = 10;
+
+
+
+
+On success returns an array containing the return address, consignee address, courier name, courier tracking number
+awb, barcode url and barcode data.
+
+Enough data will be provided to create your own label. If you want ready made label you can find it in the
+shipment_label array in response fields. There may be more than one labels for B2B and International shipments. The
+type will be png or pdf.
+
+{
+     "success": 1,
+     "awb": "ICYP0006518415",
+     "parcel_type": "Prepaid",
+     "parcel_value": "₹ 1,000.00",
+     "courier_name": "EKART",
+     "courier_id": "80",
+     "sort_code": "",
+     "barcode_img": "https://www.icarry.in/image/shadowfax-awbs/ICYP0006518415.jpg",
+     "return_address": "123 Telangana Street, Near Shobha Cinnamon, Bengaluru 560001,India",
+     "consignee_address": "Manoj, 1235 Sansad Apartments, Mulund East, Mumbai 400001, Maharashtra,IN",
+     "consignee_mobile": "9665322763",
+     "shipment_label": [
+        {
+           "url": "https://www.icarry.in/image/srk-awbs/609-A4-6518415.pdf",
+           "type": "pdf"
+        },
+        {
+           "url": "https://ekart.apptmyz.com/flipkart/cron/displayPDF?image=2026/5/27/Docket_TqjYnQS.pdf",
+           "type": "pdf"
+        }
+
+     ]
+}
+
+
+     iCarry.in Proprietary & Confidential                                                             40
+      3. Pincode
+
+  Check SERVICEABILITY by PINCODE
+
+You can print check serviceability of a pincode before booking a shipment.
+
+Request
+
+Request URL : https://www.icarry.in/api_check_pincode&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter                           Required                      Description
+
+
+ pincode                             Yes                           Data_type: string
+
+
+
+
+On success returns an array containing the pincode and which services are available. Y-Yes, N-No, U- Unknown
+
+{
+"success": 1,
+“msg” : {
+[0] = array ( "prepaid": "Y",
+"cod": "Y",
+"pickup": "Y" "pickup": "standard"
+),
+[1] = array ( "prepaid": "Y",
+"cod": "Y",
+"pickup": "Y" "pickup": "express"
+)
+}
+}
+
+Return empty array if pincode is invalid or if there is an error or if pincode is not covered at all with
+“success = 0”.
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                      41
+        4. Pickup Address
+  ADD a new PICKUP POINT for your shipments
+
+You can add a new pickup address from where to pick your shipments.
+
+Request URL : https://www.icarry.in/api_add_pickup_address&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter Required        Description
+
+
+                           Data_type: string
+ nickname     Yes
+                           User Identifier for this pickup location. Alphabets and no spaces allowed.
+
+
+                           Data_type: string Contact person name
+ name         Yes
+                           Data_type: string Contact person email
+ email        Yes
+
+                           Data_type: string
+ phone        Yes
+                           10 digit mobile number of contact person without 0 or +91 prefix
+
+
+                           Data_type: string
+ alt_phone    No
+                           Alternative mobile number. 10 digit mobile number of contact person without 0 or
+                           +91 prefix
+                           Data_type: string
+ street1      Yes
+                           Address details such as House No or Apartment No, Building name, Street name etc
+
+
+ street2      No           Data_type: string
+
+
+ locality     No           Data_type: string
+
+
+                           Data_type: string
+ city         Yes
+                           Name of city. Example - Hyderabad
+
+
+                           Data_type: string
+ pincode      Yes
+                           Postal code. Example - 400071
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                  42
+Parameter Required        Description
+
+
+                          Data_type: integer
+
+                          Integer zone_id for state
+
+                           zone_id name                               code
+                           1475         Andaman and Nicobar Islands   AN
+                           1476         Andhra Pradesh                AP
+                           1477         Arunachal Pradesh             AR
+                           1478         Assam                         AS
+                           1479         Bihar                         BI
+                           1480         Chandigarh                    CH
+                           1481         Dadra and Nagar Haveli        DA
+                           1482         Daman and Diu                 DM
+                           1483         Delhi                         DE
+                           1484         Goa                           GO
+                           1485         Gujarat                       GU
+                           1486         Haryana                       HA
+zone_id      Yes
+                           1487         Himachal Pradesh              HP
+                           1488         Jammu and Kashmir             JA
+                           1489         Karnataka                     KA
+                           1490         Kerala                        KE
+                           1491         Lakshadweep Islands           LI
+                           1492         Madhya Pradesh                MP
+                           1493         Maharashtra                   MA
+                           1494         Manipur                       MN
+                           1495         Meghalaya                     ME
+                           1496         Mizoram                       MI
+                           1497         Nagaland                      NA
+                           1498         Odisha                        OD
+                           1499         Puducherry                    PO
+                           1500         Punjab                        PU
+                           1501         Rajasthan                     RA
+                           1502         Sikkim                        SI
+                           1503         Tamil Nadu                    TN
+                           1504         Tripura                       TR
+                           1505         Uttar Pradesh                 UP
+                           1506         West Bengal                   WB
+                           4231         Telangana                     TS
+                           4239         Jharkhand                     JH
+
+
+
+
+ iCarry.in Proprietary & Confidential                                        43
+ Parameter Required        Description
+
+
+                            4240         Uttarakhand                      UK
+                            4241         Chattisgarh                      CG
+                            4242         Ladakh                           LA
+                           Data_type: string
+ country_id   Yes
+                           Only ‘99’ allowed (for India)
+
+
+
+
+On success returns an array showing the identifier to be used for the newly created pickup address. This
+warehouse_id should be stored as it will be required in case you want to update the pickup address later.
+
+{
+"success": 1,
+“warehouse_id” : 456
+}
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                44
+  UPDATE an existing PICKUP ADDRESS
+
+You can edit an existing pickup address
+
+Request URL : https://www.icarry.in/api_edit_pickup_address&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter       Required     Description
+
+
+                              Data_type: string
+ warehouse_id    Yes
+                              warehouse_id obtained on successful addition of a pickup address. From previous
+                              API example - 456
+
+
+                              Data_type: string Contact person name
+ name            Yes
+                              Data_type: string Contact person email
+ email           Yes
+
+                              Data_type: string
+ phone           Yes
+                              10 digit mobile number of contact person without 0 or +91 prefix
+
+
+                              Data_type: string
+ alt_phone       No
+                              Alternative mobile number. 10 digit mobile number of contact person without 0 or
+                              +91 prefix
+                              Data_type: string
+ street1         Yes
+                              Address details such as House No or Apartment No, Building name, Street name
+                              etc
+
+
+ street2         No           Data_type: string
+
+
+ locality        No           Data_type: string
+
+
+                              Data_type: string
+ city            Yes
+                              Name of city. Example - Hyderabad
+
+
+ pincode         Yes          Data_type: string
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                               45
+Parameter       Required     Description
+
+
+                             Postal code. Example - 400071
+
+
+                             Data_type: integer
+
+                             Integer zone_id for state
+
+                              zone_id name                             code
+                              1475       Andaman and Nicobar Islands   AN
+                              1476       Andhra Pradesh                AP
+                              1477       Arunachal Pradesh             AR
+                              1478       Assam                         AS
+                              1479       Bihar                         BI
+                              1480       Chandigarh                    CH
+                              1481       Dadra and Nagar Haveli        DA
+                              1482       Daman and Diu                 DM
+                              1483       Delhi                         DE
+                              1484       Goa                           GO
+                              1485       Gujarat                       GU
+zone_id         Yes           1486       Haryana                       HA
+                              1487       Himachal Pradesh              HP
+                              1488       Jammu and Kashmir             JA
+                              1489       Karnataka                     KA
+                              1490       Kerala                        KE
+                              1491       Lakshadweep Islands           LI
+                              1492       Madhya Pradesh                MP
+                              1493       Maharashtra                   MA
+                              1494       Manipur                       MN
+                              1495       Meghalaya                     ME
+                              1496       Mizoram                       MI
+                              1497       Nagaland                      NA
+                              1498       Odisha                        OD
+                              1499       Puducherry                    PO
+                              1500       Punjab                        PU
+                              1501       Rajasthan                     RA
+                              1502       Sikkim                        SI
+                              1503       Tamil Nadu                    TN
+                              1504       Tripura                       TR
+                              1505       Uttar Pradesh                 UP
+                              1506       West Bengal                   WB
+
+
+
+
+ iCarry.in Proprietary & Confidential                                         46
+ Parameter       Required     Description
+
+
+                               4231       Telangana                          TS
+                               4239       Jharkhand                          JH
+                               4240       Uttarakhand                        UK
+                               4241       Chattisgarh                        CG
+                               4242       Ladakh                             LA
+                              Data_type: string
+ country_id      Yes
+                              Only ‘99’ allowed (for India)
+
+
+
+
+On success returns an array showing the success and same warehouse_id that was passed as input.
+
+{
+"success": 1,
+“warehouse_id” : 456
+}
+
+
+Error message will be passed in error field in response.
+
+
+{
+“error”: “Cannot delete Pickup Address while there are shipments from this address that are yet to be picked. Please
+cancel the Pending shipments and then delete address again.
+“
+}
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                47
+  DELETE an existing PICKUP ADDRESS
+
+You can soft delete an existing pickup address. Deleted pickup addresses will still be counted in your plan limits.
+
+Request URL : https://www.icarry.in/api_delete_pickup_address&api_token=<api_token>
+
+Method: POST
+
+Request Body Parameters
+
+ Parameter        Required    Description
+
+
+                              Data_type: string
+ warehouse_id     Yes
+                              warehouse_id obtained on successful addition of a pickup address. From previous
+                              API example – 456
+
+
+
+
+On success returns an array showing the success and same warehouse_id that was passed as input.
+
+{
+"success": 1,
+“warehouse_id” : 456
+}
+
+
+Error message will be passed in error field in response.
+
+
+{
+“error”: “Cannot delete Pickup Address while there are shipments from this address that are yet to be picked. Please
+cancel the Pending shipments and then delete address again.
+“
+}
+
+
+
+
+  iCarry.in Proprietary & Confidential                                                                   48
+        5. Appendix
+ State Codes
+
+State Name                       Code
+Andaman and Nicobar Islands      AN
+Andhra Pradesh                   AP
+Arunachal Pradesh                AR
+Assam                            AS
+Bihar                            BI
+Chandigarh                       CH
+Dadra and Nagar Haveli           DA
+Daman and Diu                    DM
+Delhi                            DE
+Goa                              GO
+Gujarat                          GU
+Haryana                          HA
+Himachal Pradesh                 HP
+Jammu and Kashmir                JA
+Karnataka                        KA
+Kerala                           KE
+Lakshadweep Islands              LI
+Madhya Pradesh                   MP
+Maharashtra                      MA
+Manipur                          MN
+Meghalaya                        ME
+Mizoram                          MI
+Nagaland                         NA
+Odisha                           OD
+Puducherry                       PO
+Punjab                           PU
+Rajasthan                        RA
+Sikkim                           SI
+Tamil Nadu                       TN
+Tripura                          TR
+
+Uttar Pradesh                    UP
+West Bengal                      WB
+Telangana                        TS
+Jharkhand                        JH
+Uttarakhand                      UK
+Chattisgarh                      CG
+Ladakh                           LA
+
+
+
+
+ iCarry.in Proprietary & Confidential   49
+

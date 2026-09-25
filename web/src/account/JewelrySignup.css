@@ -112,17 +112,48 @@
   font-family: 'DM Sans', sans-serif;
   cursor: pointer;
   letter-spacing: 0.03em;
-  transition: background 0.2s, transform 0.15s;
+  transition: background 0.2s, transform 0.15s, opacity 0.2s;
   margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.jewelry-btn-otp:hover {
+.jewelry-btn-otp:hover:not(:disabled) {
   background: #a93226;
   transform: translateY(-1px);
 }
 
-.jewelry-btn-otp:active {
+.jewelry-btn-otp:active:not(:disabled) {
   transform: translateY(0);
+}
+
+.jewelry-btn-otp:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.jewelry-btn-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.jewelry-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: jewelry-spin 0.75s linear infinite;
+}
+
+@keyframes jewelry-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Divider */
