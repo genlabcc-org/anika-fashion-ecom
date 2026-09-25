@@ -39,38 +39,54 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const callbackType = String(body.callback_type || "").trim();
+    // 1. Parse body as JSON; fallback to urlencoded if JSON parsing fails
+    const rawText = await req.text();
+    let body: any = {};
+    let formatUsed = "json";
 
-    console.log(`[iCarry Webhook] Received event: ${callbackType || "unknown"}`);
-
-    const expectedToken = Deno.env.get("ICARRY_WEBHOOK_TOKEN");
-
-    // ─────────────────────────────────────────────────────────────
-    // 1. TOKEN VERIFICATION
-    // - sync_status & new_weight_discrepancy: body.token must match ICARRY_WEBHOOK_TOKEN
-    // - ndr_status: payload has no token field per doc, so skip token check
-    // ─────────────────────────────────────────────────────────────
-    if (callbackType === "sync_status" || callbackType === "new_weight_discrepancy") {
-      if (!expectedToken || body.token !== expectedToken) {
-        console.warn(`[iCarry Webhook] 401 Unauthorized: token mismatch for ${callbackType}`);
-        return new Response(JSON.stringify({ error: "Unauthorized token" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+    try {
+      body = JSON.parse(rawText);
+      console.log("[iCarry Webhook] Parsed JSON payload");
+    } catch {
+      try {
+        const params = new URLSearchParams(rawText);
+        const formObj: Record<string, any> = {};
+        for (const [key, value] of params.entries()) {
+          formObj[key] = value;
+        }
+        body = formObj;
+        formatUsed = "urlencoded";
+        console.log("[iCarry Webhook] Parsed application/x-www-form-urlencoded payload as fallback");
+      } catch (parseErr) {
+        console.warn("[iCarry Webhook] Failed to parse request body as JSON or urlencoded:", parseErr);
+        body = {};
       }
     }
+
+    const callbackType = String(body.callback_type || "").trim();
+    console.log(`[iCarry Webhook] Event: "${callbackType || 'unknown'}" (format: ${formatUsed})`);
+
+    const expectedToken = Deno.env.get("ICARRY_WEBHOOK_TOKEN");
 
     // ─────────────────────────────────────────────────────────────
     // 2. CALLBACK: sync_status
     // ─────────────────────────────────────────────────────────────
     if (callbackType === "sync_status") {
+      // Require body.token === ICARRY_WEBHOOK_TOKEN, else return 401
+      if (!expectedToken || body.token !== expectedToken) {
+        console.warn("[iCarry Webhook] 401 Unauthorized: token mismatch for sync_status");
+        return new Response(JSON.stringify({ error: "Unauthorized token" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const awb = String(body.awb || "").trim();
       const statusCode = Number(body.status);
 
       if (!awb) {
         console.warn("[iCarry Webhook] sync_status received without AWB");
-        return new Response(JSON.stringify({ ok: true, message: "Missing awb" }), {
+        return new Response(JSON.stringify({ ok: true, note: "missing awb" }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -79,37 +95,37 @@ Deno.serve(async (req: Request) => {
       // Find the order by waybill
       const { data: order, error: orderErr } = await supabaseAdmin
         .from("orders")
-        .select("id, waybill, delivery_status, shipped_at, delivered_at")
+        .select("id, delivery_status, shipped_at, delivered_at")
         .eq("waybill", awb)
         .maybeSingle();
 
       if (orderErr) {
         console.error(`[iCarry Webhook] Database error finding order for AWB ${awb}:`, orderErr);
-        return new Response(JSON.stringify({ ok: true }), {
+        return new Response(JSON.stringify({ ok: true, error: orderErr.message }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (!order) {
-        console.log(`[iCarry Webhook] No matching order found for AWB: ${awb}. Ignoring silently.`);
-        return new Response(JSON.stringify({ ok: true, message: "Order not found" }), {
+        console.log(`[iCarry Webhook] Unknown AWB: ${awb}. Returning 200 to prevent retry storm.`);
+        return new Response(JSON.stringify({ ok: true, note: "unknown awb" }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const statusName = STATUS[statusCode] || `Status ${statusCode}`;
+      const newDeliveryStatus = STATUS[statusCode] ?? String(body.status);
       const updates: Record<string, any> = {
-        delivery_status: statusName,
+        delivery_status: newDeliveryStatus,
       };
 
-      // If status === 3 (Shipped), set shipped_at = now() only if not already set
+      // If status === 3 (Shipped), set shipped_at = now() only if currently null
       if (statusCode === 3 && !order.shipped_at) {
         updates.shipped_at = new Date().toISOString();
       }
 
-      // If status === 21 (Delivered), set delivered_at = now() only if not already set
+      // If status === 21 (Delivered), set delivered_at = now() only if currently null
       if (statusCode === 21 && !order.delivered_at) {
         updates.delivered_at = new Date().toISOString();
       }
@@ -120,9 +136,9 @@ Deno.serve(async (req: Request) => {
         .eq("id", order.id);
 
       if (updateErr) {
-        console.error(`[iCarry Webhook] Failed to update status for order ${order.id}:`, updateErr);
+        console.error(`[iCarry Webhook] Failed to update order ${order.id}:`, updateErr);
       } else {
-        console.log(`[iCarry Webhook] Updated order ${order.id} status to: "${statusName}"`);
+        console.log(`[iCarry Webhook] Order ${order.id} status updated to: "${newDeliveryStatus}"`);
       }
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -135,13 +151,23 @@ Deno.serve(async (req: Request) => {
     // 3. CALLBACK: ndr_status
     // ─────────────────────────────────────────────────────────────
     if (callbackType === "ndr_status") {
-      const ndrList = Array.isArray(body.ndr_data) ? body.ndr_data : [];
+      let ndrList = body.ndr_data;
+      if (typeof ndrList === "string") {
+        try {
+          ndrList = JSON.parse(ndrList);
+        } catch {
+          ndrList = [];
+        }
+      }
+      if (!Array.isArray(ndrList)) {
+        ndrList = [];
+      }
 
       for (const item of ndrList) {
-        console.log("[iCarry Webhook] Processing NDR item:", JSON.stringify(item));
         const awb = item.awb ? String(item.awb).trim() : null;
         const shipmentId = item.shipment_id ? String(item.shipment_id).trim() : null;
-        const ndrType = String(item.type || "").trim() || "UNKNOWN";
+        const ndrType = String(item.type || item.ndr_status || "issue").trim();
+        const description = String(item.reason || item.description || item.comment || `NDR: ${ndrType}`).trim();
 
         let order = null;
 
@@ -164,14 +190,17 @@ Deno.serve(async (req: Request) => {
         }
 
         if (order) {
-          const newStatus = `NDR: ${ndrType}`;
+          const newStatus = `ndr:${ndrType}`;
           await supabaseAdmin
             .from("orders")
-            .update({ delivery_status: newStatus })
+            .update({
+              delivery_status: newStatus,
+              shipment_error: description,
+            })
             .eq("id", order.id);
-          console.log(`[iCarry Webhook] Updated order ${order.id} delivery_status to: "${newStatus}"`);
+          console.log(`[iCarry Webhook] NDR update on order ${order.id}: delivery_status="${newStatus}", shipment_error="${description}"`);
         } else {
-          console.log(`[iCarry Webhook] NDR item does not match any order in database (AWB: ${awb}, Shipment ID: ${shipmentId}). Skipping.`);
+          console.log(`[iCarry Webhook] NDR item (AWB: ${awb}, Shipment ID: ${shipmentId}) does not match any order. Skipped.`);
         }
       }
 
@@ -193,7 +222,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // Unrecognized callback_type
+    // 5. Unrecognized callback_type
     // ─────────────────────────────────────────────────────────────
     console.log(`[iCarry Webhook] Unrecognized callback_type: "${callbackType}". Payload:`, JSON.stringify(body));
     return new Response(JSON.stringify({ ok: true, message: "Ignored" }), {
@@ -201,9 +230,9 @@ Deno.serve(async (req: Request) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
-    // Never allow an unexpected exception to trigger non-200 retries from iCarry
+    // Never allow an unexpected exception to trigger a 500 retry storm from iCarry
     console.error("[iCarry Webhook] Unexpected error handling webhook:", err);
-    return new Response(JSON.stringify({ ok: true, error: String(err?.message || err) }), {
+    return new Response(JSON.stringify({ ok: false, error: String(err?.message || err) }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
