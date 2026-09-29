@@ -188,7 +188,7 @@
   transition: background 0.2s;
 }
 
-.sh__toggle input:checked + .sh__toggle-track {
+.sh__toggle input:checked+.sh__toggle-track {
   background: #22c55e;
 }
 
@@ -204,7 +204,7 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
-.sh__toggle input:checked + .sh__toggle-track .sh__toggle-thumb {
+.sh__toggle input:checked+.sh__toggle-track .sh__toggle-thumb {
   transform: translateX(20px);
 }
 

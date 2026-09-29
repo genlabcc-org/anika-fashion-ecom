@@ -573,7 +573,7 @@ export default function ShippingAddress() {
                   try {
                     const errJson = await verifyError.context.json();
                     if (errJson?.error) errMsg = errJson.error;
-                  } catch (_) {}
+                  } catch (_) { }
                 }
                 throw new Error(errMsg || "Payment verification failed.");
               }
@@ -1076,16 +1076,16 @@ export default function ShippingAddress() {
                   </div>
                 )}
 
+                <div className="checkout-summary-row gst-faded-row">
+                  <span>GST (3% Incl.)</span>
+                  <span className="summary-val">₹{gstIncluded.toLocaleString('en-IN')}</span>
+                </div>
+
                 <div className="checkout-summary-row">
                   <span>Shipping</span>
                   <span className="summary-val">
                     {isAddressServiceable ? "₹70.00" : "Enter shipping address"}
                   </span>
-                </div>
-
-                <div className="checkout-summary-row">
-                  <span>GST</span>
-                  <span className="summary-val gst-incl-label">3% Incl. in price</span>
                 </div>
 
                 <div className="checkout-total-divider"></div>

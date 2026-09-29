@@ -825,6 +825,12 @@ select {
   color: var(--text-secondary);
 }
 
+.gst-faded-row,
+.gst-faded-row span {
+  color: #aaa;
+  font-size: 12.5px;
+}
+
 .summary-subtotal {
   font-size: 16px;
   font-weight: 700;

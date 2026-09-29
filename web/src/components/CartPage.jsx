@@ -245,9 +245,9 @@ export default function CartPage() {
                   <span>₹{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="summary-divider"></div>
-                <div className="summary-row">
-                  <span>GST</span>
-                  <span className="gst-incl-label">3% Incl. in price</span>
+                <div className="summary-row gst-faded-row">
+                  <span>GST (3% Incl.)</span>
+                  <span>₹{gstIncluded.toLocaleString("en-IN")}</span>
                 </div>
                 <div className="summary-row">
                   <span>Delivery Fee</span>
