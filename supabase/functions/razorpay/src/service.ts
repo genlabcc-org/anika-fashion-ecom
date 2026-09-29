@@ -7,6 +7,7 @@ export interface CreateOrderInput {
   items: Array<{
     productId: string | number;
     quantity?: number;
+    price?: number;
     size?: string | null;
     color?: string | null;
   }>;
@@ -31,6 +32,7 @@ export interface VerifyPaymentInput {
   items: Array<{
     productId: string | number;
     quantity?: number;
+    price?: number;
     size?: string | null;
     color?: string | null;
   }>;
@@ -107,8 +109,8 @@ export class RazorpayService {
     }
 
     const shipping = Number(input.shippingFee || 0);
-    const gstAmount = Math.round(Math.max(0, subtotal - discountAmount) * 0.03);
-    const grandTotal = Math.max(0, subtotal - discountAmount) + gstAmount + shipping;
+    // GST is already included in product price — do not add extra
+    const grandTotal = Math.max(0, subtotal - discountAmount) + shipping;
     const amountInPaise = Math.round(grandTotal * 100);
 
     // 3. Create order on Razorpay
@@ -224,8 +226,8 @@ export class RazorpayService {
     }
 
     const shipping = Number(input.shippingFee || 0);
-    const gstAmount = Math.round(Math.max(0, subtotal - discountAmount) * 0.03);
-    const grandTotal = Math.max(0, subtotal - discountAmount) + gstAmount + shipping;
+    // GST is already included in product price — do not add extra
+    const grandTotal = Math.max(0, subtotal - discountAmount) + shipping;
   
     const mainItem = resolvedItemDetails[0];
     const itemName = resolvedItemDetails.length > 1

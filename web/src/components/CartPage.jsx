@@ -92,11 +92,11 @@ export default function CartPage() {
 
   // Only calculate totals for currently SELECTED items
   const subtotal = selectedItems.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.qty) || 1), 0);
-  const taxes = 0;
-  const gst = subtotal > 0 ? Math.round(subtotal - (subtotal / 1.03)) : 0;
+  // GST is already included in product price — extract for display only, not added to total
+  const gstIncluded = subtotal > 0 ? Math.round(subtotal - (subtotal / 1.03)) : 0;
   const platformFee = 0;
   const deliveryFee = subtotal > 0 ? 70 : 0;
-  const grandTotal = subtotal + taxes + gst + platformFee + deliveryFee;
+  const grandTotal = subtotal + platformFee + deliveryFee;
 
 
 
@@ -246,16 +246,8 @@ export default function CartPage() {
                 </div>
                 <div className="summary-divider"></div>
                 <div className="summary-row">
-                  <span>Taxes</span>
-                  <span>₹{taxes}</span>
-                </div>
-                <div className="summary-row">
-                  <span>GST (3% Incl.)</span>
-                  <span>₹{gst.toLocaleString("en-IN")}</span>
-                </div>
-                <div className="summary-row">
-                  <span>Platform Fee</span>
-                  <span>₹{platformFee}</span>
+                  <span>GST</span>
+                  <span className="gst-incl-label">3% Incl. in price</span>
                 </div>
                 <div className="summary-row">
                   <span>Delivery Fee</span>

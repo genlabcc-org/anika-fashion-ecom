@@ -837,6 +837,17 @@ select {
   color: var(--text-primary);
 }
 
+.gst-incl-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #16a34a;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 20px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
 .free-label {
   color: var(--success);
   font-weight: 700;

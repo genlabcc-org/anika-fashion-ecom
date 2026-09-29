@@ -303,10 +303,10 @@ export default function ShippingAddress() {
   const isAddressServiceable = isValidPincodeRegex(form.pinCode) && pincodeServiceable !== false;
   const shippingFee = isAddressServiceable ? 1 : 0;
 
-  const gst = Math.round((subtotal - discountAmount) * 0.03);
-  const taxes = gst;
+  // GST is already included in product price — extract for display only, not added to total
+  const gstIncluded = subtotal > 0 ? Math.round(subtotal - (subtotal / 1.03)) : 0;
   const platformFee = 0;
-  const grandTotal = subtotal - discountAmount + shippingFee + taxes + platformFee;
+  const grandTotal = subtotal - discountAmount + shippingFee + platformFee;
 
   const handleCheckoutSubmit = async (e) => {
     if (e) e.preventDefault();
@@ -1083,19 +1083,16 @@ export default function ShippingAddress() {
                   </span>
                 </div>
 
-                {gst > 0 && (
-                  <div className="checkout-summary-row">
-                    <span>GST (3% Incl.)</span>
-                    <span className="summary-val">₹{gst.toLocaleString('en-IN')}.00</span>
-                  </div>
-                )}
+                <div className="checkout-summary-row">
+                  <span>GST</span>
+                  <span className="summary-val gst-incl-label">3% Incl. in price</span>
+                </div>
 
                 <div className="checkout-total-divider"></div>
 
                 <div className="checkout-summary-row total-row">
                   <div className="total-label-wrap">
                     <span className="total-main-label">Total</span>
-                    {gst > 0 && <span className="total-sub-label">Including ₹{gst.toLocaleString('en-IN')}.00 in taxes</span>}
                   </div>
                   <div className="total-price-wrap">
                     <span className="total-currency">INR</span>

@@ -679,7 +679,7 @@ export default function ProductPage({ onBack }) {
 
             <div className="pp-prices">
               <span className="pp-price">{displayPrice}</span>
-              <span className="pp-strike">MRP:{displayOriginal}</span>
+              <span className="pp-strike">{displayOriginal}</span>
               {discountPct > 0 && (
                 <span className='pp-discount-badge'>{discountPct}% Off</span>
               )}
