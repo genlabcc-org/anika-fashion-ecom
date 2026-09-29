@@ -498,9 +498,9 @@ export default function AnikaOrders() {
           <div className="inv__modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="inv__modal-header">
               <div>
-                <h3 className="inv__modal-title">Order Receipt</h3>
+                <h3 className="inv__modal-title">Order Receipt (4" × 6")</h3>
                 <p className="inv__modal-subtitle">
-                  Order #{String(selectedInvoiceOrder.id).slice(-8).toUpperCase()}
+                  Order #{String(selectedInvoiceOrder.id).slice(-8).toUpperCase()} · 100 × 150 mm
                 </p>
               </div>
               <button

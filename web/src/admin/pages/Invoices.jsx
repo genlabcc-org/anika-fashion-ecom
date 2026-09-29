@@ -488,7 +488,7 @@ const Invoices = ({ orders = [], loading = false }) => {
         <div>
           <h1 className="inv__title">Invoices & Printing</h1>
           <p className="inv__subtitle">
-            Thermal 80mm receipts for orders. Printed invoices cannot be reprinted.
+            Thermal 4x6 (100x150mm) receipts for orders. Printed invoices cannot be reprinted.
           </p>
         </div>
 
@@ -769,9 +769,9 @@ const Invoices = ({ orders = [], loading = false }) => {
           <div className="inv__modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="inv__modal-header">
               <div>
-                <h3 className="inv__modal-title">Invoice Preview</h3>
+                <h3 className="inv__modal-title">Invoice Preview (4" × 6")</h3>
                 <p className="inv__modal-subtitle">
-                  Order #{String(previewOrder.id).slice(-8).toUpperCase()}
+                  Order #{String(previewOrder.id).slice(-8).toUpperCase()} · 100 × 150 mm
                 </p>
               </div>
               <button

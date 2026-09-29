@@ -27,14 +27,14 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
       <div className="ti__header">
         <div className="ti__store-name">ANIKA FASHION</div>
         <div className="ti__tagline">Handcrafted Jewellery</div>
-        <div className="ti__divider">================================</div>
+        <div className="ti__divider">================================================</div>
       </div>
       <div className="ti__meta">
         <div className="ti__meta-row"><span>Invoice:</span><span>{orderId}</span></div>
         <div className="ti__meta-row"><span>Date:</span><span>{invoiceDate}</span></div>
         <div className="ti__meta-row"><span>Payment:</span><span>{o.payment || "COD"}</span></div>
       </div>
-      <div className="ti__divider">--------------------------------</div>
+      <div className="ti__divider">------------------------------------------------</div>
       <div className="ti__section-title">CUSTOMER</div>
       <div className="ti__customer">
         <div>{o.customer?.name || "N/A"}</div>
@@ -42,7 +42,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
       </div>
       {address && (
         <>
-          <div className="ti__divider">--------------------------------</div>
+          <div className="ti__divider">------------------------------------------------</div>
           <div className="ti__section-title">SHIP TO</div>
           <div className="ti__address">
             <div>{address.full_name || o.customer?.name}</div>
@@ -54,7 +54,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
           </div>
         </>
       )}
-      <div className="ti__divider">--------------------------------</div>
+      <div className="ti__divider">------------------------------------------------</div>
       <div className="ti__section-title">ITEMS</div>
       <div className="ti__items">
         {orderItems.map((item, idx) => {
@@ -65,11 +65,14 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
           const sizeStr = rawSize ? String(rawSize).replace(/^size[:\s-]+/i, "").trim() : null;
           const variantStr = rawVariant
             ? String(rawVariant).replace(/^(variant|color)[:\s-]+/i, "").trim()
-            : (rawColor ? String(rawColor).replace(/^(variant|color)[:\s-]+/i, "").trim() : null);
-          const colorStr = rawColor ? String(rawColor).replace(/^(variant|color)[:\s-]+/i, "").trim() : null;
+            : null;
+          const colorStr = rawColor
+            ? String(rawColor).replace(/^(variant|color)[:\s-]+/i, "").trim()
+            : null;
 
-          const showVariant = variantStr && (!sizeStr || variantStr.toLowerCase() !== sizeStr.toLowerCase());
-          const showColor = colorStr && rawVariant && colorStr.toLowerCase() !== variantStr.toLowerCase();
+          // Avoid showing color again if it matches variant
+          const showColor = colorStr && (!variantStr || colorStr.toLowerCase() !== variantStr.toLowerCase());
+          const showVariant = variantStr && (!colorStr || variantStr.toLowerCase() !== colorStr.toLowerCase());
 
           const qty = Number(item.quantity || item.qty || 1);
           const unitPrice = Number(item.price || item.unit_price || 0);
@@ -78,33 +81,54 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
 
           return (
             <div key={idx} className="ti__item">
-              <div className="ti__item-name">{productName}</div>
-              <div className="ti__item-price-row">
-                <span className="ti__item-qty-meta">
-                  {qty > 1 ? `${qty} × ₹ ${unitPrice.toLocaleString("en-IN")}` : `Qty: ${qty}`}
-                  {sizeStr && ` · Size: ${sizeStr}`}
-                  {showVariant && ` · Variant: ${variantStr}`}
-                  {showColor && ` · Color: ${colorStr}`}
-                </span>
-                <span className="ti__item-price">
-                  ₹{lineTotal.toLocaleString("en-IN")}
+              {/* Row: item number + product name + line total */}
+              <div className="ti__item-header-row">
+                <span className="ti__item-name">{idx + 1}. {productName}</span>
+                <span className="ti__item-price">₹{lineTotal.toLocaleString("en-IN")}</span>
+              </div>
+              {/* Row: qty × unit price */}
+              <div className="ti__item-detail-row">
+                <span className="ti__item-detail-label">Qty:</span>
+                <span className="ti__item-detail-val">
+                  {qty}{qty > 1 ? ` × ₹${unitPrice.toLocaleString("en-IN")}` : ""}
                 </span>
               </div>
+              {/* Color */}
+              {showColor && (
+                <div className="ti__item-detail-row">
+                  <span className="ti__item-detail-label">Color:</span>
+                  <span className="ti__item-detail-val">{colorStr}</span>
+                </div>
+              )}
+              {/* Size */}
+              {sizeStr && (
+                <div className="ti__item-detail-row">
+                  <span className="ti__item-detail-label">Size:</span>
+                  <span className="ti__item-detail-val">{sizeStr}</span>
+                </div>
+              )}
+              {/* Variant (if different from color) */}
+              {showVariant && (
+                <div className="ti__item-detail-row">
+                  <span className="ti__item-detail-label">Variant:</span>
+                  <span className="ti__item-detail-val">{variantStr}</span>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-      <div className="ti__divider">================================</div>
+      <div className="ti__divider">================================================</div>
       <div className="ti__total-row">
         <span className="ti__total-label">TOTAL</span>
         <span className="ti__total-amount">₹{total.toLocaleString("en-IN")}</span>
       </div>
-      <div className="ti__divider">================================</div>
+      <div className="ti__divider">================================================</div>
       <div className="ti__footer">
         <div>Thank you for your order!</div>
         <div>www.anikafashion.in</div>
       </div>
-      <div className="ti__cut">- - - - - - - - - - - - - -</div>
+      <div className="ti__cut">- - - - - - - - - - - - - - - - - - - - - - - -</div>
     </div>
   );
 });

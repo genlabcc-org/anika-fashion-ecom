@@ -926,9 +926,9 @@ const OrderDetails = ({ order, onBack }) => {
           <div className="inv__modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="inv__modal-header">
               <div>
-                <h3 className="inv__modal-title">Invoice Preview</h3>
+                <h3 className="inv__modal-title">Invoice Preview (4" × 6")</h3>
                 <p className="inv__modal-subtitle">
-                  Order #{String(o.id).slice(-8).toUpperCase()}
+                  Order #{String(o.id).slice(-8).toUpperCase()} · 100 × 150 mm
                 </p>
               </div>
               <button
