@@ -9,23 +9,22 @@
 .thermal-invoice-modal .thermal-invoice {
   display: block !important;
   font-family: 'Consolas', 'Courier New', Courier, Monaco, monospace;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1.4;
   color: #000;
   -webkit-text-stroke: 0.15px #000;
   background: #fff;
-  padding: 6mm 5mm;
+  padding: 5mm 4mm;
   box-sizing: border-box;
   width: 4in;
-  height: 6in;
+  min-height: 6in;
   max-width: 100%;
   overflow: hidden;
   margin: 0 auto;
   border-radius: 4px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
   border: 1px solid #d0d0d5;
-  position: relative;
 }
 
 .thermal-invoice--preview .ti__header {
@@ -34,20 +33,21 @@
 }
 
 .thermal-invoice--preview .ti__store-name {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 900;
   letter-spacing: 2px;
   color: #000;
 }
 
 .thermal-invoice--preview .ti__tagline {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   color: #111;
   margin-bottom: 3px;
 }
 
-.thermal-invoice--preview .ti__divider {
+.thermal-invoice--preview .ti__divider,
+.ti__divider {
   font-size: 10px;
   font-weight: 900;
   margin: 4px 0;
@@ -56,13 +56,17 @@
   text-align: center;
   overflow: hidden;
   white-space: nowrap;
+  max-width: 100%;
+  box-sizing: border-box;
+  text-overflow: clip;
 }
 
 .thermal-invoice--preview .ti__meta {
   margin: 4px 0;
 }
 
-.thermal-invoice--preview .ti__meta-row {
+.thermal-invoice--preview .ti__meta-row,
+.ti__meta-row {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
@@ -71,7 +75,8 @@
   margin-bottom: 1px;
 }
 
-.thermal-invoice--preview .ti__section-title {
+.thermal-invoice--preview .ti__section-title,
+.ti__section-title {
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 1.5px;
@@ -80,113 +85,163 @@
 }
 
 .thermal-invoice--preview .ti__customer,
-.thermal-invoice--preview .ti__address {
-  font-size: 11px;
+.thermal-invoice--preview .ti__address,
+.ti__customer,
+.ti__address {
+  font-size: 10.5px;
   font-weight: 700;
   line-height: 1.45;
   color: #000;
 }
 
-.thermal-invoice--preview .ti__items {
+.thermal-invoice--preview .ti__items,
+.ti__items {
   margin: 3px 0;
 }
 
-.thermal-invoice--preview .ti__item {
+.thermal-invoice--preview .ti__item,
+.ti__item {
   margin-bottom: 6px;
-  border-bottom: 1px dashed #ddd;
-  padding-bottom: 4px;
+  border-bottom: 1px dashed #ccc;
+  padding-bottom: 5px;
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
-.thermal-invoice--preview .ti__item:last-child {
+.thermal-invoice--preview .ti__item:last-child,
+.ti__item:last-child {
   border-bottom: none;
 }
 
-.thermal-invoice--preview .ti__item-header-row {
+.thermal-invoice--preview .ti__item-header-row,
+.ti__item-header-row {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.thermal-invoice--preview .ti__item-name {
+.thermal-invoice--preview .ti__item-num,
+.ti__item-num {
   font-weight: 900;
-  font-size: 11.5px;
+  font-size: 11px;
+  color: #000;
+  min-width: 18px;
+  flex-shrink: 0;
+}
+
+.thermal-invoice--preview .ti__item-name,
+.ti__item-name {
+  font-weight: 900;
+  font-size: 11px;
   color: #000;
   flex: 1;
   min-width: 0;
   word-break: break-word;
+  line-height: 1.3;
 }
 
-.thermal-invoice--preview .ti__item-price {
+.thermal-invoice--preview .ti__item-price,
+.ti__item-price {
   white-space: nowrap;
   font-weight: 900;
-  font-size: 11.5px;
+  font-size: 11px;
   text-align: right;
   color: #000;
   flex-shrink: 0;
 }
 
-.thermal-invoice--preview .ti__item-detail-row {
+.thermal-invoice--preview .ti__item-details,
+.ti__item-details {
+  margin-left: 18px;
+  margin-top: 2px;
+}
+
+.thermal-invoice--preview .ti__item-detail-row,
+.ti__item-detail-row {
   display: flex;
   gap: 6px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   color: #222;
   margin-top: 1px;
 }
 
-.thermal-invoice--preview .ti__item-detail-label {
-  min-width: 42px;
-  color: #555;
+.thermal-invoice--preview .ti__item-detail-label,
+.ti__item-detail-label {
+  min-width: 44px;
+  color: #444;
   flex-shrink: 0;
 }
 
-.thermal-invoice--preview .ti__item-detail-val {
+.thermal-invoice--preview .ti__item-detail-val,
+.ti__item-detail-val {
   color: #000;
   word-break: break-word;
 }
 
-.thermal-invoice--preview .ti__total-row {
+.ti__summary-row {
   display: flex;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #000;
+  margin-bottom: 2px;
+}
+
+.ti__summary-row--discount {
+  color: #dc2626;
+}
+
+.thermal-invoice--preview .ti__total-row,
+.ti__total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13.5px;
   font-weight: 900;
-  margin: 5px 0;
+  margin: 4px 0;
   color: #000;
 }
 
-.thermal-invoice--preview .ti__footer {
+.thermal-invoice--preview .ti__footer,
+.ti__footer {
   text-align: center;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 700;
   color: #000;
   margin: 4px 0;
   line-height: 1.45;
 }
 
-.thermal-invoice--preview .ti__cut {
+.thermal-invoice--preview .ti__cut,
+.ti__cut {
   text-align: center;
   font-size: 10px;
   font-weight: 900;
   color: #000;
   margin-top: 5px;
   letter-spacing: 2px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* ===== THERMAL INVOICE — Print Styles (4x6 inch / 100x150mm) ===== */
 @media print {
   @page {
-    size: 4in 6in;
-    margin: 4mm;
+    size: 4in 6in;   /* 4×6 inch thermal label */
+    margin: 3mm;
   }
 
   html,
   body {
-    width: 4in !important;
-    max-width: 4in !important;
+    width: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
+    box-sizing: border-box !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -218,10 +273,11 @@
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
-    width: 4in !important;
-    max-width: 4in !important;
+    width: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+    box-sizing: border-box !important;
     z-index: 99999999 !important;
     background: #fff !important;
   }
@@ -233,15 +289,18 @@
     position: relative !important;
     width: 100% !important;
     max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
     margin: 0 auto !important;
     font-family: 'Consolas', 'Courier New', Courier, Monaco, monospace !important;
-    font-size: 14px !important;
+    font-size: 10px !important;
     font-weight: 700 !important;
-    line-height: 1.5 !important;
+    line-height: 1.35 !important;
     color: #000 !important;
-    -webkit-text-stroke: 0.2px #000 !important;
+    -webkit-text-stroke: 0.15px #000 !important;
     background: #fff !important;
-    padding: 6mm 4mm !important;
+    padding: 2mm 2mm !important;
     box-sizing: border-box !important;
     page-break-after: always !important;
     break-after: page !important;
@@ -254,16 +313,15 @@
     break-after: auto !important;
   }
 
-  /* Header — Guaranteed visible and centered */
+  /* Header */
   .thermal-print-area .ti__header,
   .ti__header {
     display: block !important;
     visibility: visible !important;
-    opacity: 1 !important;
     text-align: center !important;
-    margin-top: 2px !important;
-    margin-bottom: 8px !important;
-    padding-top: 2px !important;
+    margin-top: 1px !important;
+    margin-bottom: 4px !important;
+    padding-top: 1px !important;
     width: 100% !important;
   }
 
@@ -271,13 +329,12 @@
   .ti__store-name {
     display: block !important;
     visibility: visible !important;
-    opacity: 1 !important;
-    font-size: 22px !important;
+    font-size: 15px !important;
     font-weight: 900 !important;
     letter-spacing: 2px !important;
     color: #000 !important;
-    line-height: 1.3 !important;
-    margin: 0 0 3px 0 !important;
+    line-height: 1.2 !important;
+    margin: 0 0 1px 0 !important;
     text-align: center !important;
     width: 100% !important;
   }
@@ -286,12 +343,11 @@
   .ti__tagline {
     display: block !important;
     visibility: visible !important;
-    opacity: 1 !important;
-    font-size: 13.5px !important;
+    font-size: 10px !important;
     font-weight: 700 !important;
     color: #000 !important;
-    margin-bottom: 8px !important;
-    line-height: 1.3 !important;
+    margin-bottom: 3px !important;
+    line-height: 1.2 !important;
     text-align: center !important;
     width: 100% !important;
   }
@@ -301,136 +357,197 @@
   .ti__divider {
     display: block !important;
     visibility: visible !important;
-    font-size: 13px !important;
+    font-size: 10px !important;
     font-weight: 900 !important;
     color: #000 !important;
-    margin: 6px 0 !important;
-    letter-spacing: -0.5px !important;
+    margin: 2px 0 !important;
     overflow: hidden !important;
     white-space: nowrap !important;
     text-align: center !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    text-overflow: clip !important;
   }
 
-  /* Meta (invoice#, date, payment) */
+  /* Meta rows */
   .ti__meta {
-    margin: 6px 0;
+    display: block !important;
+    margin: 3px 0 !important;
   }
 
   .ti__meta-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 13.5px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    font-size: 10.5px !important;
     font-weight: 700 !important;
     color: #000 !important;
-    margin-bottom: 2px;
+    margin-bottom: 1px !important;
   }
 
   /* Section titles */
   .ti__section-title {
-    font-size: 13.5px !important;
+    display: block !important;
+    font-size: 10.5px !important;
     font-weight: 900 !important;
-    letter-spacing: 1.5px !important;
+    letter-spacing: 1px !important;
     color: #000 !important;
-    margin: 6px 0 3px;
+    margin: 3px 0 2px !important;
   }
 
   /* Customer */
   .ti__customer,
   .ti__address {
-    font-size: 13.5px !important;
+    display: block !important;
+    font-size: 10px !important;
     font-weight: 700 !important;
-    line-height: 1.6 !important;
+    line-height: 1.4 !important;
     color: #000 !important;
-    margin-bottom: 3px;
+    margin-bottom: 1px !important;
+  }
+
+  .ti__customer > div,
+  .ti__address > div {
+    display: block !important;
+    visibility: visible !important;
   }
 
   /* Items */
   .ti__items {
-    margin: 4px 0;
+    margin: 3px 0 !important;
   }
 
   .ti__item {
-    margin-bottom: 7px;
-    border-bottom: 1px dashed #ccc;
-    padding-bottom: 5px;
+    margin-bottom: 6px !important;
+    border-bottom: 1px dashed #ccc !important;
+    padding-bottom: 4px !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .ti__item:last-child {
-    border-bottom: none;
+    border-bottom: none !important;
   }
 
   .ti__item-header-row {
     display: flex !important;
     justify-content: space-between !important;
-    align-items: baseline !important;
+    align-items: flex-start !important;
     gap: 6px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .ti__item-num {
+    font-weight: 900 !important;
+    font-size: 10.5px !important;
+    color: #000 !important;
+    min-width: 18px !important;
+    flex-shrink: 0 !important;
   }
 
   .ti__item-name {
     font-weight: 900 !important;
-    font-size: 13.5px !important;
+    font-size: 10.5px !important;
     color: #000 !important;
-    flex: 1;
-    min-width: 0;
-    word-break: break-word;
+    flex: 1 !important;
+    min-width: 0 !important;
+    word-break: break-word !important;
+    line-height: 1.3 !important;
   }
 
   .ti__item-price {
-    white-space: nowrap;
+    white-space: nowrap !important;
     font-weight: 900 !important;
-    font-size: 13.5px !important;
+    font-size: 10.5px !important;
     color: #000 !important;
-    text-align: right;
-    flex-shrink: 0;
+    text-align: right !important;
+    flex-shrink: 0 !important;
+  }
+
+  .ti__item-details {
+    margin-left: 18px !important;
+    margin-top: 2px !important;
   }
 
   .ti__item-detail-row {
     display: flex !important;
-    gap: 6px !important;
-    font-size: 12px !important;
+    gap: 4px !important;
+    font-size: 9.5px !important;
     font-weight: 700 !important;
     color: #222 !important;
-    margin-top: 1px;
+    margin-top: 1px !important;
   }
 
   .ti__item-detail-label {
-    min-width: 48px;
+    min-width: 40px !important;
     color: #444 !important;
-    flex-shrink: 0;
+    flex-shrink: 0 !important;
   }
 
   .ti__item-detail-val {
     color: #000 !important;
-    word-break: break-word;
+    word-break: break-word !important;
+  }
+
+  .ti__summary-row {
+    display: flex !important;
+    justify-content: space-between !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    color: #000 !important;
+    margin-bottom: 1px !important;
   }
 
   /* Total */
   .ti__total-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 17px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    font-size: 13px !important;
     font-weight: 900 !important;
     color: #000 !important;
-    margin: 6px 0;
+    margin: 3px 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .ti__total-label {
+    font-weight: 900 !important;
+  }
+
+  .ti__total-amount {
+    font-weight: 900 !important;
+    white-space: nowrap !important;
   }
 
   /* Footer */
   .ti__footer {
-    text-align: center;
-    font-size: 13px !important;
+    display: block !important;
+    text-align: center !important;
+    font-size: 10px !important;
     font-weight: 700 !important;
     color: #000 !important;
-    margin: 6px 0;
-    line-height: 1.6;
+    margin: 4px 0 !important;
+    line-height: 1.45 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .ti__footer > div {
+    display: block !important;
+    visibility: visible !important;
   }
 
   /* Cut line */
   .ti__cut {
-    text-align: center;
-    font-size: 12px !important;
+    text-align: center !important;
+    font-size: 10px !important;
     font-weight: 900 !important;
     color: #000 !important;
-    margin-top: 8px;
-    letter-spacing: 2px;
+    margin-top: 6px !important;
+    letter-spacing: 2px !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
   }
 }
