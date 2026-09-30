@@ -6,6 +6,7 @@ import { emailService } from "../services/emailService";
 import { useStore } from "../hooks/useStore";
 import { supabase } from "../lib/supabase";
 import { icarryService } from "../services/icarryService";
+import { shippingService, normState } from "../services/shippingService";
 import "./shippingAddress.css";
 import Navbar from "./SiteHeader";
 import Footer from "./SiteFooter";
@@ -41,6 +42,8 @@ const indianStates = [
   "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim",
   "Telangana", "Tripura", "Uttar Pradesh", "West Bengal",
   "Delhi", "Jammu & Kashmir",
+  "Arunachal Pradesh", "Jharkhand", "Uttarakhand", "Puducherry",
+  "Chandigarh", "Ladakh", "Andaman & Nicobar Islands", "Lakshadweep",
 ];
 
 // Fallback pincode validation regex helper
@@ -79,6 +82,9 @@ export default function ShippingAddress() {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [pincodeServiceable, setPincodeServiceable] = useState(null); // null: untested/fallback, true: serviceable, false: unserviceable
   const [pincodeChecking, setPincodeChecking] = useState(false);
+  const [rates, setRates] = useState([]);
+  const [ratesLoaded, setRatesLoaded] = useState(false);
+  const [pinState, setPinState] = useState(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -151,6 +157,8 @@ export default function ShippingAddress() {
       e.pinCode = "Valid 6-digit PIN required";
     } else if (pincodeServiceable === false) {
       e.pinCode = "Pincode not serviceable for delivery";
+    } else if (pinStateError) {
+      e.pinCode = pinStateError;
     }
     return e;
   };
@@ -269,6 +277,31 @@ export default function ShippingAddress() {
     };
   }, [form.pinCode]);
 
+  // Load shipping rates once
+  useEffect(() => {
+    shippingService.getRates()
+      .then((r) => { setRates(r); setRatesLoaded(true); })
+      .catch((err) => console.error("Failed to load shipping rates:", err));
+  }, []);
+
+  // Look up which state the pincode belongs to
+  useEffect(() => {
+    const pin = (form.pinCode || "").trim();
+    if (!isValidPincodeRegex(pin)) { setPinState(null); return; }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const info = await shippingService.lookupPincode(pin);
+      if (cancelled) return;
+      setPinState(info?.state || null); // null/undefined = don't block
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [form.pinCode]);
+
+  const pinStateError =
+    pinState && form.state && normState(pinState) !== normState(form.state)
+      ? `PIN ${form.pinCode} belongs to ${pinState}, not ${form.state}`
+      : "";
+
   const handleApplyDiscount = () => {
     const code = discountInput.trim().toUpperCase();
     if (code === "WELCOME10") {
@@ -300,8 +333,11 @@ export default function ShippingAddress() {
     ? Math.round((subtotal * appliedDiscount.pct) / 100)
     : 0;
 
-  const isAddressServiceable = isValidPincodeRegex(form.pinCode) && pincodeServiceable !== false;
-  const shippingFee = isAddressServiceable ? 1 : 0;
+  const isAddressServiceable =
+    isValidPincodeRegex(form.pinCode) && pincodeServiceable !== false && !pinStateError;
+  const shippingFee = isAddressServiceable
+    ? shippingService.calcFee(rates, form.state, subtotal - discountAmount)
+    : 0;
 
   // GST is already included in product price — extract for display only, not added to total
   const gstIncluded = subtotal > 0 ? Math.round(subtotal - (subtotal / 1.03)) : 0;
@@ -310,6 +346,11 @@ export default function ShippingAddress() {
 
   const handleCheckoutSubmit = async (e) => {
     if (e) e.preventDefault();
+
+    if (!ratesLoaded) {
+      showToast("Loading shipping rates, please wait a moment...", "warning");
+      return;
+    }
 
     if (pincodeChecking) {
       showToast("Verifying delivery pincode, please wait a moment...", "warning");
@@ -818,14 +859,16 @@ export default function ShippingAddress() {
                         value={form.pinCode}
                         onChange={handleChange}
                         maxLength={6}
-                        className={`checkout-input ${errors.pinCode ? "error" : ""}`}
+                        className={`checkout-input ${errors.pinCode || pinStateError ? "error" : ""}`}
                       />
                       {pincodeChecking && (
                         <span style={{ fontSize: '11px', color: '#666', marginTop: '2px', display: 'block' }}>
                           Checking serviceability...
                         </span>
                       )}
-                      {errors.pinCode && <span className="checkout-err-msg">{errors.pinCode}</span>}
+                      {(errors.pinCode || pinStateError) && (
+                        <span className="checkout-err-msg">{errors.pinCode || pinStateError}</span>
+                      )}
                     </div>
                   </div>
 
@@ -860,7 +903,7 @@ export default function ShippingAddress() {
                     {isAddressServiceable ? (
                       <div className="checkout-shipping-rate">
                         <span className="rate-name">Standard Shipping</span>
-                        <span className="rate-price">₹70.00</span>
+                        <span className="rate-price">{shippingFee > 0 ? `₹${shippingFee.toFixed(2)}` : "FREE"}</span>
                       </div>
                     ) : (
                       <span className="checkout-shipping-hint">Enter your shipping address to view available shipping methods.</span>
@@ -999,7 +1042,7 @@ export default function ShippingAddress() {
                   <button
                     type="submit"
                     className="checkout-pay-btn"
-                    disabled={isProcessingPayment}
+                    disabled={isProcessingPayment || !ratesLoaded}
                   >
                     {isProcessingPayment ? "Processing..." : (paymentMethod === "COD" ? "Place order" : "Pay now")}
                   </button>
@@ -1084,7 +1127,9 @@ export default function ShippingAddress() {
                 <div className="checkout-summary-row">
                   <span>Shipping</span>
                   <span className="summary-val">
-                    {isAddressServiceable ? "₹70.00" : "Enter shipping address"}
+                    {isAddressServiceable
+                      ? (shippingFee === 0 ? "Free" : `₹${shippingFee.toLocaleString('en-IN')}.00`)
+                      : "Enter shipping address"}
                   </span>
                 </div>
 
