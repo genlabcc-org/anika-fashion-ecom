@@ -3,7 +3,32 @@ import { RazorpayClient } from "./client.ts";
 import { Product, Order } from "../../_shared/types.ts";
 import { bookShipmentForOrder } from "../../_shared/bookShipment.ts";
 
+/** Normalise a state name for comparison (same logic as the frontend). */
+function normState(s: string | null | undefined): string {
+  return String(s || "").toLowerCase().replace(/&/g, "and").replace(/[^a-z]/g, "");
+}
+
+/** Pick the matching shipping-rate row and return the fee. */
+function calcFee(
+  rates: Array<{ state: string; fee: number; free_above: number | null }>,
+  state: string,
+  amountAfterDiscount: number,
+): number {
+  const row =
+    rates.find((r) => normState(r.state) === normState(state)) ||
+    rates.find((r) => r.state === "__default__");
+  if (!row) return 0;
+  if (row.free_above != null && amountAfterDiscount >= Number(row.free_above)) return 0;
+  return Number(row.fee) || 0;
+}
+
+/** Server-side discount code → percentage map. The client cannot choose the %. */
+const DISCOUNT_CODES: Record<string, number> = { WELCOME10: 10, FESTIVE20: 20 };
+const discountPctFor = (code?: string | null) =>
+  DISCOUNT_CODES[String(code || "").trim().toUpperCase()] ?? 0;
+
 export interface CreateOrderInput {
+  userId: string;
   items: Array<{
     productId: string | number;
     quantity?: number;
@@ -13,8 +38,6 @@ export interface CreateOrderInput {
   }>;
   addressId?: number | string;
   discountCode?: string | null;
-  discountPct?: number;
-  shippingFee?: number;
 }
 
 export interface CreateOrderResult {
@@ -38,8 +61,6 @@ export interface VerifyPaymentInput {
   }>;
   addressId?: number | string;
   discountCode?: string | null;
-  discountPct?: number;
-  shippingFee?: number;
 }
 
 export class RazorpayService {
@@ -49,6 +70,37 @@ export class RazorpayService {
   constructor(supabaseAdmin: SupabaseClient) {
     this.client = new RazorpayClient();
     this.supabaseAdmin = supabaseAdmin;
+  }
+
+  /**
+   * Compute shipping fee server-side (fail-closed):
+   *   1. Verify the address belongs to the user and get its state
+   *   2. Read active shipping_rates from the DB
+   *   3. Run calcFee (same logic as the frontend)
+   *   Throws on any failure — never silently grants free shipping.
+   */
+  private async computeShippingFee(
+    userId: string,
+    addressId: number | string | undefined,
+    amountAfterDiscount: number,
+  ): Promise<number> {
+    if (!addressId) throw new Error("Delivery address is required");
+
+    const { data: addr, error: addrErr } = await this.supabaseAdmin
+      .from("addresses")
+      .select("state")
+      .eq("address_id", Number(addressId))
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (addrErr || !addr?.state) throw new Error("Invalid delivery address");
+
+    const { data: rates, error: rateErr } = await this.supabaseAdmin
+      .from("shipping_rates")
+      .select("state, fee, free_above")
+      .eq("is_active", true);
+    if (rateErr || !rates?.length) throw new Error("Shipping rates unavailable");
+
+    return calcFee(rates as any, addr.state, amountAfterDiscount);
   }
 
   async createOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
@@ -94,21 +146,17 @@ export class RazorpayService {
         itemPrice = rawDiscount > 0 ? rawPrice - rawDiscount : rawPrice;
       }
 
-      if (itemPrice === 0 && item.price && Number(item.price) > 0) {
-        itemPrice = Number(item.price);
+      if (itemPrice === 0) {
+        throw new Error(`Product ${item.productId} has no valid price in the database`);
       }
 
       subtotal += itemPrice * Number(item.quantity || 1);
     }
 
-    // Apply discount and shipping fee (no hardcoded +800)
-    let discountAmount = 0;
-    if (input.discountCode === "FESTIVE20" || (input.discountPct && input.discountPct > 0)) {
-      const pct = input.discountPct || 20;
-      discountAmount = Math.round((subtotal * pct) / 100);
-    }
+    // Apply discount (server-side code lookup) and shipping fee
+    const discountAmount = Math.round((subtotal * discountPctFor(input.discountCode)) / 100);
 
-    const shipping = Number(input.shippingFee || 0);
+    const shipping = await this.computeShippingFee(input.userId, input.addressId, subtotal - discountAmount);
     // GST is already included in product price — do not add extra
     const grandTotal = Math.max(0, subtotal - discountAmount) + shipping;
     const amountInPaise = Math.round(grandTotal * 100);
@@ -201,8 +249,8 @@ export class RazorpayService {
         itemPrice = rawDiscount > 0 ? rawPrice - rawDiscount : rawPrice;
       }
 
-      if (itemPrice === 0 && item.price && Number(item.price) > 0) {
-        itemPrice = Number(item.price);
+      if (itemPrice === 0) {
+        throw new Error(`Product ${item.productId} has no valid price in the database`);
       }
 
       const qty = Number(item.quantity || 1);
@@ -219,13 +267,9 @@ export class RazorpayService {
       });
     }
 
-    let discountAmount = 0;
-    if (input.discountCode === "FESTIVE20" || (input.discountPct && input.discountPct > 0)) {
-      const pct = input.discountPct || 20;
-      discountAmount = Math.round((subtotal * pct) / 100);
-    }
+    const discountAmount = Math.round((subtotal * discountPctFor(input.discountCode)) / 100);
 
-    const shipping = Number(input.shippingFee || 0);
+    const shipping = await this.computeShippingFee(input.userId, input.addressId, subtotal - discountAmount);
     // GST is already included in product price — do not add extra
     const grandTotal = Math.max(0, subtotal - discountAmount) + shipping;
   
@@ -260,6 +304,7 @@ export class RazorpayService {
         item_name: itemName,
         quantity: resolvedItemDetails.reduce((sum, item) => sum + item.quantity, 0),
         total_price: grandTotal,
+        shipping_fee: shipping,
         payment: "Razorpay",
         type: "Regular",
         status: "Paid",
