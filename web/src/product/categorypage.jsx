@@ -79,7 +79,7 @@ export default function CategoryPage({ category }) {
 
   const DEFAULT_CATEGORIES = ["Rings", "Earrings", "Bracelets", "Bangles", "Necklaces", "Anklets"];
 
-  const categoryOptions = useMemo(() =>{
+  const categoryOptions = useMemo(() => {
     const customNames = (allCategories || [])
       .map(c => c.name)
       .filter(Boolean)
@@ -108,8 +108,8 @@ export default function CategoryPage({ category }) {
 
   const handleNavClick = (link) => {
 
-    if (link == category){
-      window.scrollTo({ top: 0, behavior: "smooth"});
+    if (link == category) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -246,7 +246,7 @@ export default function CategoryPage({ category }) {
     const pages = [];
 
     const range = [];
-    for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++){
+    for (let i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
       range.push(i);
     }
 
@@ -514,8 +514,8 @@ export default function CategoryPage({ category }) {
                 {subcategoryParam
                   ? `No products in "${subcategoryParam}" subcategory yet. Check back soon!`
                   : (products.length === 0
-                      ? "No products in this category yet. Check back soon!"
-                      : "No items match your filters. Try adjusting your search criteria.")}
+                    ? "No products in this category yet. Check back soon!"
+                    : "No items match your filters. Try adjusting your search criteria.")}
               </p>
               {products.length > 0 && (
                 <button type="button" onClick={() => {
@@ -555,7 +555,7 @@ export default function CategoryPage({ category }) {
                       {/* <p className="product-card-subtitle-desc">{product.desc}</p> */}
                       <div className="product-card-price-row">
                         <span className="price-tag-now">₹{product.price}</span>
-                        <span className="price-tag-was">MRP: ₹{product.compare_price}</span>
+                        <span className="price-tag-was">₹{product.compare_price}</span>
                       </div>
                     </div>
                   </article>
@@ -564,7 +564,7 @@ export default function CategoryPage({ category }) {
 
               <div className="pagination-bar-wrapper">
                 <button
-                  type= "button"
+                  type="button"
                   onClick={() => handlePageChange("prev")}
                   disabled={currentPage === 1}
                   className="pagination-arrow-button"
@@ -576,7 +576,7 @@ export default function CategoryPage({ category }) {
                 </button>
 
                 <div className="pagination-numbers-row">
-                  {getPageNumbers(currentPage, totalPages).map((p, i) => 
+                  {getPageNumbers(currentPage, totalPages).map((p, i) =>
                     p == "..." ? (
                       <span key={`ellipsis-${i}`} className="pagination-ellipsis">…</span>
                     ) : (

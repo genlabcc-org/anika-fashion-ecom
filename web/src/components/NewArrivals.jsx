@@ -190,7 +190,7 @@ export default function NewArrivals({ onProductClick }) {
                   <div className="new-arrival-price-row">
                     <span className="new-arrival-price">{product.price}</span>
                     {product.original && (
-                      <span className="new-arrival-original">MRP: {product.original}</span>
+                      <span className="new-arrival-original">{product.original}</span>
                     )}
                   </div>
                 </div>

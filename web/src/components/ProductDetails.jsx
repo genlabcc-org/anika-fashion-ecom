@@ -221,7 +221,7 @@ const RelatedProducts = memo(({ showAll, setShowAll, relatedItems, onProductClic
               {/* <p className="pp-rel-sub">{p.sub}</p> */}
               <div className="pp-rel-prices">
                 <span className="pp-rel-price">{p.price}</span>
-                <span className="pp-rel-orig"> MRP: {p.original}</span>
+                <span className="pp-rel-orig"> {p.original}</span>
               </div>
             </div>
           </div>
@@ -1049,7 +1049,7 @@ export default function ProductPage({ onBack }) {
                       <ul className='pp-policy-block-list'>
                         <li>⁠Return the item within 48 hrs of delivery.</li>
                         <li>You can use India Post, ST Courier, Franch Express or DTDC.</li>
-                        <li>Shipping cost of ₹70 will be reimbursed by us.</li>
+                        <li>Shipping cost .</li>
                         <li>Our team will share the return address.</li>
                         <li>Kindly forward the tracking number on WhatsApp once dispatched.</li>
                       </ul>

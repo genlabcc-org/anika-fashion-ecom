@@ -95,8 +95,7 @@ export default function CartPage() {
   // GST is already included in product price — extract for display only, not added to total
   const gstIncluded = subtotal > 0 ? Math.round(subtotal - (subtotal / 1.03)) : 0;
   const platformFee = 0;
-  const deliveryFee = subtotal > 0 ? 70 : 0;
-  const grandTotal = subtotal + platformFee + deliveryFee;
+  const grandTotal = subtotal + platformFee;
 
 
 
@@ -249,9 +248,8 @@ export default function CartPage() {
                   <span>GST (3% Incl.)</span>
                   <span>₹{gstIncluded.toLocaleString("en-IN")}</span>
                 </div>
-                <div className="summary-row">
-                  <span>Delivery Fee</span>
-                  <span className="free-label">+{deliveryFee}</span>
+                <div className="cart-delivery-note">
+                  * Delivery Charge will be added in the payment page
                 </div>
                 <div className="summary-divider"></div>
                 <div className="summary-row summary-grand">

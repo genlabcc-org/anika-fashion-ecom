@@ -231,7 +231,7 @@ export default function BestSellers({ onProductClick }) {
                   <div className="best-seller-price-row">
                     <span className="best-seller-price">{product.price}</span>
                     {product.original && (
-                      <span className="best-seller-original">MRP: {product.original}</span>
+                      <span className="best-seller-original">{product.original}</span>
                     )}
                   </div>
                 </div>

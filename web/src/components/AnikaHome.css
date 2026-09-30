@@ -477,37 +477,10 @@ body {
   }
 }
 
-/* ── Hero Carousel Dots ── */
-.hero-dots {
-  position: absolute;
-  bottom: 20px;
-  right: 40px;
-  display: flex;
-  gap: 8px;
-  z-index: 10;
-}
+.hero-swiper { width: 100%; height: 100%; }
+.hero-swiper .swiper-slide { height: auto; }
 
-@media (max-width: 768px) {
-  .hero-dots {
-    bottom: 12px;
-    right: 50%;
-    transform: translateX(50%);
-  }
-}
-
-.hero-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.4);
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  transition: all 0.3s ease;
-}
-
-.hero-dot--active {
-  background: #fff;
-  width: 24px;
-  border-radius: 12px;
-}
+/* pagination dots */
+.hero-swiper .swiper-pagination { bottom: 14px; }
+.hero-swiper .swiper-pagination-bullet { background: #fff; opacity: .6; }
+.hero-swiper .swiper-pagination-bullet-active { background: #8b0030; opacity: 1; }
