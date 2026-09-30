@@ -11,6 +11,10 @@ import Navbar from "./SiteHeader";
 import Footer from "./SiteFooter";
 import Toast from "./Toast";
 import LogoImg from "../assets/offers/logo.svg";
+import UpiIcon from "../assets/upi.svg";
+import VisaIcon from "../assets/visa.svg";
+import MastercardIcon from "../assets/mastercard.svg";
+import PaymentMorePopup from "./PaymentMorePopup";
 import { getOriginalImageUrl } from '../utils/imageUtils';
 import { getNavPath } from "../services/categoryRoute";
 
@@ -888,10 +892,10 @@ export default function ShippingAddress() {
                           <span className="payment-method-name">Razorpay Secure (UPI, Cards, Int'l Cards, Wallets)</span>
                         </div>
                         <div className="payment-card-logos">
-                          <span className="logo-icon upi">UPI</span>
-                          <span className="logo-icon visa">Visa</span>
-                          <span className="logo-icon mc">MC</span>
-                          <span className="logo-icon count">+18</span>
+                          <img src={UpiIcon} alt="UPI" className="payment-card-logo-img upi-logo" />
+                          <img src={VisaIcon} alt="Visa" className="payment-card-logo-img visa-logo" />
+                          <img src={MastercardIcon} alt="Mastercard" className="payment-card-logo-img mc-logo" />
+                          <PaymentMorePopup />
                         </div>
                       </label>
 

@@ -38,6 +38,10 @@ import MainBangle from '../assets/Product1.webp';
 import PayPalIcon from '../assets/PaymentPal.webp';
 import GPayIcon from '../assets/PaymentGPay.webp';
 import RazorIcon from '../assets/PaymentRazor.webp';
+import UpiIcon from '../assets/upi.svg';
+import VisaIcon from '../assets/visa.svg';
+import MastercardIcon from '../assets/mastercard.svg';
+import PaymentMorePopup from './PaymentMorePopup';
 
 
 // ── Loading Skeleton (Placeholder for better perceived speed) ─────────────────
@@ -846,9 +850,10 @@ export default function ProductPage({ onBack }) {
             <div className='pp-opay'>
               <p>Guaranteed Safe Checkout</p>
               <div className='pp-opay-icons'>
-                <img src={PayPalIcon} alt="Paypal" />
-                <img src={RazorIcon} alt="Razor Pay" />
-                <img src={GPayIcon} alt="Google Pay" />
+                <img src={UpiIcon} alt="UPI" className="pp-opay-upi" />
+                <img src={VisaIcon} alt="Visa" className="pp-opay-card" />
+                <img src={MastercardIcon} alt="Mastercard" className="pp-opay-card" />
+                <PaymentMorePopup />
               </div>
             </div>
 
