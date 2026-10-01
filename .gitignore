@@ -68,3 +68,7 @@ override.tf.json
 .terraformrc
 terraform.rc
 .terraform.lock.hcl
+
+# Icarry Docs
+icarry_api_v16_extracted.txt
+icarry-api new 16.00.pdf
