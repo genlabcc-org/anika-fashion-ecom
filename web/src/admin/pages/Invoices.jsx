@@ -71,14 +71,18 @@ const Invoices = ({ orders = [], loading = false }) => {
 
   // Open invoice preview and fetch customer address if available
   const handleOpenPreview = async (order) => {
+    if (!order) return;
+    const existingAddr = order.shipping_address || order.address || null;
     setPreviewOrder(order);
-    setPreviewAddress(null);
+    setPreviewAddress(existingAddr);
     if (order.user_id) {
       try {
         setPreviewLoadingAddress(true);
         const addresses = await orderService.getAddresses(order.user_id);
         const defaultAddr = addresses.find((a) => a.is_default) || addresses[0];
-        setPreviewAddress(defaultAddr || null);
+        if (defaultAddr) {
+          setPreviewAddress(defaultAddr);
+        }
       } catch (e) {
         console.debug("Could not fetch address for preview:", e);
       } finally {
@@ -190,27 +194,38 @@ const Invoices = ({ orders = [], loading = false }) => {
       setPrintAddresses(addrMap);
       setPrintBatch(ordersToPrint);
 
-      // Allow 300ms for React to mount thermal invoices to the DOM
-      await new Promise((res) => setTimeout(res, 300));
+      // Allow DOM to render the thermal invoice with all details & barcode
+      await new Promise((res) => setTimeout(res, 350));
 
       // Trigger browser print dialog
       window.print();
 
-      // Show confirmation prompt to verify print success before marking in database
+      // Automatically update printed status in Supabase & local state
       const ids = ordersToPrint.map((o) => o.id);
-      setPendingConfirmBatch({
-        orders: ordersToPrint,
-        ids: ids,
-      });
+      try {
+        await orderService.markInvoicesBulkPrinted(ids);
+        setLocalOrders((prev) =>
+          prev.map((o) => (ids.includes(o.id) ? { ...o, invoice_printed: true } : o))
+        );
+        setPreviewOrder((prev) =>
+          prev && ids.includes(prev.id) ? { ...prev, invoice_printed: true } : prev
+        );
+        showToast(
+          `🖨️ Sent ${ids.length} invoice${ids.length > 1 ? "s" : ""} to H30C Pro printer!`,
+          "success"
+        );
+      } catch (err) {
+        console.error("Failed to mark printed in DB:", err);
+      }
     } catch (err) {
       console.error("Print batch error:", err);
       showToast("Print error: " + err.message, "error");
     } finally {
-      // Delay unmounting so asynchronous print dialogs don't capture an empty DOM
+      setIsPrinting(false);
+      // Keep thermal invoices mounted for at least 15s so print spooler never loses content
       setTimeout(() => {
-        setIsPrinting(false);
         setPrintBatch([]);
-      }, 1000);
+      }, 15000);
     }
   };
 
@@ -825,40 +840,6 @@ const Invoices = ({ orders = [], loading = false }) => {
                     {previewOrder.invoice_printed ? "Print Again" : "Print Invoice"}
                   </>
                 )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmation Modal: Ask user if printing was successful */}
-      {pendingConfirmBatch && (
-        <div className="inv__confirm-overlay">
-          <div className="inv__confirm-modal">
-            <div className="inv__confirm-icon">🖨️</div>
-            <h3 className="inv__confirm-title">Did the invoice print successfully?</h3>
-            <p className="inv__confirm-desc">
-              {pendingConfirmBatch.ids.length === 1
-                ? `Order #${String(pendingConfirmBatch.orders[0]?.id).slice(-8).toUpperCase()} was sent to your printer.`
-                : `${pendingConfirmBatch.ids.length} invoices were sent to your printer.`}
-            </p>
-            <p className="inv__confirm-subtext">
-              If you cancelled or the printer ran out of paper, click <strong>"No / Cancelled"</strong> so it remains in your pending list.
-            </p>
-            <div className="inv__confirm-actions">
-              <button
-                className="inv__confirm-btn inv__confirm-btn--yes"
-                onClick={handleConfirmPrinted}
-                disabled={isUpdatingStatus}
-              >
-                {isUpdatingStatus ? "Updating..." : "✓ Yes, Mark as Printed"}
-              </button>
-              <button
-                className="inv__confirm-btn inv__confirm-btn--no"
-                onClick={handleCancelPrinted}
-                disabled={isUpdatingStatus}
-              >
-                ✕ No / Cancelled
               </button>
             </div>
           </div>
