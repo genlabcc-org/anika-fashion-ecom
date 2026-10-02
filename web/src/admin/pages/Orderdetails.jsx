@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { orderService } from "../../services/orderService";
@@ -1002,10 +1003,13 @@ const OrderDetails = ({ order, onBack }) => {
         </div>
       )}
 
-      {/* Thermal Invoice container for print */}
-      <div className="thermal-print-area">
-        <ThermalInvoice ref={invoiceRef} order={o} address={address} />
-      </div>
+      {/* Thermal Invoice container for print — teleported to document.body */}
+      {typeof document !== "undefined" && createPortal(
+        <div className="thermal-print-area">
+          <ThermalInvoice ref={invoiceRef} order={o} address={address} />
+        </div>,
+        document.body
+      )}
       <Toast
         message={toast.message}
         type={toast.type}

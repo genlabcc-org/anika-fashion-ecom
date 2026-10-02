@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase";
 import ThermalInvoice from "../components/ThermalInvoice";
 import { orderService } from "../../services/orderService";
@@ -176,26 +177,29 @@ const Invoices = ({ orders = [], loading = false }) => {
     try {
       setIsPrinting(true);
 
-      // Pre-fetch shipping addresses for orders missing them so receipt has full details
+      // Pre-fetch shipping addresses in parallel for orders missing them so receipt has full details
       const addrMap = { ...printAddresses };
       if (previewOrder && previewAddress) {
         addrMap[previewOrder.id] = previewAddress;
       }
-      for (const ord of ordersToPrint) {
-        if (!addrMap[ord.id] && ord.user_id) {
-          try {
-            const addrs = await orderService.getAddresses(ord.user_id);
-            addrMap[ord.id] = addrs.find((a) => a.is_default) || addrs[0] || null;
-          } catch (e) {
-            console.debug("Could not fetch address for print:", e);
-          }
-        }
+      const missingAddrOrders = ordersToPrint.filter((ord) => !addrMap[ord.id] && ord.user_id);
+      if (missingAddrOrders.length > 0) {
+        await Promise.all(
+          missingAddrOrders.map(async (ord) => {
+            try {
+              const addrs = await orderService.getAddresses(ord.user_id);
+              addrMap[ord.id] = addrs.find((a) => a.is_default) || addrs[0] || null;
+            } catch (e) {
+              console.debug("Could not fetch address for print:", e);
+            }
+          })
+        );
       }
       setPrintAddresses(addrMap);
       setPrintBatch(ordersToPrint);
 
-      // Allow DOM to render the thermal invoice with all details & barcode
-      await new Promise((res) => setTimeout(res, 350));
+      // Allow DOM to fully render all batch thermal invoices
+      await new Promise((res) => setTimeout(res, 500));
 
       // Trigger browser print dialog
       window.print();
@@ -846,8 +850,8 @@ const Invoices = ({ orders = [], loading = false }) => {
         </div>
       )}
 
-      {/* Hidden container used during printing — supports both single order and batch */}
-      {printBatch && printBatch.length > 0 && (
+      {/* Hidden container used during printing — teleported to document.body to avoid dashboard overflow/clipping */}
+      {printBatch && printBatch.length > 0 && typeof document !== "undefined" && createPortal(
         <div className="thermal-print-area">
           {printBatch.map((orderItem) => (
             <ThermalInvoice
@@ -856,7 +860,8 @@ const Invoices = ({ orders = [], loading = false }) => {
               address={printAddresses[orderItem.id] || (previewOrder?.id === orderItem.id ? previewAddress : null)}
             />
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
