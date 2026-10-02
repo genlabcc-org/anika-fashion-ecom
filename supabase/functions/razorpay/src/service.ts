@@ -199,7 +199,7 @@ export class RazorpayService {
     const productIds = input.items.map(item => item.productId).filter(Boolean);
     const { data: rawProducts, error: dbError } = await this.supabaseAdmin
       .from("products")
-      .select("product_id, name, price, discount_price, image_url, images, product_variants(*)")
+      .select("product_id, name, price, discount_price, image_url, images, sku, product_variants(*)")
       .in("product_id", productIds);
     const products = (rawProducts || []) as unknown as any[];
 
@@ -216,6 +216,7 @@ export class RazorpayService {
       size: string | null;
       color: string | null;
       image: string | null;
+      sku: string | null;
     }> = [];
 
     for (const item of input.items) {
@@ -227,6 +228,7 @@ export class RazorpayService {
       const variants = product.product_variants || [];
       let itemPrice = 0;
       let itemImage = product.image_url || (product.images && product.images[0]) || null;
+      let itemSku: string | null = product.sku || null;
 
       if (variants.length > 0) {
         const matchedVariant = variants.find((v: any) => {
@@ -238,6 +240,7 @@ export class RazorpayService {
         }) || variants[0];
 
         itemPrice = Number(matchedVariant?.price || 0);
+        itemSku = matchedVariant?.sku || itemSku;
         if (matchedVariant?.images && matchedVariant.images.length > 0) {
           itemImage = matchedVariant.images[0];
         }
@@ -264,6 +267,7 @@ export class RazorpayService {
         size: item.size || null,
         color: item.color || null,
         image: itemImage,
+        sku: itemSku,
       });
     }
 
@@ -330,6 +334,7 @@ export class RazorpayService {
       size: item.size,
       color: item.color,
       image_url: item.image,
+      sku: item.sku,
     }));
 
     const { error: itemsInsertError } = await this.supabaseAdmin

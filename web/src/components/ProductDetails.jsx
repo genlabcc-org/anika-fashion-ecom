@@ -1049,7 +1049,7 @@ export default function ProductPage({ onBack }) {
                       <ul className='pp-policy-block-list'>
                         <li>⁠Return the item within 48 hrs of delivery.</li>
                         <li>You can use India Post, ST Courier, Franch Express or DTDC.</li>
-                        <li>Shipping cost .</li>
+                        <li>Shipping charges are calculated at checkout based on your delivery address and are shown on the payment page before you pay.</li>
                         <li>Our team will share the return address.</li>
                         <li>Kindly forward the tracking number on WhatsApp once dispatched.</li>
                       </ul>

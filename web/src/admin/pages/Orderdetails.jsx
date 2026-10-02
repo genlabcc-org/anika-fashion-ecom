@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { orderService } from "../../services/orderService";
-import { productService } from "../../services/productService";
+
 import { icarryService } from "../../services/icarryService";
 import { useStore } from "../../hooks/useStore";
 import Toast from "../../components/Toast";
@@ -40,7 +40,7 @@ const OrderDetails = ({ order, onBack }) => {
   const [addressLoading, setAddressLoading] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "" });
-  const [productsMap, setProductsMap] = useState({});
+
   const [invoicePrinted, setInvoicePrinted] = useState(order?.invoice_printed || false);
   const [printing, setPrinting] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -96,43 +96,29 @@ const OrderDetails = ({ order, onBack }) => {
     };
   }, [order?.id]);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        const data = await productService.getProducts();
-        const map = {};
-        if (data) {
-          data.forEach(p => {
-            map[p.name] = p;
-          });
-        }
-        setProductsMap(map);
-      } catch (err) {
-        console.error("Error fetching products:", err);
-      }
-    };
-    fetchProducts();
-  }, []);
 
-  const handleItemClick = (item) => {
-    const product = productsMap[item.product_name];
-    if (product) {
-      const formattedProduct = {
-        ...product,
-        id: product.product_id || product.id,
-        productId: product.product_id || product.id,
-        img: product.image_url || (product.images && product.images[0]) || '/src/assets/cart/bangle1.webp',
-        name: product.name,
-        desc: product.description,
-        price: product.price,
-        originalPrice: product.compare_price || Math.round(product.price * 1.3),
-        sizes: product.sizes || [],
-        stock: product.stock > 0 ? 'in-stock' : 'out-of-stock',
-        category: product.categories?.name || product.category || 'Bangles'
-      };
-      setSelectedProduct(formattedProduct);
-      navigate("/product");
-    }
+
+  const handleItemClick = async (item) => {
+    if (!item.product_id) return;
+    const { data: product, error } = await supabase
+      .from("products")
+      .select("product_id, name, description, price, compare_price, image_url, images, sizes, stock, sku, categories(name)")
+      .eq("product_id", item.product_id)
+      .single();
+    if (error || !product) return;
+
+    setSelectedProduct({
+      ...product,
+      id: product.product_id,
+      productId: product.product_id,
+      img: product.image_url || product.images?.[0] || "/src/assets/cart/bangle1.webp",
+      desc: product.description,
+      originalPrice: product.compare_price || Math.round(product.price * 1.3),
+      sizes: product.sizes || [],
+      stock: product.stock > 0 ? "in-stock" : "out-of-stock",
+      category: product.categories?.name || "Bangles",
+    });
+    navigate("/product");
   };
 
   const showToast = (message, type = "info") => {
@@ -311,7 +297,8 @@ const OrderDetails = ({ order, onBack }) => {
     price: o.total_price || 0,
     size: null,
     color: null,
-    image_url: null
+    image_url: null,
+    sku: o.sku || null
   }];
 
   const uniqueProducts = orderItems.length;
@@ -552,9 +539,10 @@ const OrderDetails = ({ order, onBack }) => {
         <div className="od__card-title">Order Details</div>
         <div className="od__items-list">
           {orderItems.map((item, idx) => {
-            const product = productsMap[item.product_name];
-            const image = item.image_url || product?.image_url || (product?.images && product.images[0]) || '/src/assets/cart/bangle1.webp';
-            const isClickable = !!product;
+            const image = item.image_url || '/src/assets/cart/bangle1.webp';
+            const isClickable = !!item.product_id;
+            const resolvedSku =
+              item.sku && item.sku !== 'N/A' && item.sku !== 'undefined' ? item.sku : null;
 
             return (
               <div
@@ -574,10 +562,51 @@ const OrderDetails = ({ order, onBack }) => {
                   )}
                 </div>
                 <div className="od__item-info">
-                  <div className="od__item-name" style={{ fontWeight: '500' }}>
-                    {item.product_name}
+                  <div className="od__item-name" style={{ fontWeight: '500', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{item.product_name}</span>
+                    {resolvedSku ? (
+                      <span
+                        className="od__item-sku-tag"
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          color: '#475569',
+                          backgroundColor: '#f1f5f9',
+                          padding: '1px 7px',
+                          borderRadius: '4px',
+                          border: '1px solid #e2e8f0',
+                          letterSpacing: '0.3px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          lineHeight: '1.4',
+                          flexShrink: 0
+                        }}
+                      >
+                        SKU: {resolvedSku}
+                      </span>
+                    ) : (
+                      <span
+                        className="od__item-sku-tag"
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: '500',
+                          color: '#94a3b8',
+                          backgroundColor: '#f8fafc',
+                          padding: '1px 7px',
+                          borderRadius: '4px',
+                          border: '1px solid #e2e8f0',
+                          letterSpacing: '0.3px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          lineHeight: '1.4',
+                          flexShrink: 0
+                        }}
+                      >
+                        SKU: N/A
+                      </span>
+                    )}
                     {isClickable && (
-                      <span className="od__view-link" style={{ fontSize: '11px', color: '#8b0030', marginLeft: '8px', fontWeight: 'normal' }}>
+                      <span className="od__view-link" style={{ fontSize: '11px', color: '#8b0030', fontWeight: 'normal', flexShrink: 0 }}>
                         (View Product)
                       </span>
                     )}

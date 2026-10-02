@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom"; 
 import { authService } from "../services/authService";
 import { useStore } from "../hooks/useStore";
-import { productService } from "../services/productService";
 import { supabase } from "../lib/supabase";
 import { getUserInitials } from "../utils/avatarUtils";
 import "./AnikaProfile.css";
@@ -31,7 +30,6 @@ export default function AnikaProfile() {
   const orders = useStore((s) => s.orders);
   const fetchOrders = useStore((s) => s.fetchOrders);
 
-  const [productsMap, setProductsMap] = useState({});
   const [customerDetails, setCustomerDetails] = useState({
     name: "",
     phone: "",
@@ -84,16 +82,6 @@ export default function AnikaProfile() {
 
     fetchProfile();
   }, [user, orders]);
-
-  useEffect(() => {
-    productService.getProducts().then((productsData) => {
-      const map = {};
-      (productsData || []).forEach((p) => {
-        map[p.name] = p;
-      });
-      setProductsMap(map);
-    }).catch((err) => console.error("Error fetching products:", err));
-  }, []);
 
   const handleEdit = () => {
     setTempDetails({ ...customerDetails });

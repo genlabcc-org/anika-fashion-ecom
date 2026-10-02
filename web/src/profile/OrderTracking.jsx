@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { orderService } from "../services/orderService";
-import { productService } from "../services/productService";
 import { useStore } from "../hooks/useStore";
 import Navbar from "../components/SiteHeader";
 import Footer from "../components/SiteFooter";
@@ -23,36 +22,6 @@ export default function OrderTracking() {
     location.state?.order?.shipping_address || location.state?.order?.address || null
   );
   const [addressLoading, setAddressLoading] = useState(false);
-  const [productsMap, setProductsMap] = useState({});
-
-  // Fetch real products from DB so product images and details are always 100% accurate
-  useEffect(() => {
-    let isMounted = true;
-    const fetchDbProducts = async () => {
-      try {
-        const data = await productService.getProducts();
-        if (!isMounted) return;
-        const map = {};
-        if (data && Array.isArray(data)) {
-          data.forEach((p) => {
-            if (p.product_id) map[String(p.product_id)] = p;
-            if (p.id) map[String(p.id)] = p;
-            if (p.name) {
-              map[p.name] = p;
-              map[p.name.toLowerCase().trim()] = p;
-            }
-          });
-        }
-        setProductsMap(map);
-      } catch (err) {
-        console.error("Error fetching products in OrderTracking:", err);
-      }
-    };
-    fetchDbProducts();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     if (!orderId) return;
@@ -212,30 +181,11 @@ export default function OrderTracking() {
       color: order?.color || null
     }];
 
-  const orderItems = rawItems.map((item) => {
-    const matchedProduct =
-      (item.product_id ? (productsMap[String(item.product_id)] || productsMap[item.product_id]) : null) ||
-      (item.productId ? (productsMap[String(item.productId)] || productsMap[item.productId]) : null) ||
-      (item.product_name ? (productsMap[item.product_name] || productsMap[item.product_name.toLowerCase()?.trim()]) : null) ||
-      (order?.item_name ? (productsMap[order.item_name] || productsMap[order.item_name.toLowerCase()?.trim()]) : null);
-
-    const imageUrl =
-      item.image_url ||
-      item.img ||
-      matchedProduct?.image_url ||
-      (matchedProduct?.images && matchedProduct.images[0]) ||
-      order?.image_url ||
-      location.state?.item?.image_url ||
-      location.state?.item?.img ||
-      null;
-
-    return {
-      ...item,
-      image_url: imageUrl,
-      product_name: item.product_name || matchedProduct?.name || order?.item_name || "Jewelry Item",
-      matchedProduct
-    };
-  });
+  const orderItems = rawItems.map((item) => ({
+    ...item,
+    image_url: item.image_url || item.img || null,
+    product_name: item.product_name || "Jewelry Item",
+  }));
 
   const orderDate = order?.order_date || order?.date
     ? new Date(order?.order_date || order?.date).toLocaleDateString("en-IN", {
@@ -270,6 +220,11 @@ export default function OrderTracking() {
     paymentMethodStr.includes("CASH") ||
     paymentMethodStr.includes("DELIVERY") ||
     (!order?.payment_id && !order?.razorpay_payment_id && paymentMethodStr !== "PAID" && paymentMethodStr !== "PREPAID" && paymentMethodStr !== "ONLINE");
+
+  const grandTotal = Number(order?.total_price) || 0;
+  const shippingFee = Number(order?.shipping_fee) || 0;
+  const productTotal = Math.max(0, grandTotal - shippingFee);
+  const fmtINR = (n) => `₹${n.toLocaleString("en-IN")}`;
 
 
   // Dynamic order timeline steps based strictly on database status (no static dummy statuses or tags)
@@ -782,17 +737,21 @@ export default function OrderTracking() {
                       </span>
                     </div>
                     <div className="track-sum-row">
-                      <span>Total Price</span>
-                      <span>{order.price || `₹${parseFloat(order.total_price || 0).toLocaleString("en-IN")}`}</span>
+                      <span>Product Price</span>
+                      <span>{fmtINR(productTotal)}</span>
                     </div>
                     <div className="track-sum-row">
                       <span>Shipping / Delivery</span>
-                      <span className="track-free-text">₹70</span>
+                      {shippingFee > 0 ? (
+                        <span>{fmtINR(shippingFee)}</span>
+                      ) : (
+                        <span className="track-free-text">Free</span>
+                      )}
                     </div>
                     <div className="track-sum-divider"></div>
                     <div className="track-sum-row track-sum-total">
                       <span>Grand Total</span>
-                      <span>{order.price || `₹${parseFloat(order.total_price || 0).toLocaleString("en-IN")}`}</span>
+                      <span>{fmtINR(grandTotal)}</span>
                     </div>
                   </div>
                 </div>
