@@ -271,6 +271,7 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .hero-overlay {

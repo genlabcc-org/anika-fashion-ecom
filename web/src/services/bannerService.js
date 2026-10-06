@@ -1,6 +1,25 @@
 import { supabase } from '../lib/supabase';
 import { compressImage } from '../utils/imageCompression';
 
+export const MAX_BANNER_BYTES = 6 * 1024 * 1024; // 6MB threshold
+
+/**
+ * Prepares banner file for upload.
+ * If file size <= 6MB, returns original file as-is without any canvas re-encoding or loss of clarity.
+ * If file > 6MB, compresses gently down to 4MB max at 2560px with 0.9 quality.
+ * @param {File} file 
+ * @returns {Promise<File|Blob>}
+ */
+export async function prepareBanner(file) {
+  if (!file) return file;
+  if (file.size <= MAX_BANNER_BYTES) {
+    return file; // upload as-is to preserve 100% original quality
+  }
+
+  // only compress genuinely huge files (> 6MB)
+  return await compressImage(file, 'banner');
+}
+
 export const bannerService = {
   /**
    * Fetch all banners from Supabase banners table
@@ -28,19 +47,21 @@ export const bannerService = {
   },
 
   /**
-   * Upload image file to Cloudflare R2 under banners/ folder with compression
+   * Upload image file to Cloudflare R2 under banners/ folder.
+   * Files <= 6MB are uploaded as-is with original clarity.
+   * Files > 6MB are compressed to max 4MB.
    * @param {File} file 
    * @returns {Promise<{ filePath: string, publicUrl: string }>}
    */
   async uploadBannerImage(file) {
-    // 1. Compress image before upload (like products)
-    const compressedFile = await compressImage(file, 'banner');
+    // 1. Prepare banner (upload as-is if <= 6MB; gentle compress only if > 6MB)
+    const fileToUpload = await prepareBanner(file);
 
-    const cleanName = (compressedFile.name || file.name || 'banner').replace(/[^a-zA-Z0-9.-]/g, '_');
+    const cleanName = (fileToUpload.name || file.name || 'banner').replace(/[^a-zA-Z0-9.-]/g, '_');
     const filePath = `banners/${Date.now()}-${cleanName}`;
 
     const formData = new FormData();
-    formData.append('file', compressedFile);
+    formData.append('file', fileToUpload);
     formData.append('filePath', filePath);
     formData.append('cacheControl', '31536000');
 

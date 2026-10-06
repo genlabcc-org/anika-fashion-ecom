@@ -242,7 +242,19 @@ const AddBanner = ({ onBack, onPublish, initialData }) => {
         <div className="ab__row">
           {/* Desktop Banner Image */}
           <div className="ab__col">
-            <label className="ab__label">Desktop Banner Image <span style={{ color: "#ef4444" }}>*</span></label>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+              <label className="ab__label" style={{ margin: 0 }}>Desktop Banner Image <span style={{ color: "#ef4444" }}>*</span></label>
+              {imageFile && (
+                <div className="ab__file-badge">
+                  <span>{(imageFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                  {imageFile.size <= 6 * 1024 * 1024 ? (
+                    <span className="ab__file-status ab__file-status--original">✓ Original Clarity</span>
+                  ) : (
+                    <span className="ab__file-status ab__file-status--compress">⚡ Auto-optimizing</span>
+                  )}
+                </div>
+              )}
+            </div>
             <div
               className={`ab__upload-zone${isDragging ? " ab__upload-zone--dragging" : ""}${previewImage ? " ab__upload-zone--has-image" : ""}`}
               onClick={() => {
@@ -285,7 +297,7 @@ const AddBanner = ({ onBack, onPublish, initialData }) => {
                     <UploadIcon />
                   </div>
                   <span className="ab__upload-text">Click or drop desktop image</span>
-                  <span className="ab__upload-hint">1920×600px recommended · Stored in Cloudflare</span>
+                  <span className="ab__upload-hint">1920×600px recommended · Under 3MB (Up to 6MB as-is)</span>
                 </div>
               )}
             </div>
@@ -293,7 +305,19 @@ const AddBanner = ({ onBack, onPublish, initialData }) => {
 
           {/* Mobile Banner Image (Optional) */}
           <div className="ab__col">
-            <label className="ab__label">Mobile Banner Image <span style={{ color: "#9ca3af", fontWeight: "normal" }}>(Optional)</span></label>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+              <label className="ab__label" style={{ margin: 0 }}>Mobile Banner Image <span style={{ color: "#9ca3af", fontWeight: "normal" }}>(Optional)</span></label>
+              {mobileImageFile && (
+                <div className="ab__file-badge">
+                  <span>{(mobileImageFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                  {mobileImageFile.size <= 6 * 1024 * 1024 ? (
+                    <span className="ab__file-status ab__file-status--original">✓ Original Clarity</span>
+                  ) : (
+                    <span className="ab__file-status ab__file-status--compress">⚡ Auto-optimizing</span>
+                  )}
+                </div>
+              )}
+            </div>
             <div
               className={`ab__upload-zone${isDraggingMobile ? " ab__upload-zone--dragging" : ""}${previewMobileImage ? " ab__upload-zone--has-image" : ""}`}
               onClick={() => {
@@ -336,7 +360,7 @@ const AddBanner = ({ onBack, onPublish, initialData }) => {
                     <UploadIcon />
                   </div>
                   <span className="ab__upload-text">Click or drop mobile image</span>
-                  <span className="ab__upload-hint">800×1000px portrait · Saved in mobile_url</span>
+                  <span className="ab__upload-hint">600×600px portrait · Under 2MB (Up to 6MB as-is)</span>
                 </div>
               )}
             </div>

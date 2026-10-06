@@ -31,6 +31,30 @@ export default function AnikaHome() {
     fetchBanners();
   }, []);
 
+  // Preload first banner image dynamically to boost LCP
+  useEffect(() => {
+    if (banners && banners.length > 0) {
+      const firstBanner = banners[0];
+      const desktopImg = firstBanner.image_url || firstBanner.image;
+      const mobileImg = firstBanner.mobile_url || desktopImg;
+      if (!desktopImg) return;
+
+      const isMobile = window.innerWidth <= 768;
+      const targetImg = isMobile && mobileImg ? mobileImg : desktopImg;
+
+      let link = document.querySelector('link[data-hero-preload]');
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'preload';
+        link.as = 'image';
+        link.setAttribute('data-hero-preload', 'true');
+        link.setAttribute('fetchpriority', 'high');
+        document.head.appendChild(link);
+      }
+      link.href = targetImg;
+    }
+  }, [banners]);
+
   const handleNavClick = (link) => {
     if (link === 'Home') {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -77,7 +101,7 @@ export default function AnikaHome() {
                   >
                     <picture style={{ display: "block", width: "100%", height: "100%" }}>
                       {b.mobile_url && (
-                        <source media="(max-width: 640px)" srcSet={b.mobile_url} />
+                        <source media="(max-width: 768px)" srcSet={b.mobile_url} />
                       )}
                       <img
                         src={img}
@@ -85,6 +109,7 @@ export default function AnikaHome() {
                         className="hero-image"
                         fetchPriority={i === 0 ? "high" : "auto"}
                         loading={i === 0 ? "eager" : "lazy"}
+                        decoding={i === 0 ? "sync" : "async"}
                       />
                     </picture>
 

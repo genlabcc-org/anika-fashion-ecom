@@ -5,12 +5,13 @@ export const COMPRESSION_PRESETS = {
   card: { maxWidthOrHeight: 600, maxSizeMB: 0.3 },
   detail: { maxWidthOrHeight: 1200, maxSizeMB: 0.6 },
   variant: { maxWidthOrHeight: 1000, maxSizeMB: 0.5 },
-  banner: { maxWidthOrHeight: 1920, maxSizeMB: 0.8 },
+  banner: { maxWidthOrHeight: 2560, maxSizeMB: 4, initialQuality: 0.9 },
 };
 
 export async function compressImage(file, preset = 'detail') {
+  const presetConfig = COMPRESSION_PRESETS[preset] || COMPRESSION_PRESETS.detail;
   const options = {
-    ...COMPRESSION_PRESETS[preset],
+    ...presetConfig,
     useWebWorker: true,
     fileType: 'image/webp',
   };
