@@ -64,6 +64,46 @@ export const productService = {
   },
 
   /**
+   * Generates next SKU in AF<CAT><0001> format (e.g. AFCLO0003).
+   * @param {string} categoryName 
+   * @returns {Promise<string>}
+   */
+  async getNextSku(categoryName) {
+    const catCode = (categoryName || 'PRD')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 3)
+      .toUpperCase();
+    const prefix = `AF${catCode}`;
+
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('sku')
+        .ilike('sku', `${prefix}%`);
+
+      if (!error && data && data.length > 0) {
+        let maxNum = 0;
+        for (const item of data) {
+          if (!item.sku) continue;
+          const match = item.sku.match(new RegExp(`^${prefix}(\\d+)`, 'i'));
+          if (match && match[1]) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxNum) {
+              maxNum = num;
+            }
+          }
+        }
+        const nextNum = maxNum + 1;
+        return `${prefix}${String(nextNum).padStart(4, '0')}`;
+      }
+      return `${prefix}0001`;
+    } catch (e) {
+      console.warn('Failed to query existing SKUs:', e);
+      return `${prefix}0001`;
+    }
+  },
+
+  /**
    * Retrieves all products.
    * @returns {Promise<any[]>}
    */

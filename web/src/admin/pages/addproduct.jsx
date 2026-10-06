@@ -89,7 +89,13 @@ const compressImage = async (file, maxWidth = 1200, quality = 0.8) => {
   });
 };
 
-const generateSKU = () => `ANK-${Math.floor(100000 + Math.random() * 900000)}`;
+export const generateSKU = (categoryName, sequenceNum = 1) => {
+  const catCode = (categoryName || "PRD")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 3)
+    .toUpperCase();
+  return `AF${catCode}${String(sequenceNum).padStart(4, "0")}`;
+};
 
 export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVariant, initialData }) {
   const isEditing = !!initialData;
@@ -99,7 +105,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
       ? {
         name: initialData.name || "",
         description: initialData.description || "",
-        sku: initialData.sku || generateSKU(),
+        sku: initialData.sku || "",
         category_id: initialData.category_id || "",
         subcategory_id: initialData.subcategory_id || "",
         price: initialData.price || "",
@@ -119,7 +125,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
       }
       : {
         ...EMPTY_FORM,
-        sku: generateSKU(),
+        sku: "",
       }
   );
 
@@ -195,7 +201,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
       setForm({
         name: initialData.name || "",
         description: initialData.description || "",
-        sku: initialData.sku || generateSKU(),
+        sku: initialData.sku || "",
         category_id: initialData.category_id || "",
         subcategory_id: initialData.subcategory_id || "",
         price: initialData.price || "",
@@ -222,7 +228,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
       );
       setVisibility([initialData.is_active ?? false, initialData.is_featured ?? false]);
     } else {
-      setForm({ ...EMPTY_FORM, sku: generateSKU() });
+      setForm({ ...EMPTY_FORM, sku: "" });
       setImageList([]);
       setVisibility([false, false]);
     }
@@ -351,7 +357,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
       const productData = {
         name: form.name,
         description: form.description,
-        sku: form.sku,
+        sku: form.sku || null,
         category_id: parseInt(form.category_id) || null,
         subcategory_id: form.subcategory_id || null,
         price: parseFloat(form.price) || 0,
@@ -392,6 +398,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
   const handlePublish = async () => {
     if (submitting || uploading) return;
     if (!form.name.trim()) { alert("Product name is required."); return; }
+    if (!form.category_id) { alert("Please select a category."); return; }
     if (!form.price) { alert("Price is required."); return; }
     if (errors.price) { alert(errors.price); return; }
     setSavingAction("publish");
@@ -408,9 +415,40 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
     if (!result.error && onSaveDraft) onSaveDraft(result.data);
   };
 
-  const handleCategoryChange = (e) => {
+  const handleCategoryChange = async (e) => {
     const newCategoryId = e.target.value;
-    setForm((f) => ({ ...f, category_id: newCategoryId, subcategory_id: "" }));
+    if (!newCategoryId) {
+      setForm((f) => ({
+        ...f,
+        category_id: "",
+        subcategory_id: "",
+        sku: "",
+      }));
+      return;
+    }
+
+    const selectedCategory = categories.find(
+      (c) => String(c.category_id) === String(newCategoryId)
+    );
+    const categoryName = selectedCategory?.name || "";
+
+    // Generate immediate SKU with category code while loading next sequence from DB
+    const initialSku = generateSKU(categoryName, 1);
+    setForm((f) => ({
+      ...f,
+      category_id: newCategoryId,
+      subcategory_id: "",
+      sku: initialSku,
+    }));
+
+    try {
+      const nextSku = await productService.getNextSku(categoryName);
+      if (nextSku) {
+        setForm((f) => (f.category_id === newCategoryId ? { ...f, sku: nextSku } : f));
+      }
+    } catch (err) {
+      console.warn("Failed to fetch next sequential SKU, keeping fallback:", err);
+    }
   };
 
   const handlePriceChange = (e) => {
@@ -479,17 +517,19 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
           <div className="field">
             <label>SKU</label>
             <input
-              placeholder="Auto Generated"
+              placeholder={form.category_id ? "Auto Generated" : "Select category to generate"}
               value={form.sku}
               readOnly
             />
-            <div className="auto-hint">Auto Generated</div>
+            <div className="auto-hint">
+              {form.sku ? "Auto Generated" : "Generated after selecting category"}
+            </div>
           </div>
           <div className="field">
             <label>Category</label>
             <select
               value={form.category_id}
-              onChange={set("category_id")}
+              onChange={handleCategoryChange}
             >
               <option value="">Select Category</option>
               {categories.map((cat) => (
