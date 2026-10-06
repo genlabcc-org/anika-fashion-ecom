@@ -161,8 +161,10 @@ const CreateSubCategory = ({ parentCategory, categories = [], onBack, onDiscard,
       let imageUrl = coverImage?.url && !coverImage?.file ? coverImage.url : null;
 
       if (coverImage?.file) {
-        const compressedFile = await compressImage(coverImage.file);
-        const safeName = compressedFile.file.name.replace(/\s+/g, '-');
+        const compressed = await compressImage(coverImage.file);
+        const fileToUpload = compressed?.file ?? compressed;
+        const safeName = (fileToUpload.name || coverImage.file.name).replace(/\s+/g, '-');
+        // const safeName = compressedFile.file.name.replace(/\s+/g, '-');
         const filePath = `subcategories/${Date.now()}-${safeName}`;
         await productService.uploadSubcategoryImage(filePath, coverImage.file);
         imageUrl = productService.getSubcategoryImagePublicUrl(filePath);
