@@ -610,6 +610,8 @@ const Dashboard = () => {
   const selectedCustomer = useStore((state) => state.selectedAdminCustomer);
   const setSelectedCustomer = useStore((state) => state.setSelectedAdminCustomer);
   const currentUser = useStore((state) => state.user);
+  const newOrdersCount = useStore((state) => state.newOrdersCount);
+  const subscribeToOrders = useStore((state) => state.subscribeToOrders);
   const [banners, setBanners] = useState([]);
   const [editingBanner, setEditingBanner] = useState(null);
 
@@ -647,6 +649,14 @@ const Dashboard = () => {
     if (!selectedOrder) return null;
     return orders.find((o) => o.id === selectedOrder.id) || selectedOrder;
   }, [selectedOrder, orders]);
+
+  // Realtime subscription for admin new orders badge
+  useEffect(() => {
+    const cleanup = subscribeToOrders();
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, [subscribeToOrders]);
 
   const selectedCustomerObj = useMemo(() => {
     if (!selectedCustomer) return null;
@@ -1209,6 +1219,11 @@ const Dashboard = () => {
                       {item.label}
                       {item.id === "settings" && <span className="db__menu-pro-badge">PRO</span>}
                     </span>
+                    {item.id === "order" && newOrdersCount > 0 && (
+                      <span className="admin-badge">
+                        {newOrdersCount > 99 ? "99+" : newOrdersCount}
+                      </span>
+                    )}
                     {hasChildren && <span className="db__chevron">{isOpen ? <ChevronUp /> : <ChevronDown />}</span>}
                   </button>
 

@@ -168,6 +168,19 @@ export const orderService = {
   },
 
   /**
+   * Retrieves the count of new unprocessed orders (Paid or Order Placed).
+   * @returns {Promise<number>}
+   */
+  async getNewOrdersCount() {
+    const { count, error } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .in('status', ['Paid', 'Order Placed']);
+    if (error) throw error;
+    return count || 0;
+  },
+
+  /**
    * Retrieves all customer profiles in the system (admin view).
    * @returns {Promise<any[]>}
    */
@@ -219,10 +232,10 @@ export const orderService = {
    */
   async cancelOrder(orderId) {
     const { data, error } = await supabase
-    .from('orders')
-    .update({ status: 'Cancelled', delivery_status: 'Cancelled' })
-    .eq('id', orderId)
-    .select();
+      .from('orders')
+      .update({ status: 'Cancelled', delivery_status: 'Cancelled' })
+      .eq('id', orderId)
+      .select();
     if (error) throw error;
     return data;
   },

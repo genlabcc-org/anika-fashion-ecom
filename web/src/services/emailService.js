@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-const ADMIN_EMAIL = 'jeyareshd@gmail.com';
+const ADMIN_EMAIL = 'anikafashionstorengl@gmail.com';
 
 export const emailService = {
   /**
@@ -25,16 +25,16 @@ export const emailService = {
       } = orderData;
 
       // Format shipping address line
-      const formattedAddress = typeof address === 'string' 
-        ? address 
+      const formattedAddress = typeof address === 'string'
+        ? address
         : [
-            address.name || customerName,
-            address.mobile ? `Phone: ${address.mobile}` : null,
-            address.flat ? `Address: ${address.flat}` : null,
-            address.area ? address.area : null,
-            address.landmark ? `Landmark: ${address.landmark}` : null,
-            address.city ? `${address.city}, ${address.state || ''} - ${address.pincode || ''}` : null,
-          ].filter(Boolean).join(', ');
+          address.name || customerName,
+          address.mobile ? `Phone: ${address.mobile}` : null,
+          address.flat ? `Address: ${address.flat}` : null,
+          address.area ? address.area : null,
+          address.landmark ? `Landmark: ${address.landmark}` : null,
+          address.city ? `${address.city}, ${address.state || ''} - ${address.pincode || ''}` : null,
+        ].filter(Boolean).join(', ');
 
       // Extract SKU IDs and Categories for separate rows
       const skuList = items

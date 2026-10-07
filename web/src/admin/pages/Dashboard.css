@@ -382,6 +382,22 @@
   line-height: 1.2;
 }
 
+.admin-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #c42049;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+  flex-shrink: 0;
+  display: inline-block;
+  box-sizing: border-box;
+}
+
 .db__sub-item--disabled {
   opacity: 0.5;
   cursor: not-allowed !important;

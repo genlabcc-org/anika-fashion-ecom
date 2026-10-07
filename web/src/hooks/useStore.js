@@ -112,6 +112,7 @@ export const useStore = create((set, get) => ({
   orders: [],
   loadingOrders: false,
   ordersFetchedFor: null,
+  newOrdersCount: 0,
 
   // --- Selected Product ---
   selectedProduct: (() => {
@@ -193,6 +194,7 @@ export const useStore = create((set, get) => ({
           wishlistItems: [],
           orders: [],
           ordersFetchedFor: null,
+          newOrdersCount: 0,
           addresses: [],
           addressesFetchedFor: null
         });
@@ -411,6 +413,45 @@ export const useStore = create((set, get) => ({
       set({ loadingOrders: false });
       return [];
     }
+  },
+
+  // --- Admin Order Badge ---
+  fetchNewOrdersCount: async () => {
+    try {
+      const count = await orderService.getNewOrdersCount();
+      set({ newOrdersCount: count });
+      return count;
+    } catch (err) {
+      console.error('Error fetching new orders count:', err);
+      return 0;
+    }
+  },
+
+  subscribeToOrders: () => {
+    get().fetchNewOrdersCount();
+
+    let debounceTimer = null;
+    const handleOrderChange = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        get().fetchNewOrdersCount();
+      }, 300);
+    };
+
+    const channelName = `admin-orders-badge-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        handleOrderChange
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   },
 
   // --- Selected Product Actions ---
