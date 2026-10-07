@@ -109,7 +109,7 @@ export class RazorpayService {
     const productIds = items.map(item => item.productId).filter(Boolean);
     const { data: rawProducts, error: dbError } = await this.supabaseAdmin
       .from("products")
-      .select("product_id, name, price, discount_price, product_variants(*)")
+      .select("product_id, name, price, discount_price, stock, product_variants(*)")
       .in("product_id", productIds);
     const products = (rawProducts || []) as unknown as any[];
 
@@ -127,9 +127,10 @@ export class RazorpayService {
 
       const variants = product.product_variants || [];
       let itemPrice = 0;
+      let matchedVariant: any = null;
 
       if (variants.length > 0) {
-        const matchedVariant = variants.find((v: any) => {
+        matchedVariant = variants.find((v: any) => {
           const matchSize = item.size ? String(v.size || '').trim().toLowerCase() === String(item.size).trim().toLowerCase() : true;
           const matchColor = item.color ? String(v.color || '').trim().toLowerCase() === String(item.color).trim().toLowerCase() : true;
           return matchSize && matchColor;
@@ -150,7 +151,16 @@ export class RazorpayService {
         throw new Error(`Product ${item.productId} has no valid price in the database`);
       }
 
-      subtotal += itemPrice * Number(item.quantity || 1);
+      // Stock check — fail fast before creating the Razorpay order
+      const requestedQty = Number(item.quantity || 1);
+      const availableStock = matchedVariant
+        ? Number(matchedVariant.stock ?? Infinity)
+        : Number(product.stock ?? Infinity);
+      if (availableStock < requestedQty) {
+        throw new Error(`"${product.name}" doesn't have enough stock`);
+      }
+
+      subtotal += itemPrice * requestedQty;
     }
 
     // Apply discount (server-side code lookup) and shipping fee
@@ -227,11 +237,12 @@ export class RazorpayService {
 
       const variants = product.product_variants || [];
       let itemPrice = 0;
+      let matchedVariant: any = null;
       let itemImage = product.image_url || (product.images && product.images[0]) || null;
       let itemSku: string | null = product.sku || null;
 
       if (variants.length > 0) {
-        const matchedVariant = variants.find((v: any) => {
+        matchedVariant = variants.find((v: any) => {
           const matchSize = item.size ? String(v.size || '').trim().toLowerCase() === String(item.size).trim().toLowerCase() : true;
           const matchColor = item.color ? String(v.color || '').trim().toLowerCase() === String(item.color).trim().toLowerCase() : true;
           return matchSize && matchColor;
@@ -264,8 +275,8 @@ export class RazorpayService {
         name: product.name || "Unknown Product",
         price: itemPrice,
         quantity: qty,
-        size: item.size || null,
-        color: item.color || null,
+        size:  matchedVariant ? (matchedVariant.size ?? null)  : (item.size  || null),
+        color: matchedVariant ? (matchedVariant.color ?? null) : (item.color || null),
         image: itemImage,
         sku: itemSku,
       });
@@ -345,7 +356,29 @@ export class RazorpayService {
       throw new Error(`Failed to insert order items: ${itemsInsertError.message}`);
     }
 
-    // 5. Automatically book shipment with iCarry after order and payment are confirmed
+    // 5. Deduct stock (idempotent Postgres function, service-role only)
+    try {
+      const { error: stockErr } = await this.supabaseAdmin.rpc(
+        "deduct_order_stock",
+        { p_order_id: order.id }
+      );
+      if (stockErr) {
+        console.error(`[Stock] deduct_order_stock failed for order ${order.id}:`, stockErr.message);
+        await this.supabaseAdmin.from("orders")
+          .update({ admin_notes: `STOCK NOT DEDUCTED: ${stockErr.message}` } as any)
+          .eq("id", order.id);
+      }
+    } catch (stockEx) {
+      const msg = stockEx instanceof Error ? stockEx.message : String(stockEx);
+      console.error(`[Stock] Unexpected error deducting stock for order ${order.id}:`, stockEx);
+      try {
+        await this.supabaseAdmin.from("orders")
+          .update({ admin_notes: `STOCK NOT DEDUCTED: ${msg}` } as any)
+          .eq("id", order.id);
+      } catch (_) { /* best-effort; never throw after payment */ }
+    }
+
+    // 6. Automatically book shipment with iCarry after order and payment are confirmed
     try {
       const bookingResult = await bookShipmentForOrder(this.supabaseAdmin, order.id);
       if (bookingResult.ok) {

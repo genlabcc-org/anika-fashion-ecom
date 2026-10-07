@@ -513,6 +513,11 @@ export default function ShippingAddress() {
 
         if (itemsError) throw itemsError;
 
+        // Deduct stock server-side (fire-and-forget, service role required)
+        supabase.functions.invoke('razorpay', {
+          body: { action: "deduct_stock", orderId: generatedOrderId },
+        }).catch(err => console.warn("[Stock] COD stock deduction failed:", err));
+
         // Trigger order notification email to jeyareshd@gmail.com
         emailService.sendOrderNotificationEmail({
           orderId: generatedOrderId,

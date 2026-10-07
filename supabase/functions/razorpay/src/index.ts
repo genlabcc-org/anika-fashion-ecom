@@ -95,6 +95,49 @@ export default {
         );
       }
 
+      if (action === "deduct_stock") {
+        const { orderId } = body;
+        if (!orderId) {
+          return new Response(
+            JSON.stringify({ error: "Missing orderId" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Verify the order belongs to this user before deducting
+        const { data: ownerCheck, error: ownerErr } = await ctx.supabaseAdmin
+          .from("orders")
+          .select("id")
+          .eq("id", orderId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (ownerErr || !ownerCheck) {
+          return new Response(
+            JSON.stringify({ error: "Order not found or does not belong to this user" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { error: stockErr } = await ctx.supabaseAdmin.rpc(
+          "deduct_order_stock",
+          { p_order_id: orderId }
+        );
+
+        if (stockErr) {
+          console.error(`[Stock] deduct_order_stock failed for COD order ${orderId}:`, stockErr.message);
+          return new Response(
+            JSON.stringify({ error: stockErr.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
         JSON.stringify({ error: `Unknown action: ${action}` }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
