@@ -1032,6 +1032,11 @@ const Dashboard = () => {
   };
 
   const handleViewOrderDetail = (order) => {
+    if (order?.id) {
+      try {
+        sessionStorage.setItem(`anika_opened_from_list_${order.id}`, "true");
+      } catch (_) {}
+    }
     setSelectedOrder(order);
     navigate("/admin/orders/detail");
   };
@@ -1138,6 +1143,11 @@ const Dashboard = () => {
                             )
                           );
                           setNotificationOpen(false);
+                          if (notification.order?.id) {
+                            try {
+                              sessionStorage.setItem(`anika_opened_from_list_${notification.order.id}`, "true");
+                            } catch (_) {}
+                          }
                           setSelectedOrder(notification.order);
 
                           navigate("/admin/orders/detail");

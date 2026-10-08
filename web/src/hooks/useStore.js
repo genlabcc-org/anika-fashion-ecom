@@ -454,6 +454,46 @@ export const useStore = create((set, get) => ({
     };
   },
 
+  markOrdersRead: async (ids, read = true) => {
+    if (!ids || ids.length === 0) return [];
+    const prevCount = get().newOrdersCount;
+    const prevOrders = get().orders;
+    const prevSelected = get().selectedAdminOrder;
+
+    let delta = 0;
+    if (read) {
+      const unreadCount = prevOrders.filter(o => ids.includes(o.id) && o.admin_read === false).length;
+      delta = unreadCount > 0 ? -unreadCount : -ids.length;
+    } else {
+      const readCount = prevOrders.filter(o => ids.includes(o.id) && o.admin_read !== false).length;
+      delta = readCount > 0 ? readCount : ids.length;
+    }
+    const optimisticCount = Math.max(0, prevCount + delta);
+
+    set((state) => ({
+      newOrdersCount: optimisticCount,
+      orders: state.orders.map((o) =>
+        ids.includes(o.id) ? { ...o, admin_read: Boolean(read) } : o
+      ),
+      selectedAdminOrder: state.selectedAdminOrder && ids.includes(state.selectedAdminOrder.id)
+        ? { ...state.selectedAdminOrder, admin_read: Boolean(read) }
+        : state.selectedAdminOrder,
+    }));
+
+    try {
+      const data = await orderService.setOrdersRead(ids, read);
+      return data;
+    } catch (err) {
+      console.error('Failed to update orders read status:', err);
+      set({
+        newOrdersCount: prevCount,
+        orders: prevOrders,
+        selectedAdminOrder: prevSelected,
+      });
+      throw err;
+    }
+  },
+
   // --- Selected Product Actions ---
   setSelectedProduct: (product) => {
     set({ selectedProduct: product });

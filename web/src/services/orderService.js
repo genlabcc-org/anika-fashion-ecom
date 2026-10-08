@@ -168,16 +168,33 @@ export const orderService = {
   },
 
   /**
-   * Retrieves the count of new unprocessed orders (Paid or Order Placed).
+   * Retrieves the count of unread orders for admin badge (admin_read = false).
    * @returns {Promise<number>}
    */
   async getNewOrdersCount() {
     const { count, error } = await supabase
       .from('orders')
       .select('*', { count: 'exact', head: true })
-      .in('status', ['Paid', 'Order Placed']);
+      .eq('admin_read', false);
     if (error) throw error;
     return count || 0;
+  },
+
+  /**
+   * Marks one or multiple orders as read or unread.
+   * @param {string[]} ids 
+   * @param {boolean} read 
+   * @returns {Promise<any>}
+   */
+  async setOrdersRead(ids, read = true) {
+    if (!ids || ids.length === 0) return [];
+    const { data, error } = await supabase
+      .from('orders')
+      .update({ admin_read: Boolean(read) })
+      .in('id', ids)
+      .select();
+    if (error) throw error;
+    return data;
   },
 
   /**

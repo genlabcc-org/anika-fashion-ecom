@@ -168,7 +168,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
       {/* ── Box 5: Footer (Dashed Box) ── */}
       <div className="ti-box ti-box--footer">
         <div className="ti-footer-text">Thank you for shopping with</div>
-        <div className="ti-footer-brand">www.AnikaFashion.net</div>
+        <div className="ti-footer-brand">www.AnikaFashion.in</div>
       </div>
     </div>
   );

@@ -1,25 +1,28 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useStore } from "../../hooks/useStore";
+import { orderService } from "../../services/orderService";
+import Toast from "../../components/Toast";
 import "./Allorders.css";
 
 const STATUS_STYLE = {
   "Order Placed": { bg: "#E0F2FE", color: "#0369A1" },
-  Pending:   { bg: "#FFF4E5", color: "#D97706" },
-  Shipped:   { bg: "#EFF6FF", color: "#2563EB" },
+  Pending: { bg: "#FFF4E5", color: "#D97706" },
+  Shipped: { bg: "#EFF6FF", color: "#2563EB" },
   Delivered: { bg: "#F0FDF4", color: "#16A34A" },
   Confirmed: { bg: "#F5F3FF", color: "#7C3AED" },
-  Return:    { bg: "#FEF2F2", color: "#DC2626" },
-  Returned:  { bg: "#FEF2F2", color: "#DC2626" },
+  Return: { bg: "#FEF2F2", color: "#DC2626" },
+  Returned: { bg: "#FEF2F2", color: "#DC2626" },
   Cancelled: { bg: "#FEF2F2", color: "#DC2626" },
 };
 
 const PAYMENT_STYLE = {
   Paid: { bg: "#F0FDF4", color: "#16A34A" },
-  COD:  { bg: "#FFF4E5", color: "#D97706" },
+  COD: { bg: "#FFF4E5", color: "#D97706" },
 };
 
 const CATEGORIES = ["All Category", "Necklaces", "Earrings", "Rings", "Bracelets"];
-const STATUSES   = ["All Status",   "Order Placed", "Confirmed", "Shipped", "Delivered", "Cancelled", "Returned"];
-const PER_PAGE   = 6;
+const STATUSES = ["All Status", "Order Placed", "Confirmed", "Shipped", "Delivered", "Cancelled", "Returned"];
+const PER_PAGE = 6;
 
 /* ── Icons ── */
 const ChevronDownIcon = () => (
@@ -45,6 +48,20 @@ const FilterIcon = () => (
     <line x1="4" y1="6" x2="20" y2="6" />
     <line x1="8" y1="12" x2="16" y2="12" />
     <line x1="11" y1="18" x2="13" y2="18" />
+  </svg>
+);
+
+const EnvelopeClosedIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+  </svg>
+);
+
+const EnvelopeOpenIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z" />
+    <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
   </svg>
 );
 
@@ -134,13 +151,25 @@ const FilterDropdown = ({ value, options, onChange }) => {
 /* ── Main Component ── */
 const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDetail }) => {
   const [category, setCategory] = useState("All Category");
-  const [status,   setStatus]   = useState("All Status");
+  const [status, setStatus] = useState("All Status");
   const [paymentFilter, setPaymentFilter] = useState("All Payment");
+  const [readFilter, setReadFilter] = useState("all"); // "all" | "unread"
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
-  const [search,   setSearch]   = useState("");
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
-  const [page,     setPage]     = useState(1);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState("all");
+
+  const markOrdersRead = useStore((state) => state.markOrdersRead);
+  const fetchNewOrdersCount = useStore((state) => state.fetchNewOrdersCount);
+  const newOrdersCount = useStore((state) => state.newOrdersCount);
+
+  const [toast, setToast] = useState({ message: "", type: "" });
+  const showToast = (message, type = "info") => {
+    setToast({ message: "", type: "" });
+    setTimeout(() => setToast({ message, type }), 10);
+  };
 
   const categoryOptions = useMemo(() => {
     const staticCats = ["All Category", "Necklaces", "Earrings", "Rings", "Bracelets", "Bangles"];
@@ -189,12 +218,17 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       (o.customer?.email || "").toLowerCase().includes(search.toLowerCase()) ||
       (o.item_name || "").toLowerCase().includes(search.toLowerCase());
 
-    return matchCategory && matchStatus && matchPayment && matchSearch;
+    const matchRead = (() => {
+      if (readFilter === "unread") return o.admin_read === false;
+      return true;
+    })();
+
+    return matchCategory && matchStatus && matchPayment && matchSearch && matchRead;
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const safePage   = Math.min(page, totalPages);
-  const paginated  = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   const count = (s) => {
     if (s.toLowerCase() === "return" || s.toLowerCase() === "returned") {
@@ -218,19 +252,19 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const pageNums = () => {
     if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
     const p = safePage;
-    if (p <= 3)              return [1, 2, 3, "…", totalPages];
+    if (p <= 3) return [1, 2, 3, "…", totalPages];
     if (p >= totalPages - 2) return [1, "…", totalPages - 2, totalPages - 1, totalPages];
     return [1, "…", p, "…", totalPages];
   };
 
   /* ── Stats helpers ── */
   const revenue = orders
-    .filter(o => !['cancelled','returned'].includes(o.status?.toLowerCase()))
+    .filter(o => !['cancelled', 'returned'].includes(o.status?.toLowerCase()))
     .reduce((s, o) => s + Number(o.total_price || 0), 0);
 
   const fmtRevenue = (v) => {
-    if (v >= 100000) return `₹${(v/100000).toFixed(1)}L`;
-    if (v >= 1000)   return `₹${(v/1000).toFixed(1)}K`;
+    if (v >= 100000) return `₹${(v / 100000).toFixed(1)}L`;
+    if (v >= 1000) return `₹${(v / 1000).toFixed(1)}K`;
     return `₹${v.toLocaleString('en-IN')}`;
   };
 
@@ -238,21 +272,58 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     ? Math.round((count('Delivered') / orders.length) * 100)
     : 0;
 
-  const codCount  = orders.filter(o => o.payment?.toUpperCase() === 'COD').length;
+  const codCount = orders.filter(o => o.payment?.toUpperCase() === 'COD').length;
   const paidCount = orders.filter(o => o.payment?.toUpperCase() === 'PAID').length;
 
   const actionNeeded = count('Pending') + count('Confirmed');
-  const inTransit    = count('Shipped');
-  const problems     = count('Cancelled') + count('Returned');
+  const inTransit = count('Shipped');
+  const problems = count('Cancelled') + count('Returned');
 
-  const hasActiveFilters = category !== "All Category" || status !== "All Status" || paymentFilter !== "All Payment" || search !== "";
+  const hasActiveFilters = category !== "All Category" || status !== "All Status" || paymentFilter !== "All Payment" || readFilter !== "all" || search !== "";
 
   const handleResetFilters = () => {
     setCategory("All Category");
     setStatus("All Status");
     setPaymentFilter("All Payment");
+    setReadFilter("all");
     setSearch("");
     setPage(1);
+  };
+
+  const handleBulkMarkRead = async (read) => {
+    if (selected.length === 0 || bulkLoading) return;
+    const count = selected.length;
+    try {
+      setBulkLoading(true);
+      if (typeof markOrdersRead === "function") {
+        await markOrdersRead(selected, read);
+      } else {
+        await orderService.setOrdersRead(selected, read);
+      }
+      setSelected([]);
+      if (typeof fetchNewOrdersCount === "function") fetchNewOrdersCount();
+      showToast(read ? `${count} ${count === 1 ? 'order' : 'orders'} marked as read` : `${count} ${count === 1 ? 'order' : 'orders'} marked as unread`, "success");
+    } catch (err) {
+      console.error("Bulk mark read failed:", err);
+      showToast("Failed to update orders: " + (err?.message || "Unknown error"), "error");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleToggleSingleRead = async (orderId, read) => {
+    try {
+      if (typeof markOrdersRead === "function") {
+        await markOrdersRead([orderId], read);
+      } else {
+        await orderService.setOrdersRead([orderId], read);
+      }
+      if (typeof fetchNewOrdersCount === "function") fetchNewOrdersCount();
+      showToast(read ? "Order marked as read" : "Order marked as unread", "success");
+    } catch (err) {
+      console.error("Toggle read failed:", err);
+      showToast("Failed to update order: " + (err?.message || "Unknown error"), "error");
+    }
   };
 
 
@@ -311,11 +382,16 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     }
 
     return paginated.map((order) => {
-      const ss  = STATUS_STYLE[order.status]   || { bg: "#FFF4E5", color: "#D97706" };
-      const ps  = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
+      const ss = STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
+      const ps = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
       const sel = selected.includes(order.id);
+      const isUnread = order.admin_read === false;
+
       return (
-        <tr key={order.id} className={`ao__row${sel ? " ao__row--selected" : ""}`}>
+        <tr
+          key={order.id}
+          className={`ao__row${sel ? " ao__row--selected" : ""}${isUnread ? " ao__row--unread" : " ao__row--read"}`}
+        >
           <td className="ao__td-check">
             <input
               type="checkbox"
@@ -324,15 +400,24 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
               onChange={() => toggleRow(order.id)}
             />
           </td>
-          <td className="ao__cell-id">#{order.id?.slice(-6) || order.id}</td>
-          <td className="ao__cell-customer">
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontWeight: '500' }}>{order.customer?.name || "Unknown"}</span>
-              <span style={{ fontSize: '11px', color: '#888' }}>{order.customer?.email || ""}</span>
+          <td className="ao__cell-id">
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              {isUnread && <span className="ao__unread-dot" title="Unread order" />}
+              <span style={{ fontWeight: isUnread ? "700" : "500" }}>
+                #{order.id?.slice(-6) || order.id}
+              </span>
             </div>
           </td>
-          <td className="ao__cell-items ao__col-items">{order.item_name} {order.quantity > 1 ? `x${order.quantity}` : ''}</td>
-          <td className="ao__cell-total">₹{Number(order.total_price || 0).toLocaleString('en-IN')}</td>
+          <td className="ao__cell-customer">
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span className="ao__cell-customer-name" style={{ fontWeight: isUnread ? "700" : "500", color: isUnread ? "#000" : "inherit" }}>
+                {order.customer?.name || "Unknown"}
+              </span>
+              <span style={{ fontSize: "11px", color: "#888" }}>{order.customer?.email || ""}</span>
+            </div>
+          </td>
+          <td className="ao__cell-items ao__col-items">{order.item_name} {order.quantity > 1 ? `x${order.quantity}` : ""}</td>
+          <td className="ao__cell-total">₹{Number(order.total_price || 0).toLocaleString("en-IN")}</td>
           <td className="ao__col-payment">
             <span className="ao__badge" style={{ background: ps.bg, color: ps.color }}>
               {order.payment}
@@ -344,9 +429,31 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             </span>
           </td>
           <td>
-            <button className="ao__view-btn" onClick={() => onViewDetail?.(order)}>
-              View
-            </button>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <button
+                type="button"
+                className="ao__read-icon-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleSingleRead(order.id, !isUnread);
+                }}
+                title={isUnread ? "Mark as read" : "Mark as unread"}
+                aria-label={isUnread ? "Mark as read" : "Mark as unread"}
+              >
+                {isUnread ? <EnvelopeOpenIcon /> : <EnvelopeClosedIcon />}
+              </button>
+              <button
+                className="ao__view-btn"
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem(`anika_opened_from_list_${order.id}`, "true");
+                  } catch (_) {}
+                  onViewDetail?.(order);
+                }}
+              >
+                View
+              </button>
+            </div>
           </td>
         </tr>
       );
@@ -433,11 +540,12 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
         </div>
         <div className="ao__cards-list">
           {paginated.map((order) => {
-            const ss  = STATUS_STYLE[order.status]   || { bg: "#FFF4E5", color: "#D97706" };
-            const ps  = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
+            const ss = STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
+            const ps = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
             const sel = selected.includes(order.id);
+            const isUnread = order.admin_read === false;
             return (
-              <div key={order.id} className={`ao__card${sel ? " ao__card--selected" : ""}`}>
+              <div key={order.id} className={`ao__card${sel ? " ao__card--selected" : ""}${isUnread ? " ao__card--unread" : ""}`}>
                 <div className="ao__card-header">
                   <div className="ao__card-header-left">
                     <input
@@ -446,15 +554,34 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                       checked={sel}
                       onChange={() => toggleRow(order.id)}
                     />
-                    <span className="ao__card-id">#{order.id?.slice(-6) || order.id}</span>
+                    {isUnread && <span className="ao__unread-dot" title="Unread" />}
+                    <span className="ao__card-id" style={{ fontWeight: isUnread ? "700" : "600", color: isUnread ? "#000" : "inherit" }}>
+                      #{order.id?.slice(-6) || order.id}
+                    </span>
                   </div>
-                  <span className="ao__badge" style={{ background: ss.bg, color: ss.color }}>
-                    {order.status}
-                  </span>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <button
+                      type="button"
+                      className="ao__read-icon-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleSingleRead(order.id, !isUnread);
+                      }}
+                      title={isUnread ? "Mark as read" : "Mark as unread"}
+                      aria-label={isUnread ? "Mark as read" : "Mark as unread"}
+                    >
+                      {isUnread ? <EnvelopeOpenIcon /> : <EnvelopeClosedIcon />}
+                    </button>
+                    <span className="ao__badge" style={{ background: ss.bg, color: ss.color }}>
+                      {order.status}
+                    </span>
+                  </div>
                 </div>
                 <div className="ao__card-body">
                   <div className="ao__card-customer">
-                    <span className="ao__card-customer-name">{order.customer?.name || "Unknown"}</span>
+                    <span className="ao__card-customer-name" style={{ fontWeight: isUnread ? "700" : "600", color: isUnread ? "#000" : "inherit" }}>
+                      {order.customer?.name || "Unknown"}
+                    </span>
                     {order.customer?.email && (
                       <span className="ao__card-customer-email">{order.customer?.email}</span>
                     )}
@@ -472,7 +599,15 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                     </span>
                     <span className="ao__card-total">₹{Number(order.total_price || 0).toLocaleString('en-IN')}</span>
                   </div>
-                  <button className="ao__view-btn" onClick={() => onViewDetail?.(order)}>
+                  <button
+                    className="ao__view-btn"
+                    onClick={() => {
+                      try {
+                        sessionStorage.setItem(`anika_opened_from_list_${order.id}`, "true");
+                      } catch (_) {}
+                      onViewDetail?.(order);
+                    }}
+                  >
                     View Details
                   </button>
                 </div>
@@ -578,7 +713,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             <div className="ao__kpi-bar">
               <div className="ao__kpi-bar-split">
                 <div style={{ flex: paidCount || 0, background: '#10b981' }} />
-                <div style={{ flex: codCount  || 0, background: '#f59e0b' }} />
+                <div style={{ flex: codCount || 0, background: '#f59e0b' }} />
               </div>
             </div>
           </div>
@@ -588,21 +723,21 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
         {/* Status pill row */}
         <div className="ao__pill-row">
           {[
-            { label: 'Pending',   val: count('Pending'),   color: '#f59e0b', bg: '#fffbeb' },
+            { label: 'Pending', val: count('Pending'), color: '#f59e0b', bg: '#fffbeb' },
             { label: 'Confirmed', val: count('Confirmed'), color: '#7c3aed', bg: '#f5f3ff' },
-            { label: 'Shipped',   val: count('Shipped'),   color: '#2563eb', bg: '#eff6ff' },
+            { label: 'Shipped', val: count('Shipped'), color: '#2563eb', bg: '#eff6ff' },
             { label: 'Delivered', val: count('Delivered'), color: '#16a34a', bg: '#f0fdf4' },
             { label: 'Cancelled', val: count('Cancelled'), color: '#dc2626', bg: '#fef2f2' },
-            { label: 'Returned',  val: count('Returned'), color: '#dc2626', bg: '#fef2f2' },
+            { label: 'Returned', val: count('Returned'), color: '#dc2626', bg: '#fef2f2' },
           ].map(({ label, val, color, bg }) => {
             const isActive = status.toLowerCase() === label.toLowerCase();
             return (
-              <div 
-                key={label} 
+              <div
+                key={label}
                 className={`ao__pill${isActive ? ' ao__pill--active' : ''}`}
-                style={{ 
-                  '--pill-color': color, 
-                  '--pill-bg': bg, 
+                style={{
+                  '--pill-color': color,
+                  '--pill-bg': bg,
                   cursor: 'pointer',
                   outline: isActive ? `2px solid ${color}` : 'none',
                   outlineOffset: '-1px'
@@ -628,12 +763,31 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
       {/* ── Toolbar ── */}
       <div className="ao__toolbar">
+        {/* Read / Unread Tabs */}
+        <div className="ao__read-tabs">
+          <button
+            type="button"
+            className={`ao__read-tab${readFilter === "all" ? " ao__read-tab--active" : ""}`}
+            onClick={() => { setReadFilter("all"); setPage(1); }}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={`ao__read-tab${readFilter === "unread" ? " ao__read-tab--active" : ""}`}
+            onClick={() => { setReadFilter("unread"); setPage(1); }}
+          >
+            <span className="ao__unread-tab-dot" />
+            Unread ({newOrdersCount})
+          </button>
+        </div>
+
         <FilterDropdown value={category} options={categoryOptions} onChange={(v) => { setCategory(v); setPage(1); }} />
-        <FilterDropdown value={status}   options={STATUSES}   onChange={(v) => { setStatus(v);   setPage(1); }} />
+        <FilterDropdown value={status} options={STATUSES} onChange={(v) => { setStatus(v); setPage(1); }} />
         <FilterDropdown value={paymentFilter} options={PAYMENT_OPTIONS} onChange={(v) => { setPaymentFilter(v); setPage(1); }} />
-        
-        <button 
-          className={`ao__filter-btn${filterPanelOpen || hasActiveFilters ? ' ao__filter-btn--active' : ''}`} 
+
+        <button
+          className={`ao__filter-btn${filterPanelOpen || hasActiveFilters ? ' ao__filter-btn--active' : ''}`}
           onClick={() => setFilterPanelOpen(o => !o)}
           style={hasActiveFilters ? { background: '#f5f3ff', color: '#4f46e5', borderColor: '#c7d2fe' } : {}}
         >
@@ -687,7 +841,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', marginLeft: 'auto', gap: '8px', paddingTop: '16px' }}>
             {hasActiveFilters && (
-              <button 
+              <button
                 onClick={handleResetFilters}
                 style={{
                   padding: '6px 12px',
@@ -703,7 +857,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                 Reset All Filters
               </button>
             )}
-            <button 
+            <button
               onClick={() => setFilterPanelOpen(false)}
               style={{
                 padding: '6px 12px',
@@ -719,6 +873,38 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
               Close Panel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ── Bulk Actions Bar (Gmail style) ── */}
+      {selected.length > 0 && (
+        <div className="ao__bulk-bar">
+          <span className="ao__bulk-count"><strong>{selected.length}</strong> selected</span>
+          <button
+            type="button"
+            className="ao__bulk-btn"
+            onClick={() => handleBulkMarkRead(true)}
+            disabled={bulkLoading}
+          >
+            <EnvelopeOpenIcon />
+            <span>Mark as read</span>
+          </button>
+          <button
+            type="button"
+            className="ao__bulk-btn"
+            onClick={() => handleBulkMarkRead(false)}
+            disabled={bulkLoading}
+          >
+            <EnvelopeClosedIcon />
+            <span>Mark as unread</span>
+          </button>
+          <button
+            type="button"
+            className="ao__bulk-btn ao__bulk-btn--clear"
+            onClick={() => setSelected([])}
+          >
+            Deselect all
+          </button>
         </div>
       )}
 
@@ -797,6 +983,11 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
         )}
       </div>
 
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: "", type: "" })}
+      />
     </div>
   );
 };

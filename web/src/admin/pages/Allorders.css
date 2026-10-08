@@ -1078,3 +1078,137 @@
     font-size: 12.5px;
   }
 }
+
+/* ── Read / Unread Tabs ── */
+.ao__read-tabs {
+  display: inline-flex;
+  align-items: center;
+  background: #e2e8f0;
+  padding: 3px;
+  border-radius: 8px;
+  gap: 2px;
+}
+
+.ao__read-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ao__read-tab:hover {
+  color: #1e293b;
+}
+
+.ao__read-tab--active {
+  background: #fff;
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.ao__unread-tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c42049;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ── Bulk Actions Toolbar (Gmail style) ── */
+.ao__bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e293b;
+  color: #f8fafc;
+  padding: 8px 14px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  flex-wrap: wrap;
+}
+
+.ao__bulk-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: #f1f5f9;
+  margin-right: 6px;
+}
+
+.ao__bulk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ao__bulk-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.ao__bulk-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Unread Row & Card Styling ── */
+.ao__row--unread {
+  background: #ffffff;
+  font-weight: 500;
+}
+
+.ao__row--unread td {
+  color: #0f172a;
+}
+
+.ao__card--unread {
+  border-left: 3px solid #c42049;
+}
+
+.ao__unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c42049;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ── Quick Read Toggle Button (Envelope) ── */
+.ao__read-icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.ao__read-icon-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}

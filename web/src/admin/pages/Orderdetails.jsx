@@ -48,10 +48,25 @@ const OrderDetails = ({ order, onBack }) => {
   const [retryingBooking, setRetryingBooking] = useState(false);
   const [loadingLabel, setLoadingLabel] = useState(false);
   const [cancellingShipment, setCancellingShipment] = useState(false);
+  const [togglingRead, setTogglingRead] = useState(false);
   const invoiceRef = useRef(null);
+  const autoMarkedOrderIdRef = useRef(null);
+
+  const o = currentOrder || order || {
+    id: "ORD-UNKNOWN",
+    customer: { name: "Unknown Customer", email: "N/A", phone: "N/A" },
+    order_date: new Date().toISOString(),
+    item_name: "N/A",
+    quantity: 1,
+    total_price: 0,
+    status: "Order Placed",
+    payment: "COD"
+  };
 
   const setSelectedProduct = useStore(state => state.setSelectedProduct);
   const setSelectedAdminOrder = useStore(state => state.setSelectedAdminOrder);
+  const markOrdersRead = useStore(state => state.markOrdersRead);
+  const fetchNewOrdersCount = useStore(state => state.fetchNewOrdersCount);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -65,6 +80,69 @@ const OrderDetails = ({ order, onBack }) => {
       }
     }
   }, [order]);
+
+  // Auto-mark order as read ONLY when opened from the list (guarded with sessionStorage).
+  // Must NOT re-fire when the details page is refreshed (selectedAdminOrder restored from localStorage).
+  useEffect(() => {
+    const orderId = order?.id;
+    if (!orderId) return;
+
+    let openedFromList = false;
+    try {
+      openedFromList = sessionStorage.getItem(`anika_opened_from_list_${orderId}`) === "true";
+      if (openedFromList) {
+        // Immediately remove flag so any page refresh will not re-trigger auto-mark
+        sessionStorage.removeItem(`anika_opened_from_list_${orderId}`);
+      }
+    } catch (_) {}
+
+    if (openedFromList && autoMarkedOrderIdRef.current !== orderId) {
+      autoMarkedOrderIdRef.current = orderId;
+      if (order.admin_read === false) {
+        setCurrentOrder((prev) => (prev ? { ...prev, admin_read: true } : prev));
+        if (typeof markOrdersRead === "function") {
+          markOrdersRead([orderId], true).catch((err) => {
+            console.error("Auto mark read failed:", err);
+            showToast("Failed to mark order as read: " + (err?.message || "Unknown error"), "error");
+          });
+        } else {
+          orderService.setOrdersRead([orderId], true).catch((err) => {
+            console.error("Auto mark read failed:", err);
+            showToast("Failed to mark order as read: " + (err?.message || "Unknown error"), "error");
+          });
+        }
+      }
+    }
+  }, [order?.id, order?.admin_read, markOrdersRead]);
+
+  const handleToggleRead = async () => {
+    if (!o?.id || togglingRead) return;
+    const currentRead = Boolean(o.admin_read);
+    const nextRead = !currentRead;
+    setTogglingRead(true);
+
+    // Ensure session flag is cleared so refresh never re-marks if marked unread
+    try {
+      sessionStorage.removeItem(`anika_opened_from_list_${o.id}`);
+    } catch (_) {}
+
+    try {
+      setCurrentOrder((prev) => (prev ? { ...prev, admin_read: nextRead } : prev));
+      if (typeof markOrdersRead === "function") {
+        await markOrdersRead([o.id], nextRead);
+      } else {
+        await orderService.setOrdersRead([o.id], nextRead);
+      }
+      if (typeof fetchNewOrdersCount === "function") fetchNewOrdersCount();
+      showToast(nextRead ? "Order marked as read" : "Order marked as unread", "success");
+    } catch (err) {
+      console.error("Toggle read failed:", err);
+      setCurrentOrder((prev) => (prev ? { ...prev, admin_read: currentRead } : prev));
+      showToast("Failed to update read status: " + (err?.message || "Unknown error"), "error");
+    } finally {
+      setTogglingRead(false);
+    }
+  };
 
   // Realtime subscription for this order in admin
   useEffect(() => {
@@ -127,16 +205,6 @@ const OrderDetails = ({ order, onBack }) => {
     setTimeout(() => setToast({ message, type }), 10);
   };
 
-  const o = currentOrder || order || {
-    id: "ORD-UNKNOWN",
-    customer: { name: "Unknown Customer", email: "N/A", phone: "N/A" },
-    order_date: new Date().toISOString(),
-    item_name: "N/A",
-    quantity: 1,
-    total_price: 0,
-    status: "Order Placed",
-    payment: "COD"
-  };
 
   useEffect(() => {
     setAdminNote(o.admin_notes || "");
@@ -486,8 +554,37 @@ const OrderDetails = ({ order, onBack }) => {
           Order Details
         </button>
         <div className="od__header-row">
-          <h1 className="od__title">Order Details</h1>
-          <StatusBadge status={isOrderCancelled ? "Cancelled" : o.status} />
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+            <h1 className="od__title">Order Details</h1>
+            <StatusBadge status={isOrderCancelled ? "Cancelled" : o.status} />
+          </div>
+          <div className="od__header-actions">
+            <button
+              type="button"
+              className={`od__read-toggle-btn${o.admin_read ? " od__read-toggle-btn--read" : " od__read-toggle-btn--unread"}`}
+              onClick={handleToggleRead}
+              disabled={togglingRead}
+              title={o.admin_read ? "Mark order as unread" : "Mark order as read"}
+            >
+              {o.admin_read ? (
+                <>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                    <polyline points="22,6 12,13 2,6" />
+                  </svg>
+                  <span>Mark as unread</span>
+                </>
+              ) : (
+                <>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6z" />
+                    <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
+                  </svg>
+                  <span>Mark as read</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
         <p className="od__date-placed">Placed on {o.order_date ? new Date(o.order_date).toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}</p>
       </div>
