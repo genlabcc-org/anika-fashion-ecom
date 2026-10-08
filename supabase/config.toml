@@ -450,3 +450,13 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/icarry-webhook/index.ts"
 
+[functions.icarry-sync]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/icarry-sync/index.ts"
+
+[functions.send-order-email]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-order-email/index.ts"
+

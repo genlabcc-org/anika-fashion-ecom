@@ -468,6 +468,51 @@ export default function ShippingAddress() {
         return;
       }
 
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("name, phone")
+        .eq("id", userId || session.user?.id)
+        .maybeSingle();
+
+      // Resolve real customer name: prefer shipping address name, then profile name, then user metadata
+      const shippingAddressName = (
+        selectedAddress?.full_name ||
+        selectedAddress?.name ||
+        `${form.firstName || ""} ${form.lastName || ""}`.trim()
+      ).trim();
+
+      const profileName = (profile?.name || "").trim();
+
+      const userMetaName = (
+        session?.user?.user_metadata?.name ||
+        session?.user?.user_metadata?.full_name ||
+        session?.user?.user_metadata?.user_name ||
+        ""
+      ).trim();
+
+      const resolvedCustomerName = (
+        shippingAddressName ||
+        profileName ||
+        userMetaName ||
+        "Customer"
+      );
+
+      // Temporary diagnostic log as requested
+      console.log('[shippingAddress] Resolved customer name for order:', resolvedCustomerName);
+
+      const resolvedCustomerEmail = (
+        (session?.user?.email || "").trim() ||
+        (form.email || "").trim() ||
+        "N/A"
+      );
+
+      const resolvedCustomerPhone = (
+        (form.mobile || "").trim() ||
+        (selectedAddress?.phone_number || "").trim() ||
+        (profile?.phone || "").trim() ||
+        "N/A"
+      );
+
       if (paymentMethod === "COD") {
         // COD order placement
         const mainItem = checkoutItems[0];
@@ -518,22 +563,22 @@ export default function ShippingAddress() {
           body: { action: "deduct_stock", orderId: generatedOrderId },
         }).catch(err => console.warn("[Stock] COD stock deduction failed:", err));
 
-        // Trigger order notification email to jeyareshd@gmail.com
+        // Trigger order notification email
         emailService.sendOrderNotificationEmail({
           orderId: generatedOrderId,
-          customerName: `${form.firstName} ${form.lastName}`.trim(),
-          customerEmail: session?.user?.email || form.email || "N/A",
-          customerPhone: form.mobile || "N/A",
+          customerName: resolvedCustomerName,
+          customerEmail: resolvedCustomerEmail,
+          customerPhone: resolvedCustomerPhone,
           paymentMethod: "Cash on Delivery (COD)",
           address: {
-            name: `${form.firstName} ${form.lastName}`.trim(),
-            mobile: form.mobile,
-            flat: form.flat,
-            area: form.area,
-            landmark: form.landmark,
-            city: form.city,
-            state: form.state,
-            pincode: form.pinCode,
+            name: resolvedCustomerName,
+            mobile: resolvedCustomerPhone !== "N/A" ? resolvedCustomerPhone : (form.mobile || ""),
+            flat: form.flat || selectedAddress?.address_line1 || "",
+            area: form.area || selectedAddress?.address_line2 || "",
+            landmark: form.landmark || "",
+            city: form.city || selectedAddress?.city || "",
+            state: form.state || selectedAddress?.state || "",
+            pincode: form.pinCode || selectedAddress?.postal_code || "",
           },
           items: orderItemsToInsert,
           totalPrice: grandTotal,
@@ -587,11 +632,6 @@ export default function ShippingAddress() {
           throw new Error(invokeError?.message || "Failed to initiate Razorpay order.");
         }
 
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("name, phone")
-          .eq("id", userId)
-          .single();
 
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID,
@@ -637,21 +677,21 @@ export default function ShippingAddress() {
 
               showToast("Payment successful! Order placed.", "success");
 
-              // Trigger order notification email to jeyareshd@gmail.com
+              // Trigger order notification email
               emailService.sendOrderNotificationEmail({
                 orderId: verifyData?.order?.id || response.razorpay_order_id,
-                customerName: profile?.name || `${form.firstName} ${form.lastName}`.trim(),
-                customerEmail: session?.user?.email || form.email || "N/A",
-                customerPhone: profile?.phone || form.mobile || "N/A",
+                customerName: resolvedCustomerName,
+                customerEmail: resolvedCustomerEmail,
+                customerPhone: resolvedCustomerPhone,
                 paymentMethod: "Razorpay (Online Payment)",
                 address: {
-                  name: profile?.name || `${form.firstName} ${form.lastName}`.trim(),
-                  mobile: form.mobile,
-                  flat: form.flat,
-                  area: form.area,
-                  city: form.city,
-                  state: form.state,
-                  pincode: form.pinCode,
+                  name: resolvedCustomerName,
+                  mobile: resolvedCustomerPhone !== "N/A" ? resolvedCustomerPhone : (form.mobile || ""),
+                  flat: form.flat || selectedAddress?.address_line1 || "",
+                  area: form.area || selectedAddress?.address_line2 || "",
+                  city: form.city || selectedAddress?.city || "",
+                  state: form.state || selectedAddress?.state || "",
+                  pincode: form.pinCode || selectedAddress?.postal_code || "",
                 },
                 items: checkoutItems.map(item => ({
                   product_name: item.name,
@@ -677,9 +717,9 @@ export default function ShippingAddress() {
             }
           },
           prefill: {
-            name: profile?.name || session?.user?.email?.split("@")[0] || "",
-            email: session?.user?.email || "",
-            contact: profile?.phone || "",
+            name: resolvedCustomerName !== "Customer" ? resolvedCustomerName : (profileName || session?.user?.email?.split("@")[0] || ""),
+            email: resolvedCustomerEmail !== "N/A" ? resolvedCustomerEmail : "",
+            contact: resolvedCustomerPhone !== "N/A" ? resolvedCustomerPhone : "",
           },
           theme: {
             color: "#8b0030",

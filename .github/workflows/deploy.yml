@@ -266,6 +266,10 @@ jobs:
           supabase functions deploy icarry --no-verify-jwt --project-ref "$supabase_ref"
           echo "Deploying icarry-webhook function..."
           supabase functions deploy icarry-webhook --no-verify-jwt --project-ref "$supabase_ref"
+          echo "Deploying icarry-sync function..."
+          supabase functions deploy icarry-sync --no-verify-jwt --project-ref "$supabase_ref"
+          echo "Deploying send-order-email function..."
+          supabase functions deploy send-order-email --no-verify-jwt --project-ref "$supabase_ref"
 
   # deploy_storefront:
   #   name: Deploy Storefront Portal

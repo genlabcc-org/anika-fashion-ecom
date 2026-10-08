@@ -451,16 +451,20 @@ const OrderDetails = ({ order, onBack }) => {
 
     const isPlacedDone = true;
     const isConfirmedDone = [
-      "confirmed", "processing", "packed", "shipped", "delivered", "returned"
-    ].includes(s) || !!o.waybill || ["booked", "pending pickup", "shipped", "in transit", "out for delivery", "delivered"].some(x => d.includes(x));
+      "confirmed", "processing", "packed", "shipped", "delivered", "returned", "rto"
+    ].includes(s) || !!o.waybill || [
+      "booked", "pending pickup", "pickup scheduled", "manifested", "picked up", "shipped", "in transit", "out for delivery", "delivered", "rto", "returned"
+    ].some(x => d.includes(x));
 
     const isShippedDone = [
-      "shipped", "delivered", "returned"
-    ].includes(s) || ["shipped", "in transit", "out for delivery", "delivered"].some(x => d.includes(x));
+      "shipped", "delivered", "returned", "rto"
+    ].includes(s) || [
+      "picked up", "shipped", "in transit", "out for delivery", "delivered", "rto", "returned"
+    ].some(x => d.includes(x));
 
-    const isOutForDeliveryDone = d.includes("out for delivery") || d === "delivered" || s === "delivered";
+    const isOutForDeliveryDone = d.includes("out for delivery") || d.includes("delivered") || s === "delivered";
     const isNdr = d.startsWith("ndr");
-    const isDeliveredDone = ["delivered", "returned"].includes(s) || d === "delivered";
+    const isDeliveredDone = ["delivered", "returned", "rto"].includes(s) || d.includes("delivered") || d.includes("returned") || d.includes("rto");
 
     const carrierInfo = o.courier_name || o.delivery_provider || "iCarry";
 

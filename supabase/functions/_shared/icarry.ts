@@ -82,4 +82,5 @@ export const ENDPOINTS = {
   cancel:   'api_cancel_shipment',
   track:    'api_track_shipment',
   label:    'api_print_shipment_label',
+  sync:     'api_shipment_status_sync',
 } as const;

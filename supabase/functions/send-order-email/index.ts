@@ -1,12 +1,11 @@
-import "@supabase/functions-js/edge-runtime.d.ts";
+// supabase/functions/send-order-email/index.ts
 import { handleCorsPreflight, corsHeaders } from "../_shared/cors.ts";
 
-const ADMIN_EMAIL = "jeyareshd@gmail.com";
+const ADMIN_EMAIL = "anikafashionstorengl@gmail.com";
 
-export default {
-  async fetch(req: Request): Promise<Response> {
-    const corsResponse = handleCorsPreflight(req);
-    if (corsResponse) return corsResponse;
+Deno.serve(async (req: Request) => {
+  const corsResponse = handleCorsPreflight(req);
+  if (corsResponse) return corsResponse;
 
     try {
       const body = await req.json();
@@ -27,23 +26,27 @@ export default {
         shippingFee = 0,
       } = body;
 
+      const safeCustomerName = (typeof customerName === "string" && customerName.trim()) || "Customer";
+      const safeCustomerEmail = (typeof customerEmail === "string" && customerEmail.trim()) || "N/A";
+      const safeCustomerPhone = (typeof customerPhone === "string" && customerPhone.trim()) || "N/A";
+
       const payload = {
-        _subject: `[Anika Fashion] Order Notification #${orderId}`,
+        _subject: `[Anika Fashion] Order Notification #${orderId || 'N/A'}`,
         _template: "table",
         _captcha: "false",
-        "Order Number": `#${orderId}`,
-        "Payment Method": String(paymentMethod),
-        "Customer Name": String(customerName),
-        "Customer Email": String(customerEmail),
-        "Customer Phone": String(customerPhone),
-        "Shipping Address": String(address),
-        "SKU": String(skuId),
-        "Category": String(category),
-        "Order Breakdown": String(itemsListFormatted),
-        "Subtotal": `₹${Number(subtotal).toLocaleString('en-IN')}`,
+        "Order Number": orderId ? `#${orderId}` : "N/A",
+        "Payment Method": String(paymentMethod || "COD"),
+        "Customer Name": safeCustomerName,
+        "Customer Email": safeCustomerEmail,
+        "Customer Phone": safeCustomerPhone,
+        "Shipping Address": String(address || "N/A"),
+        "SKU": String(skuId || "N/A"),
+        "Category": String(category || "N/A"),
+        "Order Breakdown": String(itemsListFormatted || "N/A"),
+        "Subtotal": subtotal != null ? `₹${Number(subtotal).toLocaleString('en-IN')}` : '₹0',
         "Discount": discount > 0 ? `-₹${Number(discount).toLocaleString('en-IN')}` : '₹0',
         "Shipping": shippingFee > 0 ? `₹${Number(shippingFee).toLocaleString('en-IN')}` : 'Free',
-        "Total Amount": `₹${Number(totalPrice).toLocaleString('en-IN')}`,
+        "Total Amount": totalPrice != null ? `₹${Number(totalPrice).toLocaleString('en-IN')}` : '₹0',
       };
 
       const res = await fetch(`https://formsubmit.co/ajax/${adminEmail}`, {
@@ -67,6 +70,5 @@ export default {
         JSON.stringify({ error: errMsg }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-    }
-  },
-};
+  }
+});
