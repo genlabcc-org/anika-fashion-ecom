@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { isRevenueOrder } from "../../utils/orderUtils";
 import "./Analytics.css";
 
 // ── Icons ──────────────────────────────────────────────────────────────────
@@ -323,13 +324,13 @@ const Analytics = ({ orders = [], customers = [], products = [], loading = false
   // Derived Overview metrics
   const totalRevenue = useMemo(() => {
     return filteredOrders
-      .filter((o) => !["cancelled", "returned"].includes(o.status?.toLowerCase()))
+      .filter(isRevenueOrder)
       .reduce((sum, o) => sum + getOrderRevenue(o), 0);
   }, [filteredOrders]);
 
   const grossRevenue = useMemo(() => {
     return filteredOrders
-      .filter((o) => !["cancelled", "returned"].includes(o.status?.toLowerCase()))
+      .filter(isRevenueOrder)
       .reduce((sum, o) => sum + Number(o.total_price || o.grandTotal || o.amount || 0), 0);
   }, [filteredOrders]);
 
@@ -389,7 +390,7 @@ const Analytics = ({ orders = [], customers = [], products = [], loading = false
   const categoryDonutData = useMemo(() => {
     const catMap = {};
     filteredOrders.forEach((o) => {
-      if (["cancelled", "returned"].includes(o.status?.toLowerCase())) return;
+      if (!isRevenueOrder(o)) return;
       const baseItemName = o.item_name?.split(" + ")[0] || "";
       const matchedProd = products.find((p) => p.name?.toLowerCase() === baseItemName.toLowerCase());
       const cat = matchedProd?.category || o.category || "General";
@@ -483,7 +484,7 @@ const Analytics = ({ orders = [], customers = [], products = [], loading = false
         custMap[name] = { name, orders: 0, amount: 0, city: o.customer?.city || "India" };
       }
       custMap[name].orders += 1;
-      if (!["cancelled", "returned"].includes(o.status?.toLowerCase())) {
+      if (isRevenueOrder(o)) {
         custMap[name].amount += getOrderRevenue(o);
       }
     });
@@ -555,7 +556,7 @@ const Analytics = ({ orders = [], customers = [], products = [], loading = false
       const cat = matchedProd?.category || o.category || "Jewelry";
       if (!catMap[cat]) catMap[cat] = { units: 0, revenue: 0 };
       catMap[cat].units += Number(o.quantity || 1);
-      if (!["cancelled", "returned"].includes(o.status?.toLowerCase())) {
+      if (isRevenueOrder(o)) {
         catMap[cat].revenue += getOrderRevenue(o);
       }
     });

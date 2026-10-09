@@ -118,7 +118,7 @@ Deno.serve(async (req: Request) => {
         const escapedAwb = cleanAwb.replace(/[%_\\]/g, "\\$&");
         const { data, error } = await supabaseAdmin
           .from("orders")
-          .select("id, status, delivery_status, waybill, shipment_id, shipped_at, delivered_at")
+          .select("id, status, delivery_status, waybill, shipment_id, shipped_at, delivered_at, fulfillment_type")
           .ilike("waybill", escapedAwb);
 
         if (error) {
@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
       if (matchedOrders.length === 0 && cleanShipmentId) {
         const { data, error } = await supabaseAdmin
           .from("orders")
-          .select("id, status, delivery_status, waybill, shipment_id, shipped_at, delivered_at")
+          .select("id, status, delivery_status, waybill, shipment_id, shipped_at, delivered_at, fulfillment_type")
           .eq("shipment_id", cleanShipmentId);
 
         if (error) {
@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
       if (matchedOrders.length === 0 && cleanOrderId) {
         const { data, error } = await supabaseAdmin
           .from("orders")
-          .select("id, status, delivery_status, waybill, shipment_id, shipped_at, delivered_at")
+          .select("id, status, delivery_status, waybill, shipment_id, shipped_at, delivered_at, fulfillment_type")
           .eq("id", cleanOrderId);
 
         if (error) {
@@ -172,6 +172,14 @@ Deno.serve(async (req: Request) => {
       }
 
       const order = matchedOrders[0];
+      if (order.fulfillment_type === "manual") {
+        console.log(`[iCarry Webhook] Order ${order.id} is marked manual fulfillment. Skipping webhook update.`);
+        return new Response(JSON.stringify({ ok: true, note: "Order is manual fulfillment" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const carrierDatePicked = body.date_picked || body["date_picked "] || body.picked_datetime;
       const carrierDateDelivered = body.date_delivered || body.delivered_datetime;
 
@@ -245,7 +253,7 @@ Deno.serve(async (req: Request) => {
           const escapedAwb = awb.replace(/[%_\\]/g, "\\$&");
           const { data } = await supabaseAdmin
             .from("orders")
-            .select("id, status, delivery_status")
+            .select("id, status, delivery_status, fulfillment_type")
             .ilike("waybill", escapedAwb);
           if (data && data.length > 0) matchedOrders = data;
         }
@@ -253,13 +261,16 @@ Deno.serve(async (req: Request) => {
         if (matchedOrders.length === 0 && shipmentId) {
           const { data } = await supabaseAdmin
             .from("orders")
-            .select("id, status, delivery_status")
+            .select("id, status, delivery_status, fulfillment_type")
             .eq("shipment_id", shipmentId);
           if (data && data.length > 0) matchedOrders = data;
         }
 
         if (matchedOrders.length === 1) {
           const order = matchedOrders[0];
+          if (order.fulfillment_type === "manual") {
+            continue;
+          }
           // Do not overwrite terminal orders with NDR
           const orderTerminal = ["delivered", "cancelled", "canceled", "returned", "rto", "lost", "damaged"].some((t) =>
             (order.status || "").toLowerCase().includes(t) ||

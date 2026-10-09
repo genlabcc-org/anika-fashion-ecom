@@ -5,6 +5,7 @@ import { useAdminData } from "../../hooks/useAdminData";
 import { Routes, Route, Link, useNavigate, useLocation, Navigate, useSearchParams } from "react-router-dom";
 import { useStore } from "../../hooks/useStore";
 import { getUserInitials } from "../../utils/avatarUtils";
+import { isRevenueOrder } from "../../utils/orderUtils";
 import "./Dashboard.css";
 
 
@@ -213,7 +214,7 @@ const RevenueChart = ({ orders, loading }) => {
       const dayOrders = orders.filter(o => {
         const oDate = new Date(o.order_date);
         oDate.setHours(0, 0, 0, 0);
-        return oDate.getTime() === d.getTime() && !['cancelled', 'returned'].includes(o.status?.toLowerCase());
+        return oDate.getTime() === d.getTime() && isRevenueOrder(o);
       });
 
       const dailyRevenue = dayOrders.reduce((sum, o) => sum + Number(o.total_price || 0), 0);
@@ -293,7 +294,7 @@ const SalesByCategory = ({ orders, products, loading }) => {
   const categorySales = useMemo(() => {
     const sales = {};
     orders.forEach(order => {
-      if (['cancelled', 'returned'].includes(order.status?.toLowerCase())) return;
+      if (!isRevenueOrder(order)) return;
       const product = products.find(p => p.name === order.item_name);
       const categoryName = product?.category || 'Uncategorized';
       sales[categoryName] = (sales[categoryName] || 0) + Number(order.total_price || 0);
@@ -520,7 +521,7 @@ const DashboardHome = ({ orders, customers, products, loading }) => {
     const now = new Date();
     const thisMonthOrders = orders.filter(o => {
       const oDate = new Date(o.order_date);
-      return oDate.getMonth() === now.getMonth() && oDate.getFullYear() === now.getFullYear() && !['cancelled', 'returned'].includes(o.status?.toLowerCase());
+      return oDate.getMonth() === now.getMonth() && oDate.getFullYear() === now.getFullYear() && isRevenueOrder(o);
     });
     const revenue = thisMonthOrders.reduce((sum, o) => sum + Number(o.total_price || 0), 0);
     const formatRevenue = (value) => {

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { orderService } from "../../services/orderService";
 import { supabase } from "../../lib/supabase";
 import { useStore } from "../../hooks/useStore";
+import { isRevenueOrder } from "../../utils/orderUtils";
 import "./Customerdetails.css";
 
 const RingProductImage = () => (
@@ -113,7 +114,7 @@ const CustomerDetails = ({ customer, onBack }) => {
   const stats = useMemo(() => {
     const totalOrders = orders.length;
     const totalSpent = orders
-      .filter(o => o.status?.toLowerCase() !== 'cancelled')
+      .filter(isRevenueOrder)
       .reduce((sum, o) => sum + Number(o.total_price || 0), 0);
     const avgOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
     const lastOrder = orders[0]?.order_date 

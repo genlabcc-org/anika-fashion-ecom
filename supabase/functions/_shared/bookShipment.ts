@@ -5,6 +5,7 @@ import { cleanMobile, toStateCode, PARCEL_DEFAULTS } from "./icarryHelpers.ts";
 
 export interface BookShipmentOptions {
   saveOnly?: boolean;
+  forceRebook?: boolean;
 }
 
 export interface BookShipmentResult {
@@ -35,7 +36,7 @@ export async function bookShipmentForOrder(
     // 1. Fetch order details
     const { data: order, error: orderError } = await supabaseAdmin
       .from("orders")
-      .select("id, total_price, payment, quantity, address_id, waybill, shipment_id")
+      .select("id, total_price, payment, quantity, address_id, waybill, shipment_id, delivery_status, fulfillment_type")
       .eq("id", orderId)
       .maybeSingle();
 
@@ -45,8 +46,12 @@ export async function bookShipmentForOrder(
       return { ok: false, error: errMsg };
     }
 
-    // 2. Idempotency check: Skip if waybill is already assigned
-    if (order.waybill) {
+    // 2. Idempotency check: Skip if waybill is already assigned, unless rebooking explicitly requested or status indicates cancelled/failed booking
+    const isPickupCancelled = (order.delivery_status || "").toLowerCase().includes("pickup cancel");
+    const isBookingFailed = (order.delivery_status || "").toLowerCase().includes("booking fail");
+    const canRebook = !!options?.forceRebook || isPickupCancelled || isBookingFailed;
+
+    if (order.waybill && !canRebook) {
       console.log(`[iCarry] Order ${orderId} already booked with waybill: ${order.waybill}`);
       return {
         ok: true,
@@ -232,6 +237,10 @@ export async function bookShipmentForOrder(
           tracking_url: trackingUrl,
           delivery_status: "Booked",
           shipment_error: null,
+          fulfillment_type: "icarry",
+          manual_courier_name: null,
+          manual_awb: null,
+          manual_tracking_url: null,
         })
         .eq("id", orderId);
       console.log(`[iCarry] Order ${orderId} successfully booked. Waybill: ${waybill}, Shipment ID: ${shipmentId}`);

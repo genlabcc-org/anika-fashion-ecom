@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStore } from "../../hooks/useStore";
 import { orderService } from "../../services/orderService";
+import { isRevenueOrder } from "../../utils/orderUtils";
 import Toast from "../../components/Toast";
 import "./Allorders.css";
 
@@ -21,7 +22,7 @@ const PAYMENT_STYLE = {
 };
 
 const CATEGORIES = ["All Category", "Necklaces", "Earrings", "Rings", "Bracelets"];
-const STATUSES = ["All Status", "Order Placed", "Confirmed", "Shipped", "Delivered", "Cancelled", "Returned"];
+const STATUSES = ["All Status", "To Pack / Needs Action", "Paid", "Order Placed", "Confirmed", "Shipped", "Delivered", "Cancelled", "Returned"];
 const PER_PAGE = 6;
 
 /* ── Icons ── */
@@ -165,6 +166,13 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const fetchNewOrdersCount = useStore((state) => state.fetchNewOrdersCount);
   const newOrdersCount = useStore((state) => state.newOrdersCount);
 
+  const toPackCount = useMemo(() => {
+    return orders.filter((o) => {
+      const s = (o.status || "").toLowerCase().trim();
+      return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed"].includes(s);
+    }).length;
+  }, [orders]);
+
   const [toast, setToast] = useState({ message: "", type: "" });
   const showToast = (message, type = "info") => {
     setToast({ message: "", type: "" });
@@ -200,6 +208,10 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
     const matchStatus = (() => {
       if (status === "All Status") return true;
+      if (status === "To Pack / Needs Action") {
+        const s = (o.status || "").toLowerCase().trim();
+        return !["shipped", "delivered", "cancelled", "canceled", "returned", "return", "refund completed"].includes(s);
+      }
       if (status.toLowerCase() === "returned") {
         return o.status?.toLowerCase() === "return" || o.status?.toLowerCase() === "returned";
       }
@@ -220,6 +232,10 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
     const matchRead = (() => {
       if (readFilter === "unread") return o.admin_read === false;
+      if (readFilter === "to_pack") {
+        const s = (o.status || "").toLowerCase().trim();
+        return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed"].includes(s);
+      }
       return true;
     })();
 
@@ -259,7 +275,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
   /* ── Stats helpers ── */
   const revenue = orders
-    .filter(o => !['cancelled', 'returned'].includes(o.status?.toLowerCase()))
+    .filter(isRevenueOrder)
     .reduce((s, o) => s + Number(o.total_price || 0), 0);
 
   const fmtRevenue = (v) => {
@@ -275,7 +291,14 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const codCount = orders.filter(o => o.payment?.toUpperCase() === 'COD').length;
   const paidCount = orders.filter(o => o.payment?.toUpperCase() === 'PAID').length;
 
-  const actionNeeded = count('Pending') + count('Confirmed');
+  // Unfulfilled orders that need packing/shipping (Pending, Confirmed, Order Placed, Paid, or Pickup Cancelled)
+  const actionNeeded = orders.filter(o => {
+    const s = (o.status || '').toLowerCase().trim();
+    if (['shipped', 'delivered', 'cancelled', 'canceled', 'returned', 'return', 'refund completed'].includes(s)) {
+      return false;
+    }
+    return true;
+  }).length;
   const inTransit = count('Shipped');
   const problems = count('Cancelled') + count('Returned');
 
@@ -424,9 +447,16 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             </span>
           </td>
           <td>
-            <span className="ao__badge" style={{ background: ss.bg, color: ss.color }}>
-              {order.status}
-            </span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+              <span className="ao__badge" style={{ background: ss.bg, color: ss.color }}>
+                {order.status}
+              </span>
+              {!["cancelled", "canceled", "delivered"].includes((order.status || "").toLowerCase()) && (
+                <span className={`ao__pack-chip ${order.is_packed ? "ao__pack-chip--packed" : "ao__pack-chip--topack"}`}>
+                  {order.is_packed ? "Packed" : "To pack"}
+                </span>
+              )}
+            </div>
           </td>
           <td>
             <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -575,6 +605,11 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                     <span className="ao__badge" style={{ background: ss.bg, color: ss.color }}>
                       {order.status}
                     </span>
+                    {!["cancelled", "canceled", "delivered"].includes((order.status || "").toLowerCase()) && (
+                      <span className={`ao__pack-chip ${order.is_packed ? "ao__pack-chip--packed" : "ao__pack-chip--topack"}`}>
+                        {order.is_packed ? "Packed" : "To pack"}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="ao__card-body">
@@ -656,17 +691,24 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           </div>
 
           {/* Action needed */}
-          <div className="ao__kpi-card ao__kpi-card--action">
+          <div
+            className="ao__kpi-card ao__kpi-card--action"
+            style={{ cursor: "pointer" }}
+            onClick={() => { setStatus("To Pack / Needs Action"); setPage(1); }}
+            title="Click to view all unfulfilled orders needing action"
+          >
             <div className="ao__kpi-top">
               <span className="ao__kpi-icon">⏳</span>
-              <span className="ao__kpi-label">Needs Action</span>
+              <span className="ao__kpi-label">To Pack / Needs Action</span>
             </div>
             <div className={`ao__kpi-value${loading ? ' ao__kpi-value--loading' : ''}`}>
               {loading ? '—' : actionNeeded}
             </div>
-            <div className="ao__kpi-sub">
-              <span className="ao__kpi-chip ao__kpi-chip--pending">{loading ? '—' : count('Pending')} Pending</span>
-              <span className="ao__kpi-chip ao__kpi-chip--confirmed">{loading ? '—' : count('Confirmed')} Confirmed</span>
+            <div className="ao__kpi-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {count('Paid') > 0 && <span className="ao__kpi-chip ao__kpi-chip--confirmed">{count('Paid')} Paid</span>}
+              {count('Order Placed') > 0 && <span className="ao__kpi-chip ao__kpi-chip--pending">{count('Order Placed')} Placed</span>}
+              {count('Pending') > 0 && <span className="ao__kpi-chip ao__kpi-chip--pending">{count('Pending')} Pending</span>}
+              {count('Confirmed') > 0 && <span className="ao__kpi-chip ao__kpi-chip--confirmed">{count('Confirmed')} Confirmed</span>}
             </div>
             <div className="ao__kpi-bar">
               <div className="ao__kpi-bar-fill" style={{
@@ -763,7 +805,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
       {/* ── Toolbar ── */}
       <div className="ao__toolbar">
-        {/* Read / Unread Tabs */}
+        {/* Read / Unread / To Pack Tabs */}
         <div className="ao__read-tabs">
           <button
             type="button"
@@ -779,6 +821,14 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           >
             <span className="ao__unread-tab-dot" />
             Unread ({newOrdersCount})
+          </button>
+          <button
+            type="button"
+            className={`ao__read-tab${readFilter === "to_pack" ? " ao__read-tab--active" : ""}`}
+            onClick={() => { setReadFilter("to_pack"); setPage(1); }}
+          >
+            <span className="ao__topack-tab-dot" />
+            To Pack ({toPackCount})
           </button>
         </div>
 

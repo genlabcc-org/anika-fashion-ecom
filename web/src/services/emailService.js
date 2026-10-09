@@ -134,7 +134,7 @@ export const emailService = {
 
       // 7. Try sending via Supabase Edge Function if available
       try {
-        const { error: fnError } = await supabase.functions.invoke('send-order-email', {
+        const { data, error: fnError } = await supabase.functions.invoke('send-order-email', {
           body: {
             adminEmail: ADMIN_EMAIL,
             orderId: orderId || 'N/A',
@@ -153,12 +153,14 @@ export const emailService = {
             shippingFee: Number(shippingFee) || 0,
           },
         });
-        if (!fnError) {
-          console.log('Order notification email sent via Supabase Edge Function.');
+        if (!fnError && (data?.success === true || data?.success === 'true') && data?.result?.success !== 'false') {
+          console.log('[emailService] Order notification email sent via Supabase Edge Function.');
           return true;
+        } else {
+          console.warn('[emailService] Edge function failed or unconfirmed, falling back to direct FormSubmit fetch:', fnError || data);
         }
       } catch (e) {
-        // Fall through to HTTP dispatch fallback
+        console.warn('[emailService] Edge function invoke error, falling back to direct FormSubmit fetch:', e);
       }
 
       // 8. Minimal, professional email template dispatch via FormSubmit (Single Unified Box Table)
@@ -191,15 +193,15 @@ export const emailService = {
         body: JSON.stringify(formSubmitPayload),
       });
 
-      if (response.ok) {
-        console.log('Minimal order notification email dispatched to', ADMIN_EMAIL);
+      const resJson = await response.json().catch(() => ({}));
+      if (response.ok && (resJson.success === 'true' || resJson.success === true)) {
+        console.log('[emailService] Minimal order notification email dispatched successfully to', ADMIN_EMAIL);
         return true;
       } else {
-        const errText = await response.text();
-        console.warn('FormSubmit email response not OK:', errText);
+        console.warn('[emailService] FormSubmit response error:', resJson?.message || resJson);
       }
     } catch (err) {
-      console.error('Failed to send order notification email:', err);
+      console.error('[emailService] Failed to send order notification email:', err);
     }
     return false;
   },

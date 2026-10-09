@@ -85,6 +85,83 @@
   cursor: not-allowed;
 }
 
+/* ── Pack / Unpack Toggle Button ── */
+.od__pack-action-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.od__pack-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+}
+
+.od__pack-toggle-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.od__pack-toggle-btn--packed {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #15803d;
+  font-weight: 600;
+}
+
+.od__pack-toggle-btn--packed:hover:not(:disabled) {
+  background: #dcfce7;
+  border-color: #4ade80;
+  color: #166534;
+}
+
+.od__pack-toggle-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.od__pack-caption {
+  font-size: 11px;
+  color: #15803d;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── Logistics Card Pack Chip ── */
+.od__pack-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.od__pack-chip--packed {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.od__pack-chip--unpacked {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
 .od__title {
   font-size: 22px;
   font-weight: 700;
@@ -606,6 +683,17 @@
 
   .od__header {
     margin-bottom: 14px;
+  }
+
+  .od__header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .od__pack-action-group {
+    align-items: flex-start;
   }
 
   .od__title {

@@ -10,6 +10,7 @@ export const icarryService = {
   checkPincode: (pincode) => invoke('pincode', { pincode: String(pincode) }),
   track:        (orderId) => invoke('track', { orderId }),
   label:        (orderId) => invoke('label', { orderId }),
-  cancel:       (orderId) => invoke('cancel', { orderId }),
+  cancel:       (orderId, options = {}) => invoke('cancel', { orderId, ...options }),
   retryBooking: (orderId) => invoke('retryBooking', { orderId }),
+  updateCourierStatus: (orderId, updates) => invoke('updateCourierStatus', { orderId, ...updates }),
 };

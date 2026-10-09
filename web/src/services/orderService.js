@@ -198,6 +198,27 @@ export const orderService = {
   },
 
   /**
+   * Sets the packing status of an order.
+   * @param {string} orderId 
+   * @param {boolean} packed 
+   * @returns {Promise<any>}
+   */
+  async setOrderPacked(orderId, packed = true) {
+    if (!orderId) throw new Error('Order ID is required');
+    const { data, error } = await supabase
+      .from('orders')
+      .update({
+        is_packed: Boolean(packed),
+        packed_at: packed ? new Date().toISOString() : null
+      })
+      .eq('id', orderId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
    * Retrieves all customer profiles in the system (admin view).
    * @returns {Promise<any[]>}
    */

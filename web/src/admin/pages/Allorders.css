@@ -1125,6 +1125,38 @@
   flex-shrink: 0;
 }
 
+.ao__topack-tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ── Pack Status Chips in List ── */
+.ao__pack-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ao__pack-chip--packed {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.ao__pack-chip--topack {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
 /* ── Bulk Actions Toolbar (Gmail style) ── */
 .ao__bulk-bar {
   display: flex;

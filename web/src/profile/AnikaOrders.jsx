@@ -310,18 +310,26 @@ export default function AnikaOrders() {
                     </div>
                   </div>
 
-                  {/* Shipment Tracking Info (only shown if waybill is present) */}
-                  {order.waybill && (() => {
+                  {/* Shipment Tracking Info (shown if waybill or manual courier present) */}
+                  {(order.waybill || order.manual_awb || order.fulfillment_type === 'manual') && (() => {
+                    const isManual = order.fulfillment_type === 'manual';
+                    const activeCourier = isManual ? (order.manual_courier_name || order.courier_name || 'Manual') : (order.courier_name || order.courierName || order.deliveryProvider || 'iCarry');
+                    const activeAwb = isManual ? (order.manual_awb || order.waybill) : order.waybill;
+                    const activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : (order.tracking_url || order.trackingUrl);
+
                     const statusStr = (order.delivery_status || order.deliveryStatus || '').trim();
-                    const isCancelled = statusStr.toLowerCase().includes('cancel');
+                    const isPickupCancelled = statusStr.toLowerCase().includes('pickup cancel');
+                    const isCancelled = !isPickupCancelled && statusStr.toLowerCase().includes('cancel');
                     const isNDR = statusStr.toUpperCase().startsWith('NDR');
                     const isDelivered = statusStr.toLowerCase() === 'delivered' || (order.status || '').toLowerCase() === 'delivered';
 
                     const boxBg = isCancelled ? '#fef2f2' : isNDR ? '#fffbeb' : isDelivered ? '#f0fdf4' : '#f8fafc';
                     const boxBorder = isCancelled ? '#fecaca' : isNDR ? '#fde68a' : isDelivered ? '#bbf7d0' : '#e2e8f0';
                     const textColor = isCancelled ? '#991b1b' : isNDR ? '#92400e' : isDelivered ? '#166534' : '#475569';
-                    const badgeBg = isCancelled ? '#fee2e2' : isNDR ? '#fef3c7' : isDelivered ? '#dcfce7' : '#e2e8f0';
-                    const badgeText = isCancelled ? '#b91c1c' : isNDR ? '#b45309' : isDelivered ? '#15803d' : '#334155';
+                    const badgeBg = isCancelled ? '#fee2e2' : isNDR ? '#fef3c7' : isDelivered ? '#dcfce7' : isPickupCancelled ? '#fef3c7' : '#e2e8f0';
+                    const badgeText = isCancelled ? '#b91c1c' : isNDR ? '#b45309' : isDelivered ? '#15803d' : isPickupCancelled ? '#b45309' : '#334155';
+
+                    const displayStatus = isPickupCancelled ? 'Preparing your order' : isDelivered ? 'Delivered' : (statusStr || 'Booked');
 
                     return (
                       <div
@@ -341,9 +349,13 @@ export default function AnikaOrders() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: textColor }}>
-                          <span><strong>Courier:</strong> {order.courier_name || order.courierName || order.deliveryProvider || 'iCarry'}</span>
-                          <span style={{ color: boxBorder }}>·</span>
-                          <span><strong>AWB:</strong> {order.waybill}</span>
+                          <span><strong>Courier:</strong> {activeCourier}</span>
+                          {activeAwb && (
+                            <>
+                              <span style={{ color: boxBorder }}>·</span>
+                              <span><strong>AWB:</strong> {activeAwb}</span>
+                            </>
+                          )}
                           <span style={{ color: boxBorder }}>·</span>
                           <span>
                             <strong>Status:</strong>{' '}
@@ -357,13 +369,13 @@ export default function AnikaOrders() {
                               color: badgeText,
                               border: isDelivered ? '1px solid #bbf7d0' : undefined
                             }}>
-                              {isDelivered ? 'Delivered' : (statusStr || 'Booked')}
+                              {displayStatus}
                             </span>
                           </span>
                         </div>
-                        {(order.tracking_url || order.trackingUrl) && (
+                        {activeTrackingUrl && (
                           <a
-                            href={order.tracking_url || order.trackingUrl}
+                            href={activeTrackingUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
@@ -391,11 +403,13 @@ export default function AnikaOrders() {
                     const isDelivered =
                       (order.delivery_status || order.deliveryStatus || "").toLowerCase() === "delivered" ||
                       (order.status || "").toLowerCase() === "delivered";
+                    const isPickupCancelled =
+                      (order.delivery_status || order.deliveryStatus || "").toLowerCase().includes("pickup cancel");
                     const isCancelled =
-                      (order.delivery_status || order.deliveryStatus || "").toLowerCase().includes("cancel") ||
-                      (order.status || "").toLowerCase().includes("cancel");
+                      ((order.delivery_status || order.deliveryStatus || "").toLowerCase().includes("cancel") && !isPickupCancelled) ||
+                      ((order.status || "").toLowerCase().includes("cancel") && !(order.status || "").toLowerCase().includes("pickup cancel"));
 
-                    const displayStatus = isCancelled ? "Cancelled" : isDelivered ? "Delivered" : order.status;
+                    const displayStatus = isCancelled ? "Cancelled" : isDelivered ? "Delivered" : isPickupCancelled ? "Preparing your order" : order.status;
                     const statusClass = displayStatus.toLowerCase().replace(/\s+/g, '-');
 
                     return (

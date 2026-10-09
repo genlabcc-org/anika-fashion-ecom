@@ -8,6 +8,7 @@ import {
   timingSafeEqualStr,
   parseCarrierDate,
   calculateOrderTransition,
+  extractStatusFromTrackResponse,
 } from "../_shared/icarryStatus.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -56,9 +57,10 @@ Deno.serve(async (req: Request) => {
     // Query up to 50 active, non-terminal orders with a waybill
     const { data: activeOrders, error: fetchErr } = await supabaseAdmin
       .from("orders")
-      .select("id, status, delivery_status, waybill, shipment_id, courier_name, shipped_at, delivered_at")
+      .select("id, status, delivery_status, waybill, shipment_id, courier_name, shipped_at, delivered_at, fulfillment_type")
       .not("waybill", "is", null)
-      .not("delivery_status", "in", '("Delivered","Cancelled","Canceled","Returned","Returned to Origin","Lost","Damaged","Voided")')
+      .or("fulfillment_type.eq.icarry,fulfillment_type.is.null")
+      .not("delivery_status", "in", '("Delivered","Cancelled","Canceled","Returned","Returned to Origin","Lost","Damaged","Voided","Pickup Cancelled")')
       .not("status", "in", '("Delivered","Cancelled","Refund Completed")')
       .order("order_date", { ascending: false })
       .limit(50);
@@ -91,19 +93,23 @@ Deno.serve(async (req: Request) => {
 
     const orderMapByShipmentId = new Map<string, any>();
     const shipmentIdsToSync: (string | number)[] = [];
+    const updatedOrders: any[] = [];
+    const processedOrderIds = new Set<string>();
+    let skippedCount = 0;
+    let failedCount = 0;
 
     for (const order of activeOrders) {
+      if (order.fulfillment_type === "manual" || (order.courier_name && /st courier|manual|dtdc|local|porter/i.test(order.courier_name))) {
+        processedOrderIds.add(order.id);
+        skippedCount++;
+        continue;
+      }
       if (order.shipment_id && String(order.shipment_id).trim()) {
         const sid = String(order.shipment_id).trim();
         orderMapByShipmentId.set(sid, order);
         shipmentIdsToSync.push(sid);
       }
     }
-
-    const updatedOrders: any[] = [];
-    const processedOrderIds = new Set<string>();
-    let skippedCount = 0;
-    let failedCount = 0;
 
     const isTimeExhausted = () => (Date.now() - startTime) >= TIME_BUDGET_MS;
 
@@ -184,6 +190,10 @@ Deno.serve(async (req: Request) => {
 
         const chunk = remainingOrders.slice(i, i + FALLBACK_CONCURRENCY);
         await Promise.all(chunk.map(async (order) => {
+          if (order.fulfillment_type === "manual" || (order.courier_name && /st courier|manual|dtdc|local|porter/i.test(order.courier_name))) {
+            skippedCount++;
+            return;
+          }
           if (!order.waybill && !order.shipment_id) {
             skippedCount++;
             return;
@@ -195,18 +205,18 @@ Deno.serve(async (req: Request) => {
             else if (order.waybill) trackPayload.awb = order.waybill;
 
             const trackRes = await icarryCall(ENDPOINTS.track, trackPayload);
-            const statusText = String(trackRes?.status || "").trim();
-            if (!statusText) {
+            const extraction = extractStatusFromTrackResponse(trackRes);
+            if (!extraction.effectiveStatus) {
               skippedCount++;
               return;
             }
 
-            const carrierDatePicked = trackRes?.picked_datetime;
-            const carrierDateDelivered = trackRes?.delivered_datetime;
+            const carrierDatePicked = extraction.carrierDatePicked || trackRes?.picked_datetime;
+            const carrierDateDelivered = extraction.carrierDateDelivered || trackRes?.delivered_datetime;
 
             const transition = calculateOrderTransition(
               order,
-              statusText,
+              extraction.effectiveStatus,
               carrierDatePicked,
               carrierDateDelivered
             );

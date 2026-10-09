@@ -49,26 +49,49 @@ Deno.serve(async (req: Request) => {
         "Total Amount": totalPrice != null ? `₹${Number(totalPrice).toLocaleString('en-IN')}` : '₹0',
       };
 
+      const origin = req.headers.get("origin") || "https://www.anikafashion.in";
+      const referer = req.headers.get("referer") || `${origin}/`;
+
       const res = await fetch(`https://formsubmit.co/ajax/${adminEmail}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
+          "Origin": origin,
+          "Referer": referer,
         },
         body: JSON.stringify(payload),
       });
 
       const result = await res.json().catch(() => ({}));
+      const isSuccess = res.ok && (result.success === true || result.success === "true");
+
+      if (!isSuccess) {
+        console.error("[send-order-email] FormSubmit error:", result);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: result.message || "FormSubmit rejected submission",
+            recipient: adminEmail,
+            result,
+          }),
+          {
+            status: 502,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
 
       return new Response(
-        JSON.stringify({ success: res.ok, recipient: adminEmail, result }),
+        JSON.stringify({ success: true, recipient: adminEmail, result }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      console.error("[send-order-email] Unexpected error:", errMsg);
       return new Response(
-        JSON.stringify({ error: errMsg }),
+        JSON.stringify({ success: false, error: errMsg }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
-  }
+    }
 });

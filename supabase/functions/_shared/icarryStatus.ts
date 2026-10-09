@@ -7,10 +7,10 @@
  * Rank 3: Terminal states (Delivered, Canceled, Voided, Returned, Lost, Damaged)
  */
 export const STATUS_MAP: Record<number, { name: string; rank: number }> = {
-  1:  { name: "Pending Pickup", rank: 1 },
-  2:  { name: "Processing", rank: 1 },
-  3:  { name: "Shipped", rank: 2 },
-  7:  { name: "Canceled", rank: 3 },
+  1: { name: "Pending Pickup", rank: 1 },
+  2: { name: "Processing", rank: 1 },
+  3: { name: "Shipped", rank: 2 },
+  7: { name: "Canceled", rank: 3 },
   12: { name: "Damaged", rank: 3 },
   14: { name: "Lost", rank: 3 },
   16: { name: "Voided", rank: 3 },
@@ -36,10 +36,15 @@ export function getStatusRank(statusText: string | null | undefined): number {
     return 2;
   }
 
-  // 2. Rank 3: Terminal states
+  // 2. Check "pickup cancelled" (returns 1, pre-transit so future sync/webhook updates are not blocked!)
+  if (s === "pickup cancelled" || s.startsWith("pickup cancelled")) {
+    return 1;
+  }
+
+  // 3. Rank 3: Terminal states (exclude pickup cancel)
   if (
     s.includes("delivered") ||
-    s.includes("cancel") ||
+    (s.includes("cancel") && !s.includes("pickup cancel")) ||
     s === "voided" ||
     s.includes("return") ||
     s.includes("rto") ||
@@ -66,6 +71,7 @@ export function getStatusRank(statusText: string | null | undefined): number {
     s.includes("manifest") ||
     s.includes("pickup scheduled") ||
     s.includes("pending pickup") ||
+    s.includes("pickup cancelled") ||
     s.includes("processing")
   ) {
     return 1;
@@ -122,6 +128,8 @@ export interface OrderState {
   id: string;
   status?: string | null;
   delivery_status?: string | null;
+  courier_name?: string | null;
+  fulfillment_type?: string | null;
   shipped_at?: string | null;
   delivered_at?: string | null;
 }
@@ -133,12 +141,85 @@ export interface TransitionResult {
   warning?: string;
 }
 
+export interface TrackExtractionResult {
+  effectiveStatus: string;
+  isCancelled: boolean;
+  carrierDatePicked?: string | null;
+  carrierDateDelivered?: string | null;
+}
+
+/**
+ * Extracts normalized status from iCarry track response (api_track_shipment)
+ * and/or sync item (api_shipment_status_sync).
+ * Specifically scans top-level status AND the details history array for cancellation events
+ * (e.g. "Seller cancelled the order" or "Shipment Cancelled").
+ */
+export function extractStatusFromTrackResponse(trackRes: any, syncItem?: any): TrackExtractionResult {
+  let effectiveStatus = "";
+  let isCancelled = false;
+  let carrierDatePicked: string | null = null;
+  let carrierDateDelivered: string | null = null;
+
+  // 1. Inspect syncItem if available (from api_shipment_status_sync)
+  if (syncItem) {
+    const s = String(syncItem.status || "").trim();
+    if (s === "7" || s === "16") {
+      isCancelled = true;
+      effectiveStatus = "Pickup Cancelled";
+    } else if (Number(s) in STATUS_MAP) {
+      effectiveStatus = STATUS_MAP[Number(s)].name;
+    }
+    carrierDatePicked = syncItem.date_picked || syncItem["date_picked "] || null;
+    carrierDateDelivered = syncItem.date_delivered || null;
+  }
+
+  // 2. Inspect trackRes top-level fields
+  if (trackRes) {
+    const rawStatus = String(trackRes.status || "").trim();
+    if (/cancel|void/i.test(rawStatus)) {
+      isCancelled = true;
+      effectiveStatus = "Pickup Cancelled";
+    } else if (!effectiveStatus && rawStatus) {
+      effectiveStatus = rawStatus;
+    }
+
+    if (!carrierDatePicked && trackRes.picked_datetime) {
+      carrierDatePicked = trackRes.picked_datetime;
+    }
+    if (!carrierDateDelivered && trackRes.delivered_datetime) {
+      carrierDateDelivered = trackRes.delivered_datetime;
+    }
+
+    // 3. Scan details history array for cancellation events
+    const details = Array.isArray(trackRes.details) ? trackRes.details : [];
+    for (const item of details) {
+      const notes = String(item?.notes || item?.status || item?.comment || "").trim();
+      if (/cancel|void/i.test(notes)) {
+        isCancelled = true;
+        effectiveStatus = "Pickup Cancelled";
+        break;
+      }
+    }
+  }
+
+  if (isCancelled) {
+    effectiveStatus = "Pickup Cancelled";
+  }
+
+  return {
+    effectiveStatus: effectiveStatus || "Booked",
+    isCancelled,
+    carrierDatePicked,
+    carrierDateDelivered,
+  };
+}
+
 /**
  * Computes database updates following strict business transition rules:
  * - shipped_at (if null): set when newRank === 2, or when delivered.
  * - orders.status = "Shipped" only when newRank === 2 and current status is
  *   not Shipped/Delivered/Cancelled/Refund Completed/Returned.
- * - "Delivered" on code 21; "Cancelled" on codes 7 and 16.
+ * - "Delivered" on code 21; "Cancelled" on codes 7, 16 or any cancelled status.
  * - Lost (14), Damaged (12), Returned to Origin (23): update delivery_status only,
  *   leave orders.status unchanged, and log a console warning.
  * - Never set shipped_at for Cancelled/Lost/Damaged/Returned.
@@ -149,6 +230,14 @@ export function calculateOrderTransition(
   carrierDatePicked?: any,
   carrierDateDelivered?: any
 ): TransitionResult {
+  // If order is fulfilled via manual fulfillment, ignore iCarry transitions
+  if (order.fulfillment_type === "manual" || (order.courier_name && /st courier|manual|dtdc|local|porter/i.test(order.courier_name))) {
+    return {
+      shouldUpdate: false,
+      reason: `Order is managed manually (fulfillment_type='${order.fulfillment_type || "manual"}'). iCarry transition ignored.`,
+    };
+  }
+
   const numCode = Number(rawStatus);
   const isKnownCode = Number.isInteger(numCode) && numCode in STATUS_MAP;
 
@@ -173,11 +262,14 @@ export function calculateOrderTransition(
   );
 
   // Terminal states (Delivered, Cancelled, Returned, Lost, Damaged, Voided) are never overwritten
+  // CRITICAL: Must NOT treat "pickup cancelled" as terminal!
   const isCurrentTerminal =
     currentRank === 3 ||
-    ["delivered", "cancelled", "canceled", "returned", "rto", "lost", "damaged", "refund completed", "voided"].some(t =>
-      currentStatusLower.includes(t) || currentDeliveryLower.includes(t)
-    );
+    ["delivered", "cancelled", "canceled", "returned", "rto", "lost", "damaged", "refund completed", "voided"].some(t => {
+      const isStatusMatch = currentStatusLower.includes(t) && !currentStatusLower.includes("pickup cancel");
+      const isDeliveryMatch = currentDeliveryLower.includes(t) && !currentDeliveryLower.includes("pickup cancel");
+      return isStatusMatch || isDeliveryMatch;
+    });
 
   if (isCurrentTerminal) {
     return {
@@ -206,7 +298,11 @@ export function calculateOrderTransition(
   }
 
   const isSpecialTerminalException = numCode === 14 || numCode === 12 || numCode === 23;
-  const isCancelCode = numCode === 7 || numCode === 16;
+  const isCancelCode =
+    numCode === 7 ||
+    numCode === 16 ||
+    /cancel|void/i.test(newDeliveryStatus) ||
+    /cancel|void/i.test(String(rawStatus ?? ""));
   const isDeliveredCode = numCode === 21 || newDeliveryStatus.toLowerCase() === "delivered";
 
   // 1. Lost (14), Damaged (12), Returned to Origin (23):
@@ -217,13 +313,15 @@ export function calculateOrderTransition(
     return { shouldUpdate: true, updates, warning };
   }
 
-  // 2. Cancelled on codes 7 and 16:
-  // Never set shipped_at for Cancelled
+  // 2. Cancelled on codes 7/16 or cancel status text:
+  // Carrier pickup cancellation: sets delivery_status = "Pickup Cancelled". Never touches orders.status!
   if (isCancelCode) {
-    if (currentStatusLower !== "refund completed") {
-      updates.status = "Cancelled";
-    }
-    return { shouldUpdate: true, updates, warning };
+    updates.delivery_status = "Pickup Cancelled";
+    return {
+      shouldUpdate: true,
+      updates,
+      warning: `Carrier pickup cancelled for order ${order.id}. Delivery status set to "Pickup Cancelled", order status preserved as "${order.status}".`,
+    };
   }
 
   // 3. Delivered on code 21:

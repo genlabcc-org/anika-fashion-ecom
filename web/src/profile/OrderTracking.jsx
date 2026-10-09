@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { orderService } from "../services/orderService";
+import { icarryService } from "../services/icarryService";
 import { useStore } from "../hooks/useStore";
 import Navbar from "../components/SiteHeader";
 import Footer from "../components/SiteFooter";
@@ -22,6 +23,7 @@ export default function OrderTracking() {
     location.state?.order?.shipping_address || location.state?.order?.address || null
   );
   const [addressLoading, setAddressLoading] = useState(false);
+  const [refreshingLiveStatus, setRefreshingLiveStatus] = useState(false);
 
   useEffect(() => {
     if (!orderId) return;
@@ -73,6 +75,32 @@ export default function OrderTracking() {
               }
             } catch (err) {
               console.error("Error fetching address for order:", err);
+            }
+          }
+
+          // Auto-sync live status from iCarry if waybill/shipment_id is present and not an external courier
+          const isExternalCourier = /st courier|manual|dtdc|local|porter/i.test(data?.courier_name || "");
+          if (data && (data.waybill || data.shipment_id) && !isExternalCourier) {
+            const s = (data.status || "").toLowerCase();
+            const d = (data.delivery_status || "").toLowerCase();
+            const isTerminal =
+              ["delivered", "cancelled", "canceled", "refund completed"].some((t) => s.includes(t)) &&
+              ["delivered", "cancelled", "canceled"].some((t) => d.includes(t));
+            if (!isTerminal) {
+              icarryService
+                .track(orderId)
+                .then((res) => {
+                  if (res?.updates && Object.keys(res.updates).length > 0) {
+                    setOrder((prev) => ({
+                      ...prev,
+                       status: res.updates.status || prev?.status,
+                      delivery_status: res.updates.delivery_status || prev?.delivery_status,
+                    }));
+                  }
+                })
+                .catch((err) => {
+                  console.warn("[OrderTracking] Background live status sync error:", err);
+                });
             }
           }
         }
@@ -163,8 +191,8 @@ export default function OrderTracking() {
   }, [order?.user_id, order?.address_id, user?.id]);
 
   const isCancelled =
-    (order?.status || "").toLowerCase().includes("cancel") ||
-    (order?.delivery_status || order?.deliveryStatus || "").toLowerCase().includes("cancel") ||
+    ((order?.status || "").toLowerCase().includes("cancel") && !(order?.status || "").toLowerCase().includes("pickup cancel")) ||
+    ((order?.delivery_status || order?.deliveryStatus || "").toLowerCase().includes("cancel") && !(order?.delivery_status || order?.deliveryStatus || "").toLowerCase().includes("pickup cancel")) ||
     (order?.delivery_status || order?.deliveryStatus || "").toLowerCase() === "voided" ||
     (order?.status || "").toLowerCase() === "refund completed";
   const isRefundCompleted = (order?.status || "").toLowerCase() === "refund completed";
@@ -262,10 +290,10 @@ export default function OrderTracking() {
       ];
     }
 
+    const isShippedOrDelivered = ["shipped", "delivered"].includes(s);
     const isOrderCancelled =
-      s.includes("cancel") ||
-      d.includes("cancel") ||
-      d === "voided";
+      !isShippedOrDelivered &&
+      (((s.includes("cancel") && !s.includes("pickup cancel")) || (d.includes("cancel") && !d.includes("pickup cancel")) || d === "voided"));
 
     if (isOrderCancelled) {
       const steps = [
@@ -325,6 +353,8 @@ export default function OrderTracking() {
 
     const carrierName = order?.courier_name || order?.courierName || deliveryCarrier || "iCarry";
 
+    const isPickupCancelled = d.includes("pickup cancel");
+
     const steps = [
       {
         key: "placed",
@@ -345,9 +375,11 @@ export default function OrderTracking() {
         title: "Shipped",
         desc: isShippedDone
           ? `Dispatched via ${carrierName}${order?.waybill ? ` · AWB: ${order.waybill}` : ""}`
-          : (order?.waybill || d === "booked" || d === "pending pickup"
-            ? `Packed & awaiting courier pickup by ${carrierName}`
-            : ""),
+          : (isPickupCancelled
+            ? "Preparing your order"
+            : (order?.waybill || d === "booked" || d === "pending pickup"
+              ? `Packed & awaiting courier pickup by ${carrierName}`
+              : "")),
         isDone: isShippedDone,
       },
       {
@@ -460,16 +492,24 @@ export default function OrderTracking() {
                     </div>
                   )}
 
-                  {/* Shipment Tracking Info (only shown if waybill is present) */}
-                  {order.waybill && (() => {
+                  {/* Shipment Tracking Info (shown if waybill or manual courier present) */}
+                  {(order.waybill || order.manual_awb || order.fulfillment_type === 'manual') && (() => {
+                    const isManual = order.fulfillment_type === 'manual';
+                    const activeCourier = isManual ? (order.manual_courier_name || order.courier_name || "External Courier") : (order.courier_name || order.delivery_provider || "iCarry");
+                    const activeAwb = isManual ? (order.manual_awb || order.waybill) : order.waybill;
+                    const activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : order.tracking_url;
+
                     const statusStr = (order.delivery_status || "").trim();
-                    const isDeliveryCancelled = statusStr === "Cancelled";
+                    const isPickupCancelled = statusStr.toLowerCase().includes("pickup cancel");
+                    const isDeliveryCancelled = !isPickupCancelled && statusStr.toLowerCase().includes("cancel");
                     const isNDR = statusStr.toUpperCase().startsWith("NDR");
+
+                    const displayStatus = isPickupCancelled ? "Preparing your order" : (statusStr || "Booked");
 
                     const boxBg = isDeliveryCancelled ? "#fef2f2" : isNDR ? "#fffbeb" : "#f8fafc";
                     const boxBorder = isDeliveryCancelled ? "#fecaca" : isNDR ? "#fde68a" : "#e2e8f0";
                     const textColor = isDeliveryCancelled ? "#991b1b" : isNDR ? "#92400e" : "#334155";
-                    const statusColor = isDeliveryCancelled ? "#dc2626" : isNDR ? "#d97706" : "#0f766e";
+                    const statusColor = isDeliveryCancelled ? "#dc2626" : isNDR ? "#d97706" : isPickupCancelled ? "#b45309" : "#0f766e";
 
                     return (
                       <div
@@ -489,42 +529,85 @@ export default function OrderTracking() {
                         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                           <div style={{ fontSize: "13.5px", color: textColor }}>
                             <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Courier: </span>
-                            <strong>{order.courier_name || order.delivery_provider || "iCarry"}</strong>
+                            <strong>{activeCourier}</strong>
                           </div>
-                          <div style={{ fontSize: "13.5px", color: textColor }}>
-                            <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Waybill (AWB): </span>
-                            <strong style={{ letterSpacing: "0.5px" }}>{order.waybill}</strong>
-                          </div>
+                          {activeAwb && (
+                            <div style={{ fontSize: "13.5px", color: textColor }}>
+                              <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Waybill (AWB): </span>
+                              <strong style={{ letterSpacing: "0.5px" }}>{activeAwb}</strong>
+                            </div>
+                          )}
                           <div style={{ fontSize: "13.5px", color: textColor }}>
                             <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Delivery Status: </span>
-                            <strong style={{ color: statusColor }}>{statusStr || "Booked"}</strong>
+                            <strong style={{ color: statusColor }}>{displayStatus}</strong>
                           </div>
                         </div>
-                        {order.tracking_url && (
-                          <a
-                            href={order.tracking_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="track-primary-btn"
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              textDecoration: "none",
-                              padding: "9px 18px",
-                              fontSize: "13px",
-                              fontWeight: "600",
-                              background: isDeliveryCancelled ? "#dc2626" : isNDR ? "#d97706" : undefined,
-                            }}
-                          >
-                            <span>Track Package</span>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                              <polyline points="15 3 21 3 21 9" />
-                              <line x1="10" y1="14" x2="21" y2="3" />
-                            </svg>
-                          </a>
-                        )}
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                          {!isManual && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (!orderId || refreshingLiveStatus) return;
+                                try {
+                                  setRefreshingLiveStatus(true);
+                                  const res = await icarryService.track(orderId);
+                                  if (res?.updates && Object.keys(res.updates).length > 0) {
+                                    setOrder((prev) => ({
+                                      ...prev,
+                                      status: res.updates.status || prev?.status,
+                                      delivery_status: res.updates.delivery_status || prev?.delivery_status,
+                                    }));
+                                  }
+                                } catch (e) {
+                                  console.warn("Live status refresh error:", e);
+                                } finally {
+                                  setRefreshingLiveStatus(false);
+                                }
+                              }}
+                              disabled={refreshingLiveStatus}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                padding: "8px 14px",
+                                fontSize: "12.5px",
+                                fontWeight: "600",
+                                borderRadius: "6px",
+                                border: "1px solid #cbd5e1",
+                                backgroundColor: "#ffffff",
+                                color: "#334155",
+                                cursor: refreshingLiveStatus ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {refreshingLiveStatus ? "Syncing..." : "🔄 Refresh"}
+                            </button>
+                          )}
+                          {activeTrackingUrl && (
+                            <a
+                              href={activeTrackingUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="track-primary-btn"
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                textDecoration: "none",
+                                padding: "9px 18px",
+                                fontSize: "13px",
+                                fontWeight: "600",
+                                background: isDeliveryCancelled ? "#dc2626" : isNDR ? "#d97706" : undefined,
+                              }}
+                            >
+                              <span>Track Package</span>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                <polyline points="15 3 21 3 21 9" />
+                                <line x1="10" y1="14" x2="21" y2="3" />
+                              </svg>
+                            </a>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}
