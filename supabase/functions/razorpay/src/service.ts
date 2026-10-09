@@ -356,7 +356,12 @@ export class RazorpayService {
       throw new Error(`Failed to insert order items: ${itemsInsertError.message}`);
     }
 
-    // 5. Deduct stock (idempotent Postgres function, service-role only)
+    // 5. Trigger admin order notification email server-side (fire-and-forget with error logging)
+    this.triggerOrderEmail(order.id).catch((emailErr) => {
+      console.warn(`[send-order-email] Background trigger failed for order ${order.id}:`, emailErr);
+    });
+
+    // 6. Deduct stock (idempotent Postgres function, service-role only)
     try {
       const { error: stockErr } = await this.supabaseAdmin.rpc(
         "deduct_order_stock",
@@ -378,7 +383,7 @@ export class RazorpayService {
       } catch (_) { /* best-effort; never throw after payment */ }
     }
 
-    // 6. Automatically book shipment with iCarry after order and payment are confirmed
+    // 7. Automatically book shipment with iCarry after order and payment are confirmed
     try {
       const bookingResult = await bookShipmentForOrder(this.supabaseAdmin, order.id);
       if (bookingResult.ok) {
@@ -398,5 +403,47 @@ export class RazorpayService {
     }
 
     return order;
+  }
+
+  /**
+   * Triggers the send-order-email edge function server-side using the shared internal secret.
+   * Runs fire-and-forget; failures are logged and will never disrupt order processing.
+   */
+  private async triggerOrderEmail(orderId: string): Promise<void> {
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL");
+      const internalSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+      if (!supabaseUrl) {
+        console.warn("[send-order-email] SUPABASE_URL not configured, skipping order email trigger");
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (internalSecret) {
+        headers["x-internal-secret"] = internalSecret;
+      }
+      if (serviceRoleKey) {
+        headers["Authorization"] = `Bearer ${serviceRoleKey}`;
+      }
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-order-email`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ orderId }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[send-order-email] Trigger returned status ${res.status} for order ${orderId}:`, errText);
+      } else {
+        console.log(`[send-order-email] Server-side notification email triggered for order ${orderId}`);
+      }
+    } catch (err) {
+      console.warn(`[send-order-email] Failed to invoke send-order-email for order ${orderId}:`, err);
+    }
   }
 }

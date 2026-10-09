@@ -104,7 +104,7 @@ const OrderDetails = ({ order, onBack }) => {
         // Immediately remove flag so any page refresh will not re-trigger auto-mark
         sessionStorage.removeItem(`anika_opened_from_list_${orderId}`);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     if (openedFromList && autoMarkedOrderIdRef.current !== orderId) {
       autoMarkedOrderIdRef.current = orderId;
@@ -134,7 +134,7 @@ const OrderDetails = ({ order, onBack }) => {
     // Ensure session flag is cleared so refresh never re-marks if marked unread
     try {
       sessionStorage.removeItem(`anika_opened_from_list_${o.id}`);
-    } catch (_) {}
+    } catch (_) { }
 
     try {
       setCurrentOrder((prev) => (prev ? { ...prev, admin_read: nextRead } : prev));
@@ -728,8 +728,8 @@ const OrderDetails = ({ order, onBack }) => {
   const isOrderCancelled =
     !isShippedOrDelivered &&
     (((o?.status || "").toLowerCase().includes("cancel") && !(o?.status || "").toLowerCase().includes("pickup cancel")) ||
-     ((o?.delivery_status || "").toLowerCase().includes("cancel") && !(o?.delivery_status || "").toLowerCase().includes("pickup cancel")) ||
-     (o?.delivery_status || "").toLowerCase() === "voided");
+      ((o?.delivery_status || "").toLowerCase().includes("cancel") && !(o?.delivery_status || "").toLowerCase().includes("pickup cancel")) ||
+      (o?.delivery_status || "").toLowerCase() === "voided");
 
   const isDelivered =
     (o?.status || "").toLowerCase() === "delivered" ||

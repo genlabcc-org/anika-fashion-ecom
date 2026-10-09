@@ -19,7 +19,7 @@ export default function AnikaAddresses() {
 
   const addresses = useStore((s) => s.addresses);
   const loadingAddresses = useStore((s) => s.loadingAddresses);
-  const fetchAddresses = useStore((s) => s.fetchAddresses); 
+  const fetchAddresses = useStore((s) => s.fetchAddresses);
 
   const [form, setForm] = useState({
     name: "", email: "", mobile: "",
@@ -42,11 +42,11 @@ export default function AnikaAddresses() {
   }, [user, sessionLoading]);
 
   const handleTabClick = (tab) => {
-    if (tab === "Profile")        navigate("/profile");
-    else if (tab === "Orders")    navigate("/profile/orders");
+    if (tab === "Profile") navigate("/profile");
+    else if (tab === "Orders") navigate("/profile/orders");
     else if (tab === "Addresses") setActiveTab("Addresses");
     else if (tab === "Wishlists") navigate("/profile/wishlists");
-    else if (tab === "Account")   navigate("/profile/account");
+    else if (tab === "Account") navigate("/profile/account");
   };
 
   const handleNavClick = (link) => {
@@ -82,7 +82,7 @@ export default function AnikaAddresses() {
         is_default: form.isDefault,
       });
 
-      await fetchAddresses(user.id, {force: true});
+      await fetchAddresses(user.id, { force: true });
       setForm({
         name: "", email: "", mobile: "", flat: "", area: "",
         city: "", pinCode: "", state: "Tamil Nadu", isDefault: false,

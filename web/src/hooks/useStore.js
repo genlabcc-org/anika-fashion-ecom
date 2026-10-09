@@ -334,10 +334,10 @@ export const useStore = create((set, get) => ({
         hasImages
           ? Promise.resolve({ data: { images: cached.images, image_url: null }, error: null })
           : supabase
-              .from('products')
-              .select('images, image_url')
-              .eq('product_id', productId)
-              .single(),
+            .from('products')
+            .select('images, image_url')
+            .eq('product_id', productId)
+            .single(),
         // Price/stock always fetched fresh
         supabase
           .from('products')

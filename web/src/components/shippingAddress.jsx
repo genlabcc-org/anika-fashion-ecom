@@ -563,28 +563,9 @@ export default function ShippingAddress() {
           body: { action: "deduct_stock", orderId: generatedOrderId },
         }).catch(err => console.warn("[Stock] COD stock deduction failed:", err));
 
-        // Trigger order notification email
+        // Trigger order notification email (server loads order and sends via Brevo)
         emailService.sendOrderNotificationEmail({
           orderId: generatedOrderId,
-          customerName: resolvedCustomerName,
-          customerEmail: resolvedCustomerEmail,
-          customerPhone: resolvedCustomerPhone,
-          paymentMethod: "Cash on Delivery (COD)",
-          address: {
-            name: resolvedCustomerName,
-            mobile: resolvedCustomerPhone !== "N/A" ? resolvedCustomerPhone : (form.mobile || ""),
-            flat: form.flat || selectedAddress?.address_line1 || "",
-            area: form.area || selectedAddress?.address_line2 || "",
-            landmark: form.landmark || "",
-            city: form.city || selectedAddress?.city || "",
-            state: form.state || selectedAddress?.state || "",
-            pincode: form.pinCode || selectedAddress?.postal_code || "",
-          },
-          items: orderItemsToInsert,
-          totalPrice: grandTotal,
-          subtotal: subtotal,
-          discount: discountAmount,
-          shippingFee: shippingFee,
         });
 
         // Clear cart
@@ -676,37 +657,7 @@ export default function ShippingAddress() {
               }
 
               showToast("Payment successful! Order placed.", "success");
-
-              // Trigger order notification email
-              emailService.sendOrderNotificationEmail({
-                orderId: verifyData?.order?.id || response.razorpay_order_id,
-                customerName: resolvedCustomerName,
-                customerEmail: resolvedCustomerEmail,
-                customerPhone: resolvedCustomerPhone,
-                paymentMethod: "Razorpay (Online Payment)",
-                address: {
-                  name: resolvedCustomerName,
-                  mobile: resolvedCustomerPhone !== "N/A" ? resolvedCustomerPhone : (form.mobile || ""),
-                  flat: form.flat || selectedAddress?.address_line1 || "",
-                  area: form.area || selectedAddress?.address_line2 || "",
-                  city: form.city || selectedAddress?.city || "",
-                  state: form.state || selectedAddress?.state || "",
-                  pincode: form.pinCode || selectedAddress?.postal_code || "",
-                },
-                items: checkoutItems.map(item => ({
-                  product_name: item.name,
-                  quantity: item.qty || 1,
-                  price: parsePrice(item.price),
-                  size: item.size || null,
-                  color: item.color || null,
-                  sku: item.sku || item.sku_id || 'N/A',
-                  category: item.category || item.category_name || item.categories?.name || 'N/A',
-                })),
-                totalPrice: grandTotal,
-                subtotal: subtotal,
-                discount: discountAmount,
-                shippingFee: shippingFee,
-              });
+              // Note: Admin order notification email is triggered server-side in verify_payment edge function
 
               setTimeout(() => {
                 navigate("/profile/orders");
