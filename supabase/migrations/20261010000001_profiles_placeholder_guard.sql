@@ -133,5 +133,20 @@ AFTER INSERT OR UPDATE ON public.addresses
 FOR EACH ROW
 EXECUTE FUNCTION public.fill_profile_from_address();
 
--- 5. Notify PostgREST to reload schema cache
+-- 5. Enable Realtime replication for public.orders (safe to re-run)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+      AND schemaname = 'public' 
+      AND tablename = 'orders'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+  END IF;
+END $$;
+
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
+
+-- 6. Notify PostgREST to reload schema cache
 NOTIFY pgrst, 'reload schema';

@@ -77,6 +77,7 @@ const OrderDetails = ({ order, onBack }) => {
   const setSelectedAdminOrder = useStore(state => state.setSelectedAdminOrder);
   const markOrdersRead = useStore(state => state.markOrdersRead);
   const fetchNewOrdersCount = useStore(state => state.fetchNewOrdersCount);
+  const updateOrderInList = useStore(state => state.updateOrderInList);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -186,14 +187,23 @@ const OrderDetails = ({ order, onBack }) => {
 
     setTogglingPacked(true);
     const nextPackedAt = nextPacked ? new Date().toISOString() : null;
+    const patch = { is_packed: nextPacked, packed_at: nextPackedAt };
+    const rollbackPatch = { is_packed: currentPacked, packed_at: currentPackedAt };
 
     try {
-      setCurrentOrder((prev) => (prev ? { ...prev, is_packed: nextPacked, packed_at: nextPackedAt } : prev));
+      setCurrentOrder((prev) => (prev ? { ...prev, ...patch } : prev));
+      if (typeof updateOrderInList === "function") {
+        updateOrderInList(o.id, patch);
+      }
+
       await orderService.setOrderPacked(o.id, nextPacked);
       showToast(nextPacked ? "Order marked as packed" : "Order marked as unpacked", "success");
     } catch (err) {
       console.error("Toggle packed failed:", err);
-      setCurrentOrder((prev) => (prev ? { ...prev, is_packed: currentPacked, packed_at: currentPackedAt } : prev));
+      setCurrentOrder((prev) => (prev ? { ...prev, ...rollbackPatch } : prev));
+      if (typeof updateOrderInList === "function") {
+        updateOrderInList(o.id, rollbackPatch);
+      }
       showToast("Failed to update packed status: " + (err?.message || "Unknown error"), "error");
     } finally {
       setTogglingPacked(false);
@@ -289,6 +299,7 @@ const OrderDetails = ({ order, onBack }) => {
     try {
       setSavingNote(true);
       await orderService.updateOrderNote(o.id, adminNote);
+      if (typeof updateOrderInList === "function") updateOrderInList(o.id, { admin_notes: adminNote });
       showToast("Note saved successfully!", "success");
     } catch (err) {
       showToast("Failed to save note: " + err.message, "error");
@@ -306,6 +317,7 @@ const OrderDetails = ({ order, onBack }) => {
       // Mark as printed in Supabase
       await orderService.markInvoicePrinted(o.id);
       setInvoicePrinted(true);
+      if (typeof updateOrderInList === "function") updateOrderInList(o.id, { invoice_printed: true });
       showToast("Invoice printed successfully!", "success");
     } catch (err) {
       showToast("Failed to mark invoice: " + err.message, "error");
@@ -330,6 +342,7 @@ const OrderDetails = ({ order, onBack }) => {
         const fullOrder = { ...refreshedOrder, order_items: items || [] };
         setCurrentOrder(fullOrder);
         if (setSelectedAdminOrder) setSelectedAdminOrder(fullOrder);
+        if (typeof updateOrderInList === "function") updateOrderInList(o.id, fullOrder);
         return fullOrder;
       }
     } catch (err) {
@@ -534,6 +547,7 @@ const OrderDetails = ({ order, onBack }) => {
       if (res && res.error) throw new Error(res.error);
 
       setCurrentOrder((prev) => (prev ? { ...prev, ...updates } : prev));
+      if (typeof updateOrderInList === "function") updateOrderInList(o.id, updates);
       setShowCourierModal(false);
       showToast(`Order updated to manual fulfillment (${courierName}) and marked as ${statusVal}!`, "success");
       await fetchFreshOrder();

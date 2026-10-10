@@ -481,6 +481,15 @@ export const useStore = create((set, get) => ({
         : state.selectedAdminOrder,
     }));
 
+    // Optimistically update admin list listeners (e.g. useAdminData)
+    ids.forEach((id) => {
+      get()._adminOrderListeners.forEach((fn) => {
+        try {
+          fn(id, { admin_read: Boolean(read) });
+        } catch (_) {}
+      });
+    });
+
     try {
       const data = await orderService.setOrdersRead(ids, read);
       return data;
@@ -491,8 +500,58 @@ export const useStore = create((set, get) => ({
         orders: prevOrders,
         selectedAdminOrder: prevSelected,
       });
+
+      // Rollback admin list listeners
+      ids.forEach((id) => {
+        const prevOrder = prevOrders.find((o) => o.id === id);
+        const prevRead = prevOrder ? prevOrder.admin_read : !read;
+        get()._adminOrderListeners.forEach((fn) => {
+          try {
+            fn(id, { admin_read: prevRead });
+          } catch (_) {}
+        });
+      });
+
       throw err;
     }
+  },
+
+  // --- Admin Order List & Realtime Sync Actions ---
+  _adminOrderListeners: new Set(),
+  registerAdminOrderListener: (listener) => {
+    const listeners = get()._adminOrderListeners;
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  },
+
+  updateOrderInList: (orderId, patch) => {
+    if (!orderId || !patch) return;
+    const currentSelected = get().selectedAdminOrder;
+    const updatedSelected = currentSelected && currentSelected.id === orderId
+      ? { ...currentSelected, ...patch }
+      : currentSelected;
+
+    set((state) => ({
+      orders: state.orders.map((o) => (o.id === orderId ? { ...o, ...patch } : o)),
+      selectedAdminOrder: updatedSelected,
+    }));
+
+    if (updatedSelected && currentSelected && currentSelected.id === orderId) {
+      try {
+        localStorage.setItem('anika_selected_admin_order', JSON.stringify(updatedSelected));
+      } catch (_) {}
+    }
+
+    // Broadcast update to all registered admin listeners (e.g. useAdminData)
+    get()._adminOrderListeners.forEach((fn) => {
+      try {
+        fn(orderId, patch);
+      } catch (err) {
+        console.error('Error in admin order listener:', err);
+      }
+    });
   },
 
   // --- Selected Product Actions ---

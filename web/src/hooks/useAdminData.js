@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { orderService } from '../services/orderService';
 import { resolveCustomerName, resolveCustomerPhone } from '../utils/customerName';
+import { useStore } from './useStore';
 
 export function useAdminData() {
   const [orders, setOrders] = useState([]);
@@ -27,6 +28,18 @@ export function useAdminData() {
     }
   };
 
+  // Synchronize with optimistic in-app order updates from useStore (single source of truth)
+  useEffect(() => {
+    const unregister = useStore.getState().registerAdminOrderListener((orderId, patch) => {
+      setOrders((currentOrders) =>
+        currentOrders.map((o) => (o.id === orderId ? { ...o, ...patch } : o))
+      );
+    });
+    return () => {
+      if (typeof unregister === 'function') unregister();
+    };
+  }, []);
+
   useEffect(() => {
     fetchData();
 
@@ -37,31 +50,45 @@ export function useAdminData() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
         (payload) => {
-          console.log('Realtime Order Change:', payload);
           const { eventType, new: newRecord, old: oldRecord } = payload;
-          setOrders((currentOrders) => {
-            if (eventType === 'INSERT') {
-              // Prepend new order if not already in list
-              if (currentOrders.some((o) => o.id === newRecord.id)) {
-                return currentOrders;
+          if (eventType === 'INSERT') {
+            (async () => {
+              let orderToInsert = newRecord;
+              if (!newRecord.order_items) {
+                try {
+                  const fullOrder = await orderService.getOrderById(newRecord.id);
+                  if (fullOrder) orderToInsert = fullOrder;
+                } catch (err) {
+                  console.warn('[useAdminData] Error fetching single order joins on INSERT:', err);
+                }
               }
-              return [newRecord, ...currentOrders];
+              setOrders((currentOrders) => {
+                if (currentOrders.some((o) => o.id === orderToInsert.id)) {
+                  return currentOrders;
+                }
+                return [orderToInsert, ...currentOrders];
+              });
+            })();
+          } else if (eventType === 'UPDATE') {
+            setOrders((currentOrders) =>
+              currentOrders.map((o) => (o.id === newRecord.id ? { ...o, ...newRecord } : o))
+            );
+            // Sync with useStore (keeps selectedAdminOrder live)
+            useStore.getState().updateOrderInList(newRecord.id, newRecord);
+          } else if (eventType === 'DELETE') {
+            const deleteId = oldRecord?.id;
+            if (deleteId) {
+              setOrders((currentOrders) =>
+                currentOrders.filter((o) => o.id !== deleteId)
+              );
             }
-            if (eventType === 'UPDATE') {
-              return currentOrders.map((o) => (o.id === newRecord.id ? newRecord : o));
-            }
-            if (eventType === 'DELETE') {
-              return currentOrders.filter((o) => o.id !== oldRecord.id);
-            }
-            return currentOrders;
-          });
+          }
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'profiles' },
         (payload) => {
-          console.log('Realtime Customer Change:', payload);
           const { eventType, new: newRecord, old: oldRecord } = payload;
           setCustomers((currentCustomers) => {
             if (eventType === 'INSERT') {
@@ -71,7 +98,7 @@ export function useAdminData() {
               return [newRecord, ...currentCustomers];
             }
             if (eventType === 'UPDATE') {
-              return currentCustomers.map((c) => (c.id === newRecord.id ? newRecord : c));
+              return currentCustomers.map((c) => (c.id === newRecord.id ? { ...c, ...newRecord } : c));
             }
             if (eventType === 'DELETE') {
               return currentCustomers.filter((c) => c.id !== oldRecord.id);
@@ -87,6 +114,10 @@ export function useAdminData() {
     };
   }, []);
 
+  const updateOrderInList = (orderId, patch) => {
+    useStore.getState().updateOrderInList(orderId, patch);
+  };
+
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
       if (newStatus === "Cancelled") {
@@ -94,10 +125,8 @@ export function useAdminData() {
       } else {
         await orderService.updateOrderStatus(orderId, newStatus);
       }
-      // Optimistically update order status locally
-      setOrders((currentOrders) =>
-        currentOrders.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-      );
+      // Optimistically update order status locally and across shared store
+      updateOrderInList(orderId, { status: newStatus });
     } catch (err) {
       console.error('Error updating order status:', err);
       throw err;
@@ -179,5 +208,6 @@ export function useAdminData() {
     error,
     refetch: fetchData,
     updateOrderStatus,
+    updateOrderInList,
   };
 }
