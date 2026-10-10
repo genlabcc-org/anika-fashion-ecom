@@ -18,6 +18,7 @@ import MastercardIcon from "../assets/mastercard.svg";
 import PaymentMorePopup from "./PaymentMorePopup";
 import { getOriginalImageUrl } from '../utils/imageUtils';
 import { getNavPath } from "../services/categoryRoute";
+import { clean, resolveCustomerName, resolveCustomerPhone } from '../utils/customerName';
 
 // Helper to dynamically load the Razorpay script
 const loadRazorpayScript = () => {
@@ -475,43 +476,39 @@ export default function ShippingAddress() {
         .maybeSingle();
 
       // Resolve real customer name: prefer shipping address name, then profile name, then user metadata
-      const shippingAddressName = (
+      const shippingAddressName = clean(
         selectedAddress?.full_name ||
         selectedAddress?.name ||
-        `${form.firstName || ""} ${form.lastName || ""}`.trim()
-      ).trim();
+        `${form.firstName || ""} ${form.lastName || ""}`
+      );
 
-      const profileName = (profile?.name || "").trim();
+      const profileName = clean(profile?.name);
 
-      const userMetaName = (
+      const userMetaName = clean(
         session?.user?.user_metadata?.name ||
         session?.user?.user_metadata?.full_name ||
-        session?.user?.user_metadata?.user_name ||
-        ""
-      ).trim();
+        session?.user?.user_metadata?.user_name
+      );
 
-      const resolvedCustomerName = (
+      const resolvedCustomerName =
         shippingAddressName ||
         profileName ||
         userMetaName ||
-        "Customer"
-      );
+        "Customer";
 
       // Temporary diagnostic log as requested
       console.log('[shippingAddress] Resolved customer name for order:', resolvedCustomerName);
 
-      const resolvedCustomerEmail = (
-        (session?.user?.email || "").trim() ||
-        (form.email || "").trim() ||
-        "N/A"
-      );
+      const resolvedCustomerEmail =
+        clean(session?.user?.email) ||
+        clean(form.email) ||
+        "N/A";
 
-      const resolvedCustomerPhone = (
-        (form.mobile || "").trim() ||
-        (selectedAddress?.phone_number || "").trim() ||
-        (profile?.phone || "").trim() ||
-        "N/A"
-      );
+      const resolvedCustomerPhone =
+        clean(form.mobile) ||
+        clean(selectedAddress?.phone_number) ||
+        clean(profile?.phone) ||
+        "N/A";
 
       if (paymentMethod === "COD") {
         // COD order placement

@@ -6,6 +6,7 @@ import { cartService } from '../services/cartService';
 import { wishlistService } from '../services/wishlistService';
 import { authService } from '../services/authService';
 import { orderService } from '../services/orderService';
+import { clean } from '../utils/customerName';
 
 /** Strip currency symbols & commas so */
 const parsePrice = (v) => {
@@ -849,18 +850,21 @@ export const useStore = create((set, get) => ({
   syncProfileFromMetadata: async (user) => {
     if (!user) return;
 
+    const cleanName = clean(user.user_metadata?.name || user.user_metadata?.full_name);
+    const profilePayload = {
+      id: user.id,
+      email: user.email,
+      updated_at: new Date().toISOString(),
+    };
+    if (cleanName) {
+      profilePayload.name = cleanName;
+    }
+
     const { error } = await supabase
       .from("profiles")
-      .upsert(
-        {
-          id: user.id,
-          email: user.email,
-          name: user.user_metadata?.name ?? "",
-        },
-        {
-          onConflict: "id",
-        }
-      );
+      .upsert(profilePayload, {
+        onConflict: "id",
+      });
     if (error) {
       console.error("Profile sync failed:", error);
     }

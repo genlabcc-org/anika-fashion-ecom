@@ -44,6 +44,28 @@ function formatCurrency(amount: number): string {
   return `₹${Number(amount || 0).toLocaleString("en-IN")}`;
 }
 
+const PLACEHOLDERS = new Set([
+  "no name set",
+  "no name",
+  "no phone set",
+  "no phone",
+  "not set",
+  "unknown",
+  "unknown customer",
+  "customer",
+  "n/a",
+  "na",
+  "null",
+  "undefined",
+  "none",
+]);
+
+function clean(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim();
+  return t && !PLACEHOLDERS.has(t.toLowerCase()) ? t : null;
+}
+
 Deno.serve(async (req: Request) => {
   // 1. CORS Preflight
   const corsResponse = handleCorsPreflight(req);
@@ -246,18 +268,18 @@ Deno.serve(async (req: Request) => {
     // Resolve customer name priority:
     // profile name -> auth metadata -> delivery address name -> "Customer"
     const resolvedCustomerName =
-      profileName ||
-      authUserMetaName ||
-      (addressData?.full_name && addressData.full_name.trim()) ||
+      clean(profileName) ||
+      clean(authUserMetaName) ||
+      clean(addressData?.full_name) ||
       "Customer";
 
     const resolvedCustomerPhone =
-      profilePhone ||
-      authUserPhone ||
-      (addressData?.phone_number && addressData.phone_number.trim()) ||
+      clean(profilePhone) ||
+      clean(authUserPhone) ||
+      clean(addressData?.phone_number) ||
       "N/A";
 
-    const resolvedCustomerEmail = authUserEmail || "N/A";
+    const resolvedCustomerEmail = clean(authUserEmail) || "N/A";
 
     // Format shipping address
     const formattedAddressLines = addressData

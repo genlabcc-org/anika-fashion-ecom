@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom"; 
+import { useNavigate } from "react-router-dom";
 import { authService } from "../services/authService";
 import { useStore } from "../hooks/useStore";
 import { supabase } from "../lib/supabase";
 import { getUserInitials } from "../utils/avatarUtils";
+import { clean } from "../utils/customerName";
 import "./AnikaProfile.css";
 import Navbar from "../components/SiteHeader";
 import Footer from "../components/SiteFooter";
@@ -13,7 +14,7 @@ export default function AnikaProfile() {
   const [isEditing, setIsEditing] = useState(false);
   const navigate = useNavigate();
 
-    const handleNavClick = (link) => {
+  const handleNavClick = (link) => {
     if (link === "Home") {
       navigate("/");
     } else {
@@ -21,21 +22,17 @@ export default function AnikaProfile() {
     }
   };
 
-  const wishlistItems = useStore((state) => state.wishlistItems);
-  const removeFromWishlist = useStore((state) => state.removeFromWishlist);
-  const setSelectedProduct = useStore((state) => state.setSelectedProduct);
-
   const user = useStore((s) => s.user);
   const sessionLoading = useStore((s) => s.sessionLoading);
   const orders = useStore((s) => s.orders);
   const fetchOrders = useStore((s) => s.fetchOrders);
 
+  // State holds only real values (empty string when missing)
   const [customerDetails, setCustomerDetails] = useState({
     name: "",
     phone: "",
     email: "",
     customerSince: "",
-    totalOrders: "0 orders",
   });
   const [tempDetails, setTempDetails] = useState({ ...customerDetails });
 
@@ -48,29 +45,53 @@ export default function AnikaProfile() {
     fetchOrders(user.id);
   }, [user, sessionLoading]);
 
+  // Depends on user?.id only so it doesn't overwrite an in-progress edit when orders load
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
     const fetchProfile = async () => {
       try {
-        const { data: profile, error } = await supabase
+        const { data: profile } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", user.id)
           .maybeSingle();
 
-        const joinedDate = new Date(user.created_at).toLocaleDateString("en-IN", {
-          month: "short",
-          year: "numeric",
-        });
-        const orderCountStr = `${orders.length} order${orders.length !== 1 ? "s" : ""}`;
+        // Query default or first usable address for fallback name and phone
+        const { data: addresses } = await supabase
+          .from("addresses")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("is_default", { ascending: false });
+
+        const usableAddr = (addresses || []).find((a) => clean(a.full_name) || clean(a.phone_number));
+
+        const joinedDate = user.created_at
+          ? new Date(user.created_at).toLocaleDateString("en-IN", {
+              month: "short",
+              year: "numeric",
+            })
+          : "Recently";
+
+        // Fallback priority: profile -> user metadata -> address -> ""
+        const resolvedName =
+          clean(profile?.name) ||
+          clean(user.user_metadata?.name) ||
+          clean(user.user_metadata?.full_name) ||
+          clean(usableAddr?.full_name) ||
+          "";
+
+        const resolvedPhone =
+          clean(profile?.phone) ||
+          clean(user.user_metadata?.phone) ||
+          clean(usableAddr?.phone_number) ||
+          "";
 
         const details = {
-          name: profile?.name || user.user_metadata?.name || "No name set",
-          phone: profile?.phone || user.user_metadata?.phone || "No phone set",
-          email: user.email,
+          name: resolvedName,
+          phone: resolvedPhone,
+          email: user.email || "",
           customerSince: joinedDate,
-          totalOrders: orderCountStr,
         };
 
         setCustomerDetails(details);
@@ -81,46 +102,61 @@ export default function AnikaProfile() {
     };
 
     fetchProfile();
-  }, [user, orders]);
+  }, [user?.id]);
 
   const handleEdit = () => {
-    setTempDetails({ ...customerDetails });
+    setTempDetails({
+      ...customerDetails,
+      name: clean(customerDetails.name) || "",
+      phone: clean(customerDetails.phone) || "",
+    });
     setIsEditing(true);
   };
 
   const handleSave = async () => {
     try {
-      // 1. Save to profiles database table
+      const cleanName = clean(tempDetails.name);
+      const cleanPhone = clean(tempDetails.phone);
+
+      // 1. Write NULL (not placeholder or empty string) to profiles
       const { error: profileError } = await supabase
         .from("profiles")
-        .upsert({
-          id: user.id,
-          name: tempDetails.name,
-          phone: tempDetails.phone,
-          email: user.email,
-          updated_at: new Date().toISOString()
-        },
-        {
-          onConflict: "id",
-        }
-      );
+        .upsert(
+          {
+            id: user.id,
+            name: cleanName || null,
+            phone: cleanPhone || null,
+            email: user.email,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "id",
+          }
+        );
 
       if (profileError) throw profileError;
 
-      // 2. Also save to metadata to keep it in sync
-      await authService.updateUser({
-        data: {
-          name: tempDetails.name,
-          phone: tempDetails.phone,
-        },
-      });
+      // 2. Only write non-empty values to auth metadata
+      const metaUpdates = {};
+      if (cleanName) metaUpdates.name = cleanName;
+      if (cleanPhone) metaUpdates.phone = cleanPhone;
 
-      const { session } = await authService.refreshSession();
-      if (session?.user) {
-        useStore.setState({ user: session.user });
+      if (Object.keys(metaUpdates).length > 0) {
+        await authService.updateUser({
+          data: metaUpdates,
+        });
+
+        const { session } = await authService.refreshSession();
+        if (session?.user) {
+          useStore.setState({ user: session.user });
+        }
       }
-      
-      setCustomerDetails({ ...tempDetails });
+
+      setCustomerDetails((prev) => ({
+        ...prev,
+        name: cleanName || "",
+        phone: cleanPhone || "",
+      }));
       setIsEditing(false);
     } catch (error) {
       alert("Failed to save profile: " + error.message);
@@ -152,6 +188,9 @@ export default function AnikaProfile() {
     }
   };
 
+  // Total orders count computed at render
+  const orderCountStr = `${orders.length} order${orders.length !== 1 ? "s" : ""}`;
+
   return (
     <>
       <Navbar onLinkClick={handleNavClick} />
@@ -162,14 +201,14 @@ export default function AnikaProfile() {
           {/* User Info */}
           <div className="anika-user-info">
             <div className="anika-avatar">
-              {getUserInitials(customerDetails.name || user?.user_metadata?.name || user?.email)}
+              {getUserInitials(customerDetails.name || user?.email)}
             </div>
             <div className="anika-user-text">
-              <span className="anika-user-name">{customerDetails.name}</span>
+              <span className="anika-user-name">{customerDetails.name || "No name set"}</span>
               <span className="anika-user-meta">
                 {customerDetails.email} &nbsp;·&nbsp; Member since {customerDetails.customerSince}
               </span>
-              <span className="anika-vip-badge">{customerDetails.totalOrders}</span>
+              <span className="anika-vip-badge">{orderCountStr}</span>
             </div>
           </div>
 
@@ -212,7 +251,7 @@ export default function AnikaProfile() {
                     onChange={(e) => handleChange("name", e.target.value)}
                   />
                 ) : (
-                  <span className="anika-detail-value">{customerDetails.name}</span>
+                  <span className="anika-detail-value">{customerDetails.name || "No name set"}</span>
                 )}
               </div>
               <div className="anika-detail-row">
@@ -225,7 +264,7 @@ export default function AnikaProfile() {
                     onChange={(e) => handleChange("phone", e.target.value)}
                   />
                 ) : (
-                  <span className="anika-detail-value">{customerDetails.phone}</span>
+                  <span className="anika-detail-value">{customerDetails.phone || "No phone set"}</span>
                 )}
               </div>
               <div className="anika-detail-row">
@@ -239,7 +278,7 @@ export default function AnikaProfile() {
               </div>
               <div className="anika-detail-row">
                 <span className="anika-detail-label">Total Orders</span>
-                <span className="anika-detail-value">{customerDetails.totalOrders}</span>
+                <span className="anika-detail-value">{orderCountStr}</span>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { orderService } from '../services/orderService';
+import { resolveCustomerName, resolveCustomerPhone } from '../utils/customerName';
 
 export function useAdminData() {
   const [orders, setOrders] = useState([]);
@@ -106,8 +107,17 @@ export function useAdminData() {
   const aggregatedOrders = useMemo(() => {
     return orders.map((order) => {
       const matchedCustomer = customers.find((c) => c.id === order.user_id);
-      const phone = matchedCustomer?.phone || matchedCustomer?.phone_number || matchedCustomer?.mobile || matchedCustomer?.phoneNumber || order.phone || order.phone_number || order.customer?.phone || 'N/A';
-      const name = matchedCustomer?.name || matchedCustomer?.full_name || order.customer?.name || 'Unknown Customer';
+      const orderAddr = order.shipping_address || order.address;
+      const phone = resolveCustomerPhone({
+        phone: matchedCustomer?.phone || matchedCustomer?.phone_number || matchedCustomer?.mobile || order.phone || order.phone_number || order.customer?.phone,
+        address: orderAddr,
+        fallback: 'N/A',
+      });
+      const name = resolveCustomerName({
+        profileName: matchedCustomer?.name || matchedCustomer?.full_name || order.customer?.name,
+        address: orderAddr,
+        fallback: 'No name set',
+      });
       const email = matchedCustomer?.email || order.customer?.email || 'N/A';
 
       return {
@@ -126,11 +136,20 @@ export function useAdminData() {
   const aggregatedCustomers = useMemo(() => {
     return customers.map((customer) => {
       const customerOrders = orders.filter((o) => o.user_id === customer.id);
+      const orderWithAddress = customerOrders.find((o) => o.shipping_address || o.address);
       const orderWithPhone = customerOrders.find((o) => o.phone || o.phone_number || o.customer?.phone || o.shipping_address?.phone);
       const orderPhone = orderWithPhone?.phone || orderWithPhone?.phone_number || orderWithPhone?.customer?.phone || orderWithPhone?.shipping_address?.phone;
 
-      const phone = customer.phone || customer.phone_number || customer.mobile || customer.phoneNumber || orderPhone || '';
-      const name = customer.name || customer.full_name || (customerOrders[0]?.customer?.name) || 'Unknown Customer';
+      const phone = resolveCustomerPhone({
+        phone: customer.phone || customer.phone_number || customer.mobile || customer.phoneNumber || orderPhone,
+        address: orderWithAddress?.shipping_address || orderWithAddress?.address,
+        fallback: 'No phone set',
+      });
+      const name = resolveCustomerName({
+        profileName: customer.name || customer.full_name || customerOrders[0]?.customer?.name,
+        address: orderWithAddress?.shipping_address || orderWithAddress?.address,
+        fallback: 'No name set',
+      });
       const email = customer.email || (customerOrders[0]?.customer?.email) || '';
 
       const totalSpent = customerOrders

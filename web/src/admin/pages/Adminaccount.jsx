@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { authService } from "../../services/authService";
+import { clean } from "../../utils/customerName";
 import "./Adminaccount.css";
 
 const Toggle = ({ checked, onChange }) => (
@@ -43,11 +44,11 @@ const AdminAccount = () => {
             .maybeSingle();
 
           if (profile) {
-            setAdminName(profile.name || "");
-            setPhone(profile.phone || "");
+            setAdminName(clean(profile.name) || clean(user.user_metadata?.name) || "");
+            setPhone(clean(profile.phone) || clean(user.user_metadata?.phone) || "");
           } else {
-            setAdminName(user.user_metadata?.name || "");
-            setPhone(user.user_metadata?.phone || "");
+            setAdminName(clean(user.user_metadata?.name) || "");
+            setPhone(clean(user.user_metadata?.phone) || "");
           }
 
           // Fetch role from admin_users
@@ -71,26 +72,32 @@ const AdminAccount = () => {
         return;
       }
 
-      // Update public.profiles
+      const cleanName = clean(adminName);
+      const cleanPhone = clean(phone);
+
+      // Update public.profiles - store NULL when missing, never placeholders or empty strings
       const { error: profileError } = await supabase
         .from("profiles")
         .upsert({
           id: user.id,
-          name: adminName,
-          phone: phone,
+          name: cleanName || null,
+          phone: cleanPhone || null,
           email: adminEmail,
           updated_at: new Date().toISOString()
         });
 
       if (profileError) throw profileError;
 
-      // Update auth user metadata
-      await authService.updateUser({
-        data: {
-          name: adminName,
-          phone: phone,
-        }
-      });
+      // Update auth user metadata only with non-empty values
+      const metaUpdates = {};
+      if (cleanName) metaUpdates.name = cleanName;
+      if (cleanPhone) metaUpdates.phone = cleanPhone;
+
+      if (Object.keys(metaUpdates).length > 0) {
+        await authService.updateUser({
+          data: metaUpdates
+        });
+      }
 
       alert("Profile updated successfully!");
     } catch (err) {
