@@ -120,11 +120,11 @@ const menuItems = [
   },
   { id: "social", label: "Social Media", path: "/admin/social" },
   { id: "analytics", label: "Analytics", path: "/admin/analytics" },
+  { id: "shipping", label: "Shipping", path: "/admin/shipping" },
   {
     id: "settings", label: "Settings", path: "/admin/account", children: [
       { label: "Store Info", path: "/admin/store" },
       { label: "Contact", path: "/admin/contact" },
-      { label: "Shipping", path: "/admin/shipping" },
       { label: "Payment", path: "/admin/payment" },
       { label: "Admin Account", path: "/admin/account" },
       { label: "Notification", path: "/admin/notification" },
@@ -158,6 +158,14 @@ const sidebarIcons = {
     </svg>
   ),
   analytics: <img src={analyticsIcon} alt="analytics" className="db__menu-icon-img" />,
+  shipping: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="15" height="13" />
+      <polygon points="16 8 20 8 23 11 23 16 16 16 8" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  ),
   settings: <img src={settingsIcon} alt="settings" className="db__menu-icon-img" />,
 };
 
@@ -1222,6 +1230,7 @@ const Dashboard = () => {
                         }
                       } else {
                         navigate(item.path);
+                        setSidebarOpen(false);
                       }
                     }}
                   >
