@@ -76,7 +76,8 @@ export const cartService = {
 
       if (matchedVariant) {
         price = parsePrice(matchedVariant.price);
-        originalPrice = parsePrice(matchedVariant.compare_price || Math.round(price * 1.3));
+        const rawMrp = parsePrice(matchedVariant.compare_price || 0);
+        originalPrice = rawMrp > price ? rawMrp : 0;
         if (matchedVariant.images && matchedVariant.images.length > 0) {
           image = matchedVariant.images[0];
         }
@@ -84,7 +85,8 @@ export const cartService = {
         const rawPrice = parsePrice(product.price);
         const rawDiscount = parsePrice(product.discount_price);
         price = rawDiscount > 0 ? rawPrice - rawDiscount : rawPrice;
-        originalPrice = parsePrice(product.compare_price || Math.round(rawPrice * 1.3));
+        const rawMrp = parsePrice(product.compare_price || 0);
+        originalPrice = rawMrp > price ? rawMrp : 0;
       }
 
       const sku = matchedVariant?.sku || product.sku || '';

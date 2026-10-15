@@ -58,7 +58,7 @@ export default function ProductSection({ onProductClick }) {
           name: p.name,
           category: p.categories?.name || '',
           price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',
-          original: mrp ? `₹${mrp.toLocaleString('en-IN')}` : '',
+          original: mrp && mrp > sellingPrice ? `₹${mrp.toLocaleString('en-IN')}` : '',
         };
       });
 

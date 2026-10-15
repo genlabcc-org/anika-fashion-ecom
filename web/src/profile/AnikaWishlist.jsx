@@ -177,7 +177,7 @@ export default function AnikaWishlist() {
                       <span className="aw-price">
                         ₹{Number(item.price).toLocaleString("en-IN")}
                       </span>
-                      {item.originalPrice && item.originalPrice > item.price && (
+                      {item.originalPrice && Number(item.originalPrice) > Number(item.price) && (
                         <span className="aw-original-price">
                           ₹{Number(item.originalPrice).toLocaleString("en-IN")}
                         </span>

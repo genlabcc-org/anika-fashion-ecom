@@ -55,6 +55,60 @@
   margin: 0;
 }
 
+.ao__page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ao__sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #ffffff;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ao__sync-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.ao__sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f1f5f9;
+}
+
+.ao__sync-icon {
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.ao__sync-icon--spin {
+  animation: ao-spin 1s linear infinite;
+}
+
+@keyframes ao-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .ao__header-tabs {
   display: flex;
   gap: 4px;

@@ -270,10 +270,11 @@ export default function CategoryPage({ category }) {
   };
 
   const handleProductCardClick = (product) => {
+    const hasMrp = Number(product.compare_price) > Number(product.price) && Number(product.price) > 0;
     const formattedProduct = {
       ...product,
       price: `₹${product.price}.00`,
-      original: `₹${product.compare_price}.00`,
+      original: hasMrp ? `₹${product.compare_price}.00` : "",
       category
     };
     setSelectedProduct(formattedProduct);
@@ -555,7 +556,9 @@ export default function CategoryPage({ category }) {
                       {/* <p className="product-card-subtitle-desc">{product.desc}</p> */}
                       <div className="product-card-price-row">
                         <span className="price-tag-now">₹{product.price}</span>
-                        <span className="price-tag-was">₹{product.compare_price}</span>
+                        {Number(product.compare_price) > Number(product.price) && (
+                          <span className="price-tag-was">₹{product.compare_price}</span>
+                        )}
                       </div>
                     </div>
                   </article>

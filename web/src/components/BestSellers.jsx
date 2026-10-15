@@ -153,7 +153,8 @@ export default function BestSellers({ onProductClick }) {
       name: product.name,
       img: product.img,
       price: product.rawPrice,
-      compare_price: product.rawMrp,
+      compare_price: product.rawMrp > product.rawPrice ? product.rawMrp : 0,
+      originalPrice: product.rawMrp > product.rawPrice ? product.rawMrp : 0,
     });
   };
 

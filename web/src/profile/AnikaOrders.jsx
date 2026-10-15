@@ -57,7 +57,8 @@ export default function AnikaOrders() {
         name: product.name,
         desc: product.description,
         price: product.price,
-        originalPrice: product.compare_price || Math.round(product.price * 1.3),
+        originalPrice: (product.compare_price && Number(product.compare_price) > Number(product.price)) ? Number(product.compare_price) : 0,
+        compare_price: (product.compare_price && Number(product.compare_price) > Number(product.price)) ? Number(product.compare_price) : 0,
         sizes: product.sizes || [],
         stock: product.stock > 0 ? 'in-stock' : 'out-of-stock',
         category: product.categories?.name || product.category || 'Bangles'

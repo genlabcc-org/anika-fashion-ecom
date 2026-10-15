@@ -87,7 +87,7 @@ export default function Offers({ onProductClick }) {
             name: p.name,
             category: p.categories?.name || 'Toe Rings',
             price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',
-            original: mrp ? `₹${mrp.toLocaleString('en-IN')}` : '',
+            original: mrp && mrp > sellingPrice ? `₹${mrp.toLocaleString('en-IN')}` : '',
           };
         });
 

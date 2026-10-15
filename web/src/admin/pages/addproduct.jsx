@@ -109,7 +109,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
         category_id: initialData.category_id || "",
         subcategory_id: initialData.subcategory_id || "",
         price: initialData.price || "",
-        compare_price: initialData.compare_price || "",
+        compare_price: (initialData.compare_price && Number(initialData.compare_price) > 0) ? String(initialData.compare_price) : "",
         // discount_price: initialData.discount_price || "",
         stock: initialData.stock || "",
         stock_alert: initialData.stock_alert || "",
@@ -190,7 +190,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
     const comparePrice = parseFloat(comparePriceVal);
 
     if (!isNaN(price) && !isNaN(comparePrice) && comparePrice > 0 && price >= comparePrice) {
-      return "Price must be lower than MRP (Compare-at Price)";
+      return "Note: MRP is lower than or equal to selling price.";
     }
     return null;
   };
@@ -205,7 +205,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
         category_id: initialData.category_id || "",
         subcategory_id: initialData.subcategory_id || "",
         price: initialData.price || "",
-        compare_price: initialData.compare_price || "",
+        compare_price: (initialData.compare_price && Number(initialData.compare_price) > 0) ? String(initialData.compare_price) : "",
         // discount_price: initialData.discount_price || "",
         stock: initialData.stock || "",
         stock_alert: initialData.stock_alert || "",
@@ -361,7 +361,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
         category_id: parseInt(form.category_id) || null,
         subcategory_id: form.subcategory_id || null,
         price: parseFloat(form.price) || 0,
-        compare_price: parseFloat(form.compare_price) || null,
+        compare_price: Number(form.compare_price) > 0 ? Number(form.compare_price) : null,
         // discount_price: parseFloat(form.discount_price) || null,
         stock: parseInt(form.stock) || 0,
         stock_alert: parseInt(form.stock_alert) || null,
@@ -400,7 +400,6 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
     if (!form.name.trim()) { alert("Product name is required."); return; }
     if (!form.category_id) { alert("Please select a category."); return; }
     if (!form.price) { alert("Price is required."); return; }
-    if (errors.price) { alert(errors.price); return; }
     setSavingAction("publish");
     const result = await saveProduct("Visible");
     if (!result.error && onPublish) onPublish(result.data);
@@ -409,7 +408,7 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
   const handleDraft = async () => {
     if (submitting || uploading) return;
     if (!form.name.trim()) { alert("Product name is required."); return; }
-    if (errors.price) { alert(errors.price); return; }
+    if (!form.price) { alert("Price is required."); return; }
     setSavingAction("draft");
     const result = await saveProduct("Draft");
     if (!result.error && onSaveDraft) onSaveDraft(result.data);
@@ -663,20 +662,22 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
               placeholder="Eg: 2000"
               value={form.price}
               onChange={handlePriceChange}
-              className={errors.price ? "input-error" : ""}
             />
-            {errors.price && <div className="field-warning">{errors.price}</div>}
+            {errors.price && <div className="field-warning" style={{ color: "#d97706" }}>{errors.price}</div>}
           </div>
           <div className="field">
-            <label>MRP Price (₹)</label>
+            <label>MRP (optional)</label>
             <input
               type="text"
               inputMode="numeric"
               pattern="[0-9]*"
-              placeholder="Eg: 2000"
+              placeholder="Leave empty or 0"
               value={form.compare_price}
               onChange={handleComparePriceChange}
             />
+            <span style={{ fontSize: "12px", color: "#666", marginTop: "4px" }}>
+              Leave empty or 0 to hide the MRP and discount.
+            </span>
           </div>
           {/* <div className="field">
             <label>Discount Price (₹)</label>

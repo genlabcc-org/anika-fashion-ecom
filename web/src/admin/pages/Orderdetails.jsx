@@ -6,6 +6,7 @@ import { orderService } from "../../services/orderService";
 
 import { icarryService } from "../../services/icarryService";
 import { useStore } from "../../hooks/useStore";
+import { isSyncableOrder, isExternalCourierOrder } from "../utils/trackingSync";
 import Toast from "../../components/Toast";
 import ThermalInvoice from "../components/ThermalInvoice";
 import "./Orderdetails.css";
@@ -258,7 +259,8 @@ const OrderDetails = ({ order, onBack }) => {
       productId: product.product_id,
       img: product.image_url || product.images?.[0] || "/src/assets/cart/bangle1.webp",
       desc: product.description,
-      originalPrice: product.compare_price || Math.round(product.price * 1.3),
+      originalPrice: (product.compare_price && Number(product.compare_price) > Number(product.price)) ? Number(product.compare_price) : 0,
+      compare_price: (product.compare_price && Number(product.compare_price) > Number(product.price)) ? Number(product.compare_price) : 0,
       sizes: product.sizes || [],
       stock: product.stock > 0 ? "in-stock" : "out-of-stock",
       category: product.categories?.name || "Bangles",
@@ -370,8 +372,7 @@ const OrderDetails = ({ order, onBack }) => {
 
   const handleSyncTracking = async () => {
     if (!o?.id) return;
-    const isExternalCourier = /st courier|manual|dtdc|local|porter/i.test(o?.courier_name || "");
-    if (isExternalCourier) {
+    if (isExternalCourierOrder(o)) {
       showToast(`Order fulfilled via ${o.courier_name || "external courier"}. Live tracking is managed externally.`, "info");
       return;
     }
@@ -394,16 +395,7 @@ const OrderDetails = ({ order, onBack }) => {
 
   // Auto-sync live shipment tracking from iCarry in the background on load
   useEffect(() => {
-    if (!o?.id || (!o?.waybill && !o?.shipment_id)) return;
-    const isExternalCourier = /st courier|manual|dtdc|local|porter/i.test(o?.courier_name || "");
-    if (isExternalCourier) return;
-
-    const s = (o.status || "").toLowerCase();
-    const d = (o.delivery_status || "").toLowerCase();
-    const isTerminal =
-      ["delivered", "cancelled", "canceled", "refund completed"].some((t) => s.includes(t)) &&
-      ["delivered", "cancelled", "canceled"].some((t) => d.includes(t));
-    if (isTerminal) return;
+    if (!isSyncableOrder(o)) return;
 
     icarryService
       .track(o.id)
@@ -415,7 +407,7 @@ const OrderDetails = ({ order, onBack }) => {
       .catch((err) => {
         console.warn("[Orderdetails] Background tracking sync error:", err);
       });
-  }, [o?.id, o?.waybill, o?.shipment_id, o?.courier_name]);
+  }, [o?.id, o?.waybill, o?.shipment_id, o?.courier_name, o?.status, o?.delivery_status, o?.fulfillment_type]);
 
   const handlePrintLabel = async () => {
     if (!o?.id) return;

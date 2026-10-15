@@ -116,8 +116,9 @@ const ProductGallery = memo(({ activeThumb, setActiveThumb, displayImage, displa
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <div className="pp-main-badge">{discountPct > 0 ? `${discountPct}% Off` : ''}
-          </div>
+          {discountPct > 0 && (
+            <div className="pp-main-badge">{discountPct}% Off</div>
+          )}
 
 
           <button
@@ -221,7 +222,7 @@ const RelatedProducts = memo(({ showAll, setShowAll, relatedItems, onProductClic
               {/* <p className="pp-rel-sub">{p.sub}</p> */}
               <div className="pp-rel-prices">
                 <span className="pp-rel-price">{p.price}</span>
-                <span className="pp-rel-orig"> {p.original}</span>
+                {p.original && <span className="pp-rel-orig"> {p.original}</span>}
               </div>
             </div>
           </div>
@@ -481,12 +482,13 @@ export default function ProductPage({ onBack }) {
     : (productPrices?.stock_alert ?? 10);
 
   const payPrice = rawPrice != null ? Number(rawPrice) : 0;
-  const strikePrice = rawCompare != null ? Number(rawCompare) : Math.round(payPrice * 1.3);
+  const strikePrice = rawCompare != null ? Number(rawCompare) : 0;
+  const hasMrp = strikePrice > payPrice && payPrice > 0;
 
   const displayPrice = payPrice ? `₹${payPrice.toLocaleString("en-IN")}` : "";
   const displayOriginal = strikePrice ? `₹${strikePrice.toLocaleString("en-IN")}` : "";
 
-  const discountPct = strikePrice && payPrice && strikePrice > payPrice
+  const discountPct = hasMrp
     ? Math.round(((strikePrice - payPrice) / strikePrice) * 100)
     : 0;
 
@@ -579,15 +581,16 @@ export default function ProductPage({ onBack }) {
       .map((p) => {
         const sellingPrice = Number(p.price) || 0;
         const mrp = Number(p.compare_price) || 0;
+        const hasMrp = mrp > sellingPrice && sellingPrice > 0;
 
-        const discountPct = mrp > sellingPrice && sellingPrice > 0 ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0;
+        const discountPct = hasMrp ? Math.round(((mrp - sellingPrice) / mrp) * 100) : 0;
 
         return {
           ...p,
           sub: p.desc || p.category || cat,
 
           price: sellingPrice ? `₹${sellingPrice.toLocaleString("en-IN")}` : "",
-          original: mrp ? `₹${mrp.toLocaleString("en-IN")}` : "",
+          original: hasMrp ? `₹${mrp.toLocaleString("en-IN")}` : "",
           badge: discountPct > 0 ? `${discountPct}% Off` : "",
           category: p.category || cat,
         };
@@ -676,7 +679,7 @@ export default function ProductPage({ onBack }) {
           id: selectedProduct?.productId || selectedProduct?.id || selectedProduct?.product_id,
           name: displayName,
           price: payPrice,
-          originalPrice: strikePrice,
+          originalPrice: hasMrp ? strikePrice : 0,
           qty: qty,
           img: dynamicThumbs[0]?.img || selectedVariant?.images?.[0] || displayImage,
           category: cat,
@@ -804,9 +807,13 @@ export default function ProductPage({ onBack }) {
 
             <div className="pp-prices">
               <span className="pp-price">{displayPrice}</span>
-              <span className="pp-strike">{displayOriginal}</span>
-              {discountPct > 0 && (
-                <span className='pp-discount-badge'>{discountPct}% Off</span>
+              {hasMrp && (
+                <>
+                  <span className="pp-strike">{displayOriginal}</span>
+                  {discountPct > 0 && (
+                    <span className='pp-discount-badge'>{discountPct}% Off</span>
+                  )}
+                </>
               )}
             </div>
             <p className="pp-tax-note">Inclusive of all taxes</p>
@@ -947,8 +954,8 @@ export default function ProductPage({ onBack }) {
                       id: selectedProduct?.productId || selectedProduct?.id || selectedProduct?.product_id,
                       name: displayName,
                       price: payPrice,
-                      originalPrice: strikePrice,
-                      compare_price: strikePrice,
+                      originalPrice: hasMrp ? strikePrice : 0,
+                      compare_price: hasMrp ? strikePrice : 0,
                       image: dynamicThumbs[0]?.img || selectedVariant?.images?.[0] || displayImage,
                       img: dynamicThumbs[0]?.img || selectedVariant?.images?.[0] || displayImage,
                       category: cat,
@@ -971,8 +978,8 @@ export default function ProductPage({ onBack }) {
                       id: selectedProduct?.productId || selectedProduct?.id || selectedProduct?.product_id,
                       name: displayName,
                       price: payPrice,
-                      originalPrice: strikePrice,
-                      compare_price: strikePrice,
+                      originalPrice: hasMrp ? strikePrice : 0,
+                      compare_price: hasMrp ? strikePrice : 0,
                       category: cat,
                       image: dynamicThumbs[0]?.img || selectedVariant?.images?.[0] || displayImage,
                       img: dynamicThumbs[0]?.img || selectedVariant?.images?.[0] || displayImage,

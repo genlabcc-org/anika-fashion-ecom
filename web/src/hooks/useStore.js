@@ -6,6 +6,8 @@ import { cartService } from '../services/cartService';
 import { wishlistService } from '../services/wishlistService';
 import { authService } from '../services/authService';
 import { orderService } from '../services/orderService';
+import { icarryService } from '../services/icarryService';
+import { isSyncableOrder } from '../admin/utils/trackingSync';
 import { clean } from '../utils/customerName';
 
 /** Strip currency symbols & commas so */
@@ -591,6 +593,85 @@ export const useStore = create((set, get) => ({
     });
   },
 
+  syncAllTracking: async (ordersList, { onProgress } = {}) => {
+    const list = Array.isArray(ordersList) ? ordersList : (get().orders || []);
+    const syncable = list.filter(isSyncableOrder);
+    const skipped = list.length - syncable.length;
+
+    if (syncable.length === 0) {
+      if (typeof onProgress === 'function') onProgress(0, 0);
+      return { total: 0, updated: 0, unchanged: 0, failed: 0, skipped };
+    }
+
+    let updated = 0;
+    let unchanged = 0;
+    let failed = 0;
+    let done = 0;
+    const total = syncable.length;
+
+    const CONCURRENCY = 3;
+    let nextIndex = 0;
+
+    const worker = async () => {
+      while (nextIndex < syncable.length) {
+        const order = syncable[nextIndex++];
+        try {
+          const res = await icarryService.track(order.id);
+          if (res && res.error) {
+            failed++;
+          } else if (res?.updates && Object.keys(res.updates).length > 0) {
+            try {
+              const { data: refreshedOrder, error: fetchErr } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('id', order.id)
+                .single();
+
+              if (!fetchErr && refreshedOrder) {
+                const { data: items } = await supabase
+                  .from('order_items')
+                  .select('*')
+                  .eq('order_id', order.id);
+                const fullOrder = { ...refreshedOrder, order_items: items || [] };
+                get().updateOrderInList(order.id, fullOrder);
+              } else {
+                get().updateOrderInList(order.id, res.updates);
+              }
+            } catch (fetchOrderErr) {
+              console.warn(`[syncAllTracking] Failed to fetch fresh order ${order.id}, applying updates directly:`, fetchOrderErr);
+              get().updateOrderInList(order.id, res.updates);
+            }
+            updated++;
+          } else {
+            unchanged++;
+          }
+        } catch (err) {
+          console.error(`[syncAllTracking] Error syncing order ${order.id}:`, err);
+          failed++;
+        } finally {
+          done++;
+          if (typeof onProgress === 'function') {
+            try {
+              onProgress(done, total);
+            } catch (_) {}
+          }
+        }
+      }
+    };
+
+    const workerCount = Math.min(CONCURRENCY, syncable.length);
+    const workers = Array.from({ length: workerCount }, () => worker());
+    await Promise.all(workers);
+
+    return {
+      total,
+      updated,
+      unchanged,
+      failed,
+      skipped,
+    };
+  },
+
   // --- Selected Product Actions ---
   setSelectedProduct: (product) => {
     set({ selectedProduct: product });
@@ -662,12 +743,15 @@ export const useStore = create((set, get) => ({
       if (existingIdx > -1) {
         localCart[existingIdx].qty += qty;
       } else {
+        const itemPrice = parsePrice(product.price);
+        const rawMrp = parsePrice(product.originalPrice || product.original || product.compare_price || 0);
+        const originalPrice = rawMrp > itemPrice ? rawMrp : 0;
         localCart.push({
           id: `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           productId: product.productId || product.id,
           name: product.name,
-          price: parsePrice(product.price),
-          originalPrice: parsePrice(product.originalPrice || product.original || product.compare_price || Math.round(parsePrice(product.price) * 1.3)),
+          price: itemPrice,
+          originalPrice: originalPrice,
           category: product.category,
           qty,
           size: normSize,
@@ -770,7 +854,8 @@ export const useStore = create((set, get) => ({
         localWishlist = localWishlist.filter(w => (w.id !== productId && w.productId !== productId));
       } else {
         const price = parsePrice(product.price);
-        const originalPrice = parsePrice(product.originalPrice || product.compare_price || Math.round(price * 1.3));
+        const rawMrp = parsePrice(product.originalPrice || product.compare_price || 0);
+        const originalPrice = rawMrp > price ? rawMrp : 0;
         localWishlist.push({
           id: productId,
           productId: productId,

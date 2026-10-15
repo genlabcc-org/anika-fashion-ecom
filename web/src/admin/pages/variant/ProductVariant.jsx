@@ -126,7 +126,7 @@ const CreateMultipleProduct = ({
               sizeDimension: v.size || "",
               stockQuantity: String(v.stock ?? ""),
               minStockAlert: String(v.stock_alert ?? ""),
-              price: String(v.compare_price ?? ""),
+              price: (v.compare_price && Number(v.compare_price) > 0) ? String(v.compare_price) : "",
               sellingPrice: String(v.price ?? ""),
               color: v.color || null,
               sku: v.sku || "",
@@ -295,16 +295,8 @@ const CreateMultipleProduct = ({
       if (v.minStockAlert === "" || v.minStockAlert === null) {
         fieldErrors.minStockAlert = ["Cant Be Empty"];
       }
-      if (v.price === "" || v.price === null) {
-        fieldErrors.price = ["Cant Be Empty"];
-      }
-
-      const sellingPriceInvalid =
-        v.sellingPrice === "" ||
-        v.sellingPrice === null ||
-        (v.price !== "" && Number(v.sellingPrice) > Number(v.price));
-      if (sellingPriceInvalid) {
-        fieldErrors.sellingPrice = ["Cant Be Higher Than Price", "Cant Be Empty"];
+      if (v.sellingPrice === "" || v.sellingPrice === null) {
+        fieldErrors.sellingPrice = ["Cant Be Empty"];
       }
 
       if (Object.keys(fieldErrors).length) {
@@ -528,17 +520,20 @@ const CreateMultipleProduct = ({
                 </label>
 
                 <label className="cmp-field">
-                  <span className="cmp-label">MRP Price</span>
+                  <span className="cmp-label">MRP (optional)</span>
                   <input
                     type="text"
-                    className={`cmp-input${vErrors.price ? " cmp-input--error" : ""}`}
+                    className="cmp-input"
                     placeholder="₹0.00"
                     value={v.price}
                     onChange={(e) => updateVariant(v.id, "price", e.target.value)}
                   />
-                  {vErrors.price?.map((msg) => (
-                    <FieldError key={msg}>{msg}</FieldError>
-                  ))}
+                  <InfoHint>Leave empty or 0 to hide the MRP and discount.</InfoHint>
+                  {Number(v.price) > 0 && Number(v.sellingPrice) > 0 && Number(v.sellingPrice) >= Number(v.price) && (
+                    <span style={{ fontSize: "11px", color: "#d97706", marginTop: "3px", display: "block" }}>
+                      Note: MRP is lower than or equal to selling price.
+                    </span>
+                  )}
                 </label>
 
                 <label className="cmp-field">

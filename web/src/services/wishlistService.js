@@ -52,7 +52,8 @@ export const wishlistService = {
         const sortedVariants = [...variants].sort((a, b) => (parsePrice(a.price) || 0) - (parsePrice(b.price) || 0));
         const primaryVariant = sortedVariants[0];
         price = parsePrice(primaryVariant.price);
-        originalPrice = parsePrice(primaryVariant.compare_price || Math.round(price * 1.3));
+        const rawMrp = parsePrice(primaryVariant.compare_price || 0);
+        originalPrice = rawMrp > price ? rawMrp : 0;
         if (primaryVariant.images && primaryVariant.images.length > 0) {
           image = primaryVariant.images[0];
         }
@@ -60,7 +61,8 @@ export const wishlistService = {
         const rawPrice = parsePrice(product.price);
         const rawDiscount = parsePrice(product.discount_price);
         price = rawDiscount > 0 ? rawPrice - rawDiscount : rawPrice;
-        originalPrice = parsePrice(product.compare_price || Math.round(rawPrice * 1.3));
+        const rawMrp = parsePrice(product.compare_price || 0);
+        originalPrice = rawMrp > price ? rawMrp : 0;
       }
 
       return {
