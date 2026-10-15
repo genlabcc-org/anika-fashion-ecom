@@ -464,6 +464,40 @@ button {
   border-color: #222;
 }
 
+.pp-select-size-prompt {
+  font-weight: 500;
+  color: #c42049;
+  font-size: 13px;
+  background: rgba(196, 32, 73, 0.08);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.pp-selected-size-text {
+  font-weight: 600;
+  color: #111;
+}
+
+.pp-size-error .pp-size-btn:not(.active) {
+  border-color: #c42049;
+  box-shadow: 0 0 0 1px #c42049;
+  animation: pp-size-shake 0.4s ease-in-out;
+}
+
+@keyframes pp-size-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.pp-size-error-msg {
+  color: #c42049;
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 6px;
+  display: block;
+}
+
 .pp-size-buttons button {
   min-width: 35px;
   height: 25px;
@@ -610,6 +644,14 @@ button {
 .pp-cart-btn:hover {
   border-color: var(--maroon);
   background: #fdf5f5;
+}
+
+.pp-cart-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  border-color: #ddd;
+  background: #f5f5f5;
+  color: #999;
 }
 
 .pp-wish-btn {

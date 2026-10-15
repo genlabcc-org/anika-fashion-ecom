@@ -59,6 +59,11 @@ export default function AnikaWishlist() {
   };
 
   const handleAddToCart = async (item) => {
+    const hasSizes = (item.sizes && item.sizes.length > 0) || (item.category && item.category.toLowerCase() === 'bangles');
+    if (hasSizes) {
+      handleViewProduct(item);
+      return;
+    }
     await addToCart({
       productId: item.id || item.productId,
       id: item.id || item.productId,
@@ -182,7 +187,9 @@ export default function AnikaWishlist() {
                         className="aw-cart-btn"
                         onClick={() => handleAddToCart(item)}
                       >
-                        Add to Cart
+                        {(item.sizes && item.sizes.length > 0) || (item.category && item.category.toLowerCase() === 'bangles')
+                          ? "Select Size"
+                          : "Add to Cart"}
                       </button>
                       <button
                         className="aw-view-btn"

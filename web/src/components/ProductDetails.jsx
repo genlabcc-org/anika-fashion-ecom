@@ -275,6 +275,7 @@ export default function ProductPage({ onBack }) {
   const [toastMsg, setToastMsg] = useState("");
   const [toastType, setToastType] = useState("success");
   const [selectedSize, setSelectedSize] = useState("");
+  const [sizeError, setSizeError] = useState(false);
   const [showSizeChart, setShowSizeChart] = useState(false);
 
   // Dynamic sizes/lengths fetched from database
@@ -310,7 +311,27 @@ export default function ProductPage({ onBack }) {
     setVariants([]);
     setSelectedColor('');
     setSelectedSize('');
+    setSizeError(false);
     setQty(1);
+
+    const extractSizes = (variantList, baseObj) => {
+      let sList = [];
+      if (variantList && variantList.length > 0) {
+        sList = [...new Set(variantList.map(v => v.size).filter(Boolean))];
+      }
+      const rawBaseSizes = baseObj?.sizes || selectedProduct?.sizes;
+      if (sList.length === 0 && rawBaseSizes) {
+        if (Array.isArray(rawBaseSizes)) {
+          sList = rawBaseSizes.filter(Boolean);
+        } else if (typeof rawBaseSizes === 'string') {
+          sList = rawBaseSizes.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+      if (sList.length === 0 && cat?.toLowerCase() === 'bangles') {
+        sList = ['2.4', '2.6', '2.8'];
+      }
+      return sList;
+    };
 
     // Cache hit only if price data (base) is present in Zustand session.
     // On refresh, localStorage restores images only — base is missing → triggers DB fetch.
@@ -321,16 +342,17 @@ export default function ProductPage({ onBack }) {
       if (baseData?.has_variants) {
         const variantRows = cachedEntry.variants || [];
         setVariants(variantRows);
-        const sizes = [...new Set(variantRows.map(v => v.size).filter(Boolean))];
-        const firstVariant = variantRows[0];
+        const sizes = extractSizes(variantRows, baseData);
         setSize(sizes);
-        setSelectedSize(firstVariant?.size || '');
+        setSelectedSize('');
+        const firstVariant = variantRows[0];
         setSelectedColor(firstVariant?.color || '');
       } else {
         setProductPrice(baseData);
-        if (baseData?.sizes?.length) {
-          setSize(baseData.sizes);
-          setSelectedSize(baseData.sizes[0] || '');
+        const sizes = extractSizes([], baseData);
+        if (sizes.length > 0) {
+          setSize(sizes);
+          setSelectedSize('');
         }
         const parsedColors = Array.isArray(baseData?.colors)
           ? baseData.colors
@@ -349,16 +371,17 @@ export default function ProductPage({ onBack }) {
       if (baseData?.has_variants) {
         const variantRows = details.variants || [];
         setVariants(variantRows);
-        const sizes = [...new Set(variantRows.map(v => v.size).filter(Boolean))];
-        const firstVariant = variantRows[0];
+        const sizes = extractSizes(variantRows, baseData);
         setSize(sizes);
-        setSelectedSize(firstVariant?.size || '');
+        setSelectedSize('');
+        const firstVariant = variantRows[0];
         setSelectedColor(firstVariant?.color || '');
       } else {
         setProductPrice(baseData);
-        if (baseData?.sizes?.length) {
-          setSize(baseData.sizes);
-          setSelectedSize(baseData.sizes[0] || '');
+        const sizes = extractSizes([], baseData);
+        if (sizes.length > 0) {
+          setSize(sizes);
+          setSelectedSize('');
         }
         const parsedColors = Array.isArray(baseData?.colors)
           ? baseData.colors
@@ -400,24 +423,29 @@ export default function ProductPage({ onBack }) {
     }
   }, [activeSizeValue, hasVariants, variants]);
 
+  const totalVariantStock = useMemo(() => {
+    if (!hasVariants || !variants.length) return null;
+    return variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+  }, [hasVariants, variants]);
+
   // Determine which image to show in gallery
   const rawPrice = hasVariants
-    ? (selectedVariant?.price ?? null)
+    ? (selectedVariant?.price ?? productPrices?.price ?? selectedProduct?.price ?? variants[0]?.price ?? null)
     : (productPrices?.price ?? selectedProduct?.price ?? null);
 
   const rawCompare = hasVariants
-    ? (selectedVariant?.compare_price ?? null)
+    ? (selectedVariant?.compare_price ?? productPrices?.compare_price ?? selectedProduct?.compare_price ?? variants[0]?.compare_price ?? null)
     : (productPrices?.compare_price ?? selectedProduct?.compare_price ?? null);
 
   const displayImage = selectedProduct?.img || selectedProduct?.image || MainBangle;
   const displayName = selectedProduct?.name || 'Antique Bangle set';
 
   const displaySku = hasVariants
-    ? (selectedVariant?.sku || '')
+    ? (selectedVariant?.sku || variants[0]?.sku || '')
     : (productPrices?.sku || selectedProduct?.sku || '');
 
   const stockCount = hasVariants
-    ? (selectedVariant?.stock ?? 0)
+    ? (selectedVariant ? selectedVariant.stock : (totalVariantStock === 0 ? 0 : null))
     : (productPrices?.stock ?? selectedProduct?.stock ?? null);
 
   const stockAlertThreshold = hasVariants
@@ -434,9 +462,16 @@ export default function ProductPage({ onBack }) {
     ? Math.round(((strikePrice - payPrice) / strikePrice) * 100)
     : 0;
 
+  const isSizeRequired = size.length > 0;
+  const isSizeSelected = !isSizeRequired || Boolean(selectedSize);
+
+  const isOutOfStock = hasVariants
+    ? (selectedVariant ? (selectedVariant.stock != null && selectedVariant.stock <= 0) : totalVariantStock === 0)
+    : (stockCount !== null && stockCount <= 0);
+
   const canAddToCart = hasVariants
-    ? (!!selectedVariant && selectedVariant.stock > 0)
-    : (stockCount == null || stockCount > 0);
+    ? (isSizeSelected && !!selectedVariant && selectedVariant.stock > 0)
+    : (isSizeSelected && (stockCount == null || stockCount > 0));
 
 
   const availableColorForSize = useMemo(() => {
@@ -586,6 +621,16 @@ export default function ProductPage({ onBack }) {
   )
 
   const handleBuyNow = useCallback(async () => {
+    if (isSizeRequired && !selectedSize) {
+      setSizeError(true);
+      setTimeout(() => setSizeError(false), 2000);
+      showToast("Please select a size to order the product", "error");
+      return;
+    }
+    if (isOutOfStock) {
+      showToast("Selected item is out of stock", "error");
+      return;
+    }
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       navigate("/account/signup");
@@ -613,7 +658,7 @@ export default function ProductPage({ onBack }) {
         }
       }
     });
-  }, [displayName, payPrice, strikePrice, qty, dynamicThumbs, selectedVariant, displayImage, cat, displaySku, selectedProduct, selectedSize, selectedColor, canAddToCart, navigate]);
+  }, [isSizeRequired, selectedSize, isOutOfStock, displayName, payPrice, strikePrice, qty, dynamicThumbs, selectedVariant, displayImage, cat, displaySku, selectedProduct, selectedColor, canAddToCart, navigate]);
 
   const handleShare = useCallback(async () => {
     const shareData = {
@@ -691,9 +736,16 @@ export default function ProductPage({ onBack }) {
             <p className="pp-tax-note">Inclusive of all taxes</p>
 
             {size.length > 0 && (
-              <div className='pp-size'>
+              <div className={`pp-size ${sizeError && !selectedSize ? 'pp-size-error' : ''}`}>
                 <div className='pp-size-row'>
-                  <h4>{SIZE_LABEL_BY_CATEGORY[cat] || "Size"}: {selectedSize}</h4>
+                  <h4>
+                    {SIZE_LABEL_BY_CATEGORY[cat] || "Size"}:{" "}
+                    {selectedSize ? (
+                      <span className="pp-selected-size-text">{selectedSize}</span>
+                    ) : (
+                      <span className="pp-select-size-prompt">Select a size</span>
+                    )}
+                  </h4>
                   {SIZE_CHART_BY_CATEGORY[cat] && (
                     <a href='#' className='pp-size-link'
                       onClick={(e) => { e.preventDefault(); setShowSizeChart(true) }}
@@ -720,13 +772,20 @@ export default function ProductPage({ onBack }) {
                   {size.map((s) => (
                     <button
                       key={s}
+                      type="button"
                       className={`pp-size-btn ${selectedSize === s ? 'active' : ''}`}
-                      onClick={() => setSelectedSize(s)}
+                      onClick={() => {
+                        setSelectedSize(s);
+                        setSizeError(false);
+                      }}
                     >
                       {s}
                     </button>
                   ))}
                 </div>
+                {sizeError && !selectedSize && (
+                  <span className="pp-size-error-msg">Please select a size to proceed</span>
+                )}
               </div>
             )}
 
@@ -787,14 +846,21 @@ export default function ProductPage({ onBack }) {
               </div>
               <button
                 className="pp-cart-btn"
-                disabled={!canAddToCart}
+                disabled={isOutOfStock}
                 onClick={async () => {
+                  if (isSizeRequired && !selectedSize) {
+                    setSizeError(true);
+                    setTimeout(() => setSizeError(false), 2000);
+                    showToast("Please select a size to order the product", "error");
+                    return;
+                  }
+                  if (isOutOfStock || !canAddToCart) return;
+
                   const { data: { session } } = await supabase.auth.getSession();
                   if (!session) {
                     navigate("/account/signup");
                     return;
                   }
-                  if (!canAddToCart) return;
 
                   if (selectedProduct) {
                     const sizeParam = selectedSize || null;
@@ -816,7 +882,7 @@ export default function ProductPage({ onBack }) {
                   }
                 }}
               >
-                {canAddToCart ? "Add to Cart" : "Select options"}
+                {isOutOfStock ? "Out of Stock" : (isSizeRequired && !selectedSize ? "Select Size" : "Add to Cart")}
               </button>
               <button
                 className="pp-wish-btn"

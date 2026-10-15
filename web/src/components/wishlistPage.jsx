@@ -60,6 +60,12 @@ export default function WishlistPage({ onBack }) {
   };
 
   const handleAddToCart = async (item) => {
+    const hasSizes = (item.sizes && item.sizes.length > 0) || (item.category && item.category.toLowerCase() === 'bangles');
+    if (hasSizes) {
+      handleViewProduct(item);
+      showToast("Please select a size to order this product", "info");
+      return;
+    }
     await addToCart({
       productId: item.id || item.productId,
       id: item.id || item.productId,
@@ -215,7 +221,9 @@ export default function WishlistPage({ onBack }) {
                         width: "fit-content"
                       }}
                     >
-                      Add to Cart
+                      {(item.sizes && item.sizes.length > 0) || (item.category && item.category.toLowerCase() === 'bangles')
+                        ? "Select Size"
+                        : "Add to Cart"}
                     </button>
                   </div>
                   <button
