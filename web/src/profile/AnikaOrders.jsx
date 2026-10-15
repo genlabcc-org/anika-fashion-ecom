@@ -48,10 +48,11 @@ export default function AnikaOrders() {
   const handleItemClick = (item) => {
     const product = productsMap[item.product_name];
     if (product) {
+      const targetId = product.product_id || product.id;
       const formattedProduct = {
         ...product,
-        id: product.product_id || product.id,
-        productId: product.product_id || product.id,
+        id: targetId,
+        productId: targetId,
         img: product.image_url || (product.images && product.images[0]) || '/src/assets/cart/bangle1.webp',
         name: product.name,
         desc: product.description,
@@ -62,7 +63,7 @@ export default function AnikaOrders() {
         category: product.categories?.name || product.category || 'Bangles'
       };
       setSelectedProduct(formattedProduct);
-      navigate("/product");
+      navigate(`/product/${targetId}`);
     }
   };
 
@@ -100,10 +101,12 @@ export default function AnikaOrders() {
     if (sessionLoading) return;
     if (!user) {
       navigate("/account/login");
-      return
     }
-    fetchOrders(user.id);
-  }, [user, sessionLoading]);
+  }, [user, sessionLoading, navigate]);
+
+  useEffect(() => {
+    if (user?.id) fetchOrders(user.id, { force: true });
+  }, [user?.id]);
 
 
   const orders = useMemo(() => {

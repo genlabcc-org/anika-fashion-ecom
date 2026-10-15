@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, memo, lazy, Suspense 
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation } from "swiper/modules";
 import { useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from '../lib/supabase';
 import { variantService } from '../services/variantService';
 import { productService } from "../services/productService";
@@ -241,10 +241,12 @@ const RelatedProducts = memo(({ showAll, setShowAll, relatedItems, onProductClic
 // ═════════════════════════════════════════════════════════════════════════════
 export default function ProductPage({ onBack }) {
   const navigate = useNavigate();
+  const { productId: urlProductId } = useParams();
 
   // Zustand Store
   const selectedProduct = useStore(state => state.selectedProduct);
   const setSelectedProduct = useStore(state => state.setSelectedProduct);
+  const loadProductById = useStore(state => state.loadProductById);
   const categories = useStore(state => state.categories);
   const addToCart = useStore(state => state.addToCart);
   const toggleWishlist = useStore(state => state.toggleWishlist);
@@ -257,6 +259,8 @@ export default function ProductPage({ onBack }) {
   const cat = selectedProduct?.category || 'Bangles';
 
   // React State Hooks
+  const [pageLoading, setPageLoading] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const [activeThumb, setActiveThumb] = useState(0);
   const [qty, setQty] = useState(1);
 
@@ -295,6 +299,29 @@ export default function ProductPage({ onBack }) {
     Anklets: "Length",
   }
 
+  useEffect(() => {
+    if (!urlProductId) return;
+
+    const currentId = String(selectedProduct?.productId || selectedProduct?.id || '');
+    if (currentId !== String(urlProductId)) {
+      setPageLoading(true);
+      setNotFound(false);
+      loadProductById(urlProductId)
+        .then((product) => {
+          if (!product) {
+            setNotFound(true);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load product by ID:", err);
+          setNotFound(true);
+        })
+        .finally(() => {
+          setPageLoading(false);
+        });
+    }
+  }, [urlProductId, selectedProduct, loadProductById]);
+
   // Compute outside effect so cachedEntry can be a dependency.
   // When validateProductCache evicts a stale entry, cachedEntry becomes
   // undefined and the effect re-runs to fetch fresh data from DB.
@@ -303,6 +330,7 @@ export default function ProductPage({ onBack }) {
 
   useEffect(() => {
     if (!productId) return;
+    if (urlProductId && String(productId) !== String(urlProductId)) return;
 
     // Reset UI state before loading
     setSize([]);
@@ -615,10 +643,10 @@ export default function ProductPage({ onBack }) {
         ...product,
         category: product.category || cat,
       });
-      navigate("/product")
+      navigate(`/product/${product.productId || product.id}`);
     },
     [cat, setSelectedProduct, navigate]
-  )
+  );
 
   const handleBuyNow = useCallback(async () => {
     if (isSizeRequired && !selectedSize) {
@@ -661,10 +689,12 @@ export default function ProductPage({ onBack }) {
   }, [isSizeRequired, selectedSize, isOutOfStock, displayName, payPrice, strikePrice, qty, dynamicThumbs, selectedVariant, displayImage, cat, displaySku, selectedProduct, selectedColor, canAddToCart, navigate]);
 
   const handleShare = useCallback(async () => {
+    const targetId = selectedProduct?.productId || selectedProduct?.id;
+    const shareUrl = `${window.location.origin}/product/${targetId}`;
     const shareData = {
       title: displayName,
       text: `Check out this beautiful ${displayName} from Anika`,
-      url: window.location.href,
+      url: shareUrl,
     };
 
     if (navigator.share) {
@@ -678,7 +708,53 @@ export default function ProductPage({ onBack }) {
       const message = `${shareData.text}: ${shareData.url}`;
       window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
     }
-  }, [displayName]);
+  }, [displayName, selectedProduct]);
+
+  if (pageLoading) {
+    return (
+      <div className="pp-root">
+        <SiteHeader activeLink="" onLinkClick={handleHeaderLinkClick} />
+        <div style={{ maxWidth: '1200px', margin: '40px auto', padding: '0 20px' }}>
+          <LoadingSkeleton height="600px" />
+        </div>
+        <Suspense fallback={null}>
+          <SiteFooter />
+        </Suspense>
+      </div>
+    );
+  }
+
+  if (notFound || (!pageLoading && urlProductId && !selectedProduct)) {
+    return (
+      <div className="pp-root">
+        <SiteHeader activeLink="" onLinkClick={handleHeaderLinkClick} />
+        <div style={{ maxWidth: '600px', margin: '80px auto', textAlign: 'center', padding: '40px 20px' }}>
+          <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '12px', color: '#1a1a1a' }}>Product not found</h2>
+          <p style={{ color: '#666', marginBottom: '24px', fontSize: '15px' }}>
+            The product you are looking for does not exist or has been removed.
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            style={{
+              padding: '12px 28px',
+              backgroundColor: '#8b0030',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer'
+            }}
+          >
+            Back to home
+          </button>
+        </div>
+        <Suspense fallback={null}>
+          <SiteFooter />
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
     <div className="pp-root">

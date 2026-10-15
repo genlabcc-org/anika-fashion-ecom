@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from "react-router-dom";
 import { useStore } from './hooks/useStore';
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 
 import Signup from "./account/JewelrySignup";
 import Login from "./account/JewelryLogin";
@@ -89,6 +89,15 @@ function CategoryBySlug(){
   );
 }
 
+function LegacyProductRedirect() {
+  const selectedProduct = useStore((s) => s.selectedProduct);
+  const targetId = selectedProduct?.productId || selectedProduct?.id;
+  if (targetId) {
+    return <Navigate to={`/product/${targetId}`} replace />;
+  }
+  return <Navigate to="/" replace />;
+}
+
 function App() {
   const initAuth = useStore(state => state.initAuth);
 
@@ -105,12 +114,16 @@ function App() {
           element={<HomePage />}
         />
         <Route
-          path="/product"
+          path="/product/:productId"
           element={
             <ProductDetails
               onBack={() => window.history.back()}
             />
           }
+        />
+        <Route
+          path="/product"
+          element={<LegacyProductRedirect />}
         />
         <Route path="/rings" element={<CategoryPage category="Rings" />} />
         <Route path="/toe-rings" element={<CategoryPage category="Toe Rings" />} />

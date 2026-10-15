@@ -317,6 +317,37 @@ export const useStore = create((set, get) => ({
     }
   },
 
+  loadProductById: async (productId) => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*, categories(name), product_variants(price, compare_price, stock, images)')
+      .eq('product_id', productId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    const variants = data.product_variants || [];
+    const hasVariants = !!data.has_variants && variants.length > 0;
+    const prices = variants.map(v => Number(v.price)).filter(Boolean);
+
+    const product = {
+      id: data.product_id,
+      productId: data.product_id,
+      name: data.name,
+      desc: data.description,
+      category: data.categories?.name,
+      price: hasVariants ? Math.min(...prices) : Number(data.price) || 0,
+      compare_price: hasVariants
+        ? Math.max(...variants.map(v => Number(v.compare_price) || 0))
+        : Number(data.compare_price) || 0,
+      img: variants.find(v => v.images?.length)?.images?.[0] || data.image_url || data.images?.[0],
+      has_variants: hasVariants,
+    };
+    get().setSelectedProduct(product);
+    return product;
+  },
+
   // Caching Individual Product Details (images + price + variants)
   // Images: served from Zustand session cache (populated from localStorage on load)
   // Price/stock/variants: ALWAYS fetched fresh from DB on first access per session
@@ -414,6 +445,12 @@ export const useStore = create((set, get) => ({
       set({ loadingOrders: false });
       return [];
     }
+  },
+
+  invalidateOrders: () => set({ ordersFetchedFor: null }),
+
+  refreshOrders: async (userId) => {
+    return get().fetchOrders(userId, { force: true });
   },
 
   // --- Admin Order Badge ---

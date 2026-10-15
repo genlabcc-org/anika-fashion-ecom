@@ -30,7 +30,7 @@ export default function HomePage() {
   // Wrap setSelectedProduct to also navigate
   const handleProductClick = (product) => {
     setSelectedProduct(product);      // saves product to Zustand state
-    navigate('/product');         // then go to product page
+    navigate(`/product/${product.productId || product.id}`);         // then go to product page
   };
 
   const handleCategoryClick = (name) => {

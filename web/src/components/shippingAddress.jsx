@@ -656,9 +656,17 @@ export default function ShippingAddress() {
               showToast("Payment successful! Order placed.", "success");
               // Note: Admin order notification email is triggered server-side in verify_payment edge function
 
-              setTimeout(() => {
-                navigate("/profile/orders");
-              }, 2000);
+              try {
+                const { user, refreshOrders } = useStore.getState();
+                const targetUserId = user?.id || userId;
+                if (targetUserId) {
+                  await refreshOrders(targetUserId);
+                }
+              } catch (refreshErr) {
+                console.error("Failed to refresh orders before navigation:", refreshErr);
+              }
+
+              navigate("/profile/orders");
             } catch (err) {
               showToast(err.message, "error");
               setIsProcessingPayment(false);

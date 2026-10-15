@@ -80,9 +80,10 @@ export default function WishlistPage({ onBack }) {
   };
 
   const handleViewProduct = (item) => {
+    const targetId = item.id || item.productId;
     setSelectedProduct({
-      id: item.id || item.productId,
-      productId: item.id || item.productId,
+      id: targetId,
+      productId: targetId,
       name: item.name,
       price: item.price,
       originalPrice: item.originalPrice,
@@ -90,7 +91,7 @@ export default function WishlistPage({ onBack }) {
       image: item.image,
       category: item.category || "",
     });
-    navigate("/product");
+    navigate(`/product/${targetId}`);
   };
 
   return (

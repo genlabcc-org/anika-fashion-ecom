@@ -277,7 +277,7 @@ export default function CategoryPage({ category }) {
       category
     };
     setSelectedProduct(formattedProduct);
-    navigate("/product");
+    navigate(`/product/${product.productId || product.id}`);
   };
 
   return (

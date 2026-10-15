@@ -263,7 +263,7 @@ const OrderDetails = ({ order, onBack }) => {
       stock: product.stock > 0 ? "in-stock" : "out-of-stock",
       category: product.categories?.name || "Bangles",
     });
-    navigate("/product");
+    navigate(`/product/${product.product_id}`);
   };
 
   const showToast = (message, type = "info") => {

@@ -43,9 +43,10 @@ export default function AnikaWishlist() {
   };
 
   const handleViewProduct = (item) => {
+    const targetId = item.id || item.productId;
     setSelectedProduct({
-      id: item.id,
-      productId: item.id,
+      id: targetId,
+      productId: targetId,
       name: item.name,
       price: item.price,
       originalPrice: item.originalPrice,
@@ -55,7 +56,7 @@ export default function AnikaWishlist() {
       sizes: item.sizes || [],
       stock: "in-stock",
     });
-    navigate("/product");
+    navigate(`/product/${targetId}`);
   };
 
   const handleAddToCart = async (item) => {
