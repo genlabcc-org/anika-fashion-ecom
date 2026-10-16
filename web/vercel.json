@@ -10,7 +10,14 @@
         {
           "type": "header",
           "key": "user-agent",
-          "value": ".*(WhatsApp|whatsapp|facebookexternalhit|Facebot|Twitterbot|twitterbot|Instagram|TelegramBot|LinkedInBot|Slackbot).*"
+          "value": "(?i).*(facebookexternalhit|Facebot|meta-externalagent|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Pinterest|Discordbot).*"
+        }
+      ],
+      "missing": [
+        {
+          "type": "query",
+          "key": "from",
+          "value": "preview"
         }
       ],
       "destination": "/api/og?productId=:productId"

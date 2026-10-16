@@ -1,19 +1,20 @@
 // Vercel Serverless Function to serve Open Graph preview tags for social crawlers
+import fs from 'fs';
+import path from 'path';
 
-const CRAWLER_USER_AGENTS = [
-  'whatsapp',
-  'facebookexternalhit',
-  'facebot',
-  'twitterbot',
-  'instagram',
-  'telegrambot',
-  'linkedinbot',
-  'slackbot',
-];
+// Match ONLY real link-preview bots; exclude in-app browsers
+const CRAWLER_REGEX = /facebookexternalhit|Facebot|meta-externalagent|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Pinterest|Discordbot/i;
+
+// In-app browsers: Instagram, Facebook in-app (FBAN/FBAV), Line, etc.
+const IN_APP_BROWSER_REGEX = /Instagram|FBAN|FBAV|Line\//i;
 
 function isCrawler(userAgent = '') {
-  const ua = userAgent.toLowerCase();
-  return CRAWLER_USER_AGENTS.some((bot) => ua.includes(bot));
+  if (!userAgent) return false;
+  // Guard: if user-agent contains in-app browser signatures and does not match the crawler list, treat as human/browser
+  if (IN_APP_BROWSER_REGEX.test(userAgent) && !CRAWLER_REGEX.test(userAgent)) {
+    return false;
+  }
+  return CRAWLER_REGEX.test(userAgent);
 }
 
 function escapeHtml(str) {
@@ -37,9 +38,55 @@ function toAbsoluteImageUrl(url, defaultOrigin) {
   return `${defaultOrigin}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
+function serveSpa(res) {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Vary', 'User-Agent');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+  const candidatePaths = [
+    path.join(process.cwd(), 'dist', 'index.html'),
+    path.join(process.cwd(), 'web', 'dist', 'index.html'),
+    path.join(process.cwd(), 'index.html'),
+    path.join(process.cwd(), 'web', 'index.html'),
+  ];
+
+  for (const filePath of candidatePaths) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const html = fs.readFileSync(filePath, 'utf8');
+        if (html) {
+          return res.status(200).send(html);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback if index.html cannot be located on disk
+  return res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ANIKA | Handcrafted Jewellery</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script>window.location.replace('/');</script>
+</body>
+</html>`);
+}
+
 export default async function handler(req, res) {
-  const { productId: queryProductId, id: queryId } = req.query || {};
+  const { productId: queryProductId, id: queryId, from } = req.query || {};
   const productId = queryProductId || queryId || (req.url && (req.url.match(/\/product\/([^?]+)/) || [])[1]);
+
+  const userAgent = req.headers['user-agent'] || '';
+  const isFromPreview = from === 'preview' || (req.url && req.url.includes('from=preview'));
+
+  // If accessed with ?from=preview, or by a non-crawler (e.g. Instagram in-app browser), serve the normal SPA
+  if (isFromPreview || !isCrawler(userAgent)) {
+    return serveSpa(res);
+  }
 
   const proto = req.headers['x-forwarded-proto'] || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers.host || 'www.anikafashion.in';
@@ -49,13 +96,6 @@ export default async function handler(req, res) {
   const defaultDesc = 'Discover handcrafted fashion jewellery for every occasion. Draped in elegance.';
   const defaultImage = `${siteOrigin}/meta-tag.png`;
   const canonicalUrl = productId ? `${siteOrigin}/product/${productId}` : siteOrigin;
-
-  // If accessed directly by a non-crawler browser, redirect to the client-side SPA route
-  const userAgent = req.headers['user-agent'] || '';
-  if (!isCrawler(userAgent) && req.headers.accept?.includes('text/html') && productId) {
-    res.setHeader('Location', `/product/${productId}`);
-    return res.status(302).end();
-  }
 
   let title = defaultTitle;
   let description = defaultDesc;
@@ -118,12 +158,18 @@ export default async function handler(req, res) {
     }
   }
 
+  const previewRedirectUrl = `/product/${productId ? encodeURIComponent(productId) : ''}?from=preview`;
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description)}" />
+
+  <!-- Fallback for humans landing on crawler preview: immediate client-side redirect to real SPA -->
+  <meta http-equiv="refresh" content="0;url=${escapeHtml(previewRedirectUrl)}" />
+  <script>window.location.replace("${escapeHtml(previewRedirectUrl)}");</script>
 
   <!-- Open Graph / WhatsApp / Facebook / Instagram -->
   <meta property="og:title" content="${escapeHtml(title)}" />
@@ -145,11 +191,12 @@ export default async function handler(req, res) {
 <body>
   <h1>${escapeHtml(title)}</h1>
   <p>${escapeHtml(description)}</p>
-  <p><a href="${escapeHtml(canonicalUrl)}">View Product</a></p>
+  <p><a href="${escapeHtml(previewRedirectUrl)}">View Product</a></p>
 </body>
 </html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+  res.setHeader('Vary', 'User-Agent');
+  res.setHeader('Cache-Control', 'public, max-age=300');
   return res.status(200).send(html);
 }
