@@ -23,7 +23,7 @@ function calcFee(
 }
 
 /** Server-side discount code → percentage map. The client cannot choose the %. */
-const DISCOUNT_CODES: Record<string, number> = { WELCOME10: 10, FESTIVE20: 20 };
+const DISCOUNT_CODES: Record<string, number> = {};
 const discountPctFor = (code?: string | null) =>
   DISCOUNT_CODES[String(code || "").trim().toUpperCase()] ?? 0;
 

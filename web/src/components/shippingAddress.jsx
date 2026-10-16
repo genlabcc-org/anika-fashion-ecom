@@ -309,17 +309,12 @@ export default function ShippingAddress() {
 
   const handleApplyDiscount = () => {
     const code = discountInput.trim().toUpperCase();
-    if (code === "WELCOME10") {
-      setAppliedDiscount({ code, pct: 10 });
-      showToast("Discount code WELCOME10 applied! 10% Off", "success");
-    } else if (code === "FESTIVE20") {
-      setAppliedDiscount({ code, pct: 20 });
-      showToast("Discount code FESTIVE20 applied! 20% Off", "success");
-    } else if (code === "") {
+    if (!code) {
       showToast("Please enter a discount code.", "warning");
-    } else {
-      showToast("Invalid discount code.", "error");
+      return;
     }
+    setAppliedDiscount(null);
+    showToast("Invalid discount code.", "error");
   };
 
   // Compute checkout items and totals
