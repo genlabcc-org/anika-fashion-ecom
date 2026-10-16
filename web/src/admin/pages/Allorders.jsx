@@ -15,6 +15,8 @@ const STATUS_STYLE = {
   Return: { bg: "#FEF2F2", color: "#DC2626" },
   Returned: { bg: "#FEF2F2", color: "#DC2626" },
   Cancelled: { bg: "#FEF2F2", color: "#DC2626" },
+  "Out for Delivery": { bg: "#FFEDD5", color: "#C2410C" },
+  "Out of Delivery": { bg: "#FFEDD5", color: "#C2410C" },
 };
 
 const PAYMENT_STYLE = {
@@ -24,7 +26,7 @@ const PAYMENT_STYLE = {
 
 const CATEGORIES = ["All Category", "Necklaces", "Earrings", "Rings", "Bracelets"];
 const STATUSES = ["All Status", "To Pack / Needs Action", "Paid", "Order Placed", "Confirmed", "Shipped", "Delivered", "Cancelled", "Returned"];
-const PER_PAGE = 6;
+const PER_PAGE = 8;
 
 /* ── Icons ── */
 const ChevronDownIcon = () => (
@@ -519,7 +521,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                 onClick={() => {
                   try {
                     sessionStorage.setItem(`anika_opened_from_list_${order.id}`, "true");
-                  } catch (_) {}
+                  } catch (_) { }
                   onViewDetail?.(order);
                 }}
               >
@@ -681,7 +683,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                     onClick={() => {
                       try {
                         sessionStorage.setItem(`anika_opened_from_list_${order.id}`, "true");
-                      } catch (_) {}
+                      } catch (_) { }
                       onViewDetail?.(order);
                     }}
                   >

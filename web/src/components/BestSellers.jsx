@@ -118,6 +118,7 @@ export default function BestSellers({ onProductClick }) {
             productId: p.product_id,
             name: p.name,
             img,
+            images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image_url ? [p.image_url] : []),
             category: categoryName,
             categorySlug: p.categories?.slug || '',
             price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',

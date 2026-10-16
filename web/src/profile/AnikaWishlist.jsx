@@ -51,6 +51,7 @@ export default function AnikaWishlist() {
       price: item.price,
       originalPrice: item.originalPrice,
       img: item.image,
+      images: item.images || (item.image ? [item.image] : []),
       desc: item.desc || "",
       category: item.category || "",
       sizes: item.sizes || [],

@@ -5,7 +5,6 @@ import SiteHeader from "../components/SiteHeader";
 import SiteFooter from "../components/SiteFooter";
 import Toast from "../components/Toast";
 import { SkeletonProductCard } from "../components/ui/Skeleton";
-import { getOriginalImageUrl } from "../utils/imageUtils";
 import { productService } from "../services/productService";
 import "./categorypage.css";
 

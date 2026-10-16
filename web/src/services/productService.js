@@ -371,7 +371,7 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('product_id, name, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, subcategories(name), product_variants(price, compare_price, stock, images)')
+        .select('product_id, name, description, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, category_id, subcategories(name), product_variants(price, compare_price, stock, images)')
         .eq('category_id', catData.category_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -389,7 +389,7 @@ export const productService = {
     if (!queryData) {
       const { data, error } = await supabase
         .from('products')
-        .select('product_id, name, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, subcategories(name), product_variants(price, compare_price, stock, images)')
+        .select('product_id, name, description, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, category_id, product_variants(price, compare_price, stock, images)')
         .eq('category_id', catData.category_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });

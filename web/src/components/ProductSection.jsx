@@ -54,7 +54,9 @@ export default function ProductSection({ onProductClick }) {
 
         return {
           id: p.product_id,
-          img: p.images?.[0] || '',
+          productId: p.product_id,
+          img: p.images?.[0] || p.image_url || '',
+          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image_url ? [p.image_url] : []),
           name: p.name,
           category: p.categories?.name || '',
           price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',

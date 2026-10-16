@@ -4,6 +4,7 @@
  */
 export const getOriginalImageUrl = (url) => {
   if (!url || typeof url !== 'string') return url;
+  if (url.includes('r2.dev')) return url;
   let clean = url.replace('/storage/v1/render/image/public/', '/storage/v1/object/public/');
   if (clean.includes('?')) {
     const [baseUrl, query] = clean.split('?');

@@ -9,16 +9,17 @@ export const orderService = {
   async getOrders(userId) {
     const { data, error } = await supabase
       .from('orders')
-      .select('*')
+      .select('id, user_id, order_date, item_name, quantity, total_price, status, delivery_provider, courier_name, waybill, shipment_id, delivery_status, tracking_url, estimated_delivery_date, shipping_address, payment_method, payment_status, subtotal, discount, shipping_fee, tax, created_at')
       .eq('user_id', userId)
-      .order('order_date', { ascending: false });
+      .order('order_date', { ascending: false })
+      .limit(50);
     if (error) throw error;
     if (data && data.length > 0) {
       try {
         const orderIds = data.map((o) => o.id);
         const { data: allItems } = await supabase
           .from('order_items')
-          .select('*')
+          .select('id, order_id, product_name, quantity, price, size, color, image_url')
           .in('order_id', orderIds);
         if (allItems && allItems.length > 0) {
           const itemsByOrderId = {};

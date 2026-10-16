@@ -66,9 +66,12 @@ const ProductGallery = memo(({ activeThumb, setActiveThumb, displayImage, displa
   useEffect(() => {
     if (swiperRef.current) {
       swiperRef.current.update();
-      swiperRef.current.slideTo(0, 0);
+      if (activeThumb >= thumbs.length) {
+        swiperRef.current.slideTo(0, 0);
+        setActiveThumb(0);
+      }
     }
-  }, [thumbs])
+  }, [thumbs, activeThumb, setActiveThumb]);
 
   const goToIndex = (i) => {
     const clamped = Math.max(0, Math.min(thumbs.length - 1, i));
@@ -135,8 +138,11 @@ const ProductGallery = memo(({ activeThumb, setActiveThumb, displayImage, displa
           </button>
 
           <Swiper
+            key={thumbs.map((item) => item.rawImg || item.img).join('|')}
             modules={[Navigation]}
             navigation={false}
+            observer={true}
+            observeParents={true}
             // pagination = {{ clickable: true }}
             // zoom= {true}
             onSwiper={(swiper) => (swiperRef.current = swiper)}
@@ -197,7 +203,7 @@ const ProductGallery = memo(({ activeThumb, setActiveThumb, displayImage, displa
 });
 
 const RelatedProducts = memo(({ showAll, setShowAll, relatedItems, onProductClick }) => {
-  const visibleRelated = showAll ? relatedItems.slice(0, 10) : relatedItems.slice(0, 4);
+  const visibleRelated = showAll ? relatedItems.slice(0, 8) : relatedItems.slice(0, 4);
   return (
     <section className="pp-related">
       <h2 className="pp-related-h2">You May Also Like</h2>
@@ -272,7 +278,11 @@ export default function ProductPage({ onBack }) {
   const [warrantyOpen, setWarrantyOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
 
-  const [productImages, setProductImages] = useState([]);
+  const [productImages, setProductImages] = useState(
+    Array.isArray(selectedProduct?.images) && selectedProduct.images.length > 0
+      ? selectedProduct.images
+      : []
+  );
   const [showAll, setShowAll] = useState(false);
   const [productPrices, setProductPrice] = useState(null);
   const [relatedPrices, setRelatedPrices] = useState({});
@@ -329,19 +339,31 @@ export default function ProductPage({ onBack }) {
   const productId = selectedProduct?.productId || selectedProduct?.id;
   const cachedEntry = productId ? productDetailsCache[productId] : undefined;
 
+  // Track the last loaded product ID so we only reset UI state when the product actually changes
+  const lastLoadedIdRef = useRef(null);
+
   useEffect(() => {
     if (!productId) return;
     if (urlProductId && String(productId) !== String(urlProductId)) return;
 
-    // Reset UI state before loading
-    setSize([]);
-    setProductImages([]);
-    setProductPrice(null);
-    setVariants([]);
-    setSelectedColor('');
-    setSelectedSize('');
-    setSizeError(false);
-    setQty(1);
+    const isNewProduct = String(productId) !== String(lastLoadedIdRef.current);
+
+    // Only reset UI state when switching to a genuinely different product
+    if (isNewProduct) {
+      lastLoadedIdRef.current = String(productId);
+      setSize([]);
+      setProductImages(
+        Array.isArray(selectedProduct?.images) && selectedProduct.images.length > 0
+          ? selectedProduct.images
+          : []
+      );
+      setProductPrice(null);
+      setVariants([]);
+      setSelectedColor('');
+      setSelectedSize('');
+      setSizeError(false);
+      setQty(1);
+    }
 
     const extractSizes = (variantList, baseObj) => {
       let sList = [];
@@ -362,39 +384,24 @@ export default function ProductPage({ onBack }) {
       return sList;
     };
 
-    // Cache hit only if price data (base) is present in Zustand session.
-    // On refresh, localStorage restores images only — base is missing → triggers DB fetch.
-    if (cachedEntry?.base) {
-      setProductImages(cachedEntry.images || []);
-      const baseData = cachedEntry.base;
-      setHasVariants(!!baseData?.has_variants);
-      if (baseData?.has_variants) {
-        const variantRows = cachedEntry.variants || [];
-        setVariants(variantRows);
-        const sizes = extractSizes(variantRows, baseData);
-        setSize(sizes);
-        setSelectedSize('');
-        const firstVariant = variantRows[0];
-        setSelectedColor(firstVariant?.color || '');
-      } else {
-        setProductPrice(baseData);
-        const sizes = extractSizes([], baseData);
-        if (sizes.length > 0) {
-          setSize(sizes);
-          setSelectedSize('');
-        }
-        const parsedColors = Array.isArray(baseData?.colors)
-          ? baseData.colors
-          : (typeof baseData?.colors === 'string' ? baseData.colors.split(',').map(s => s.trim()).filter(Boolean) : []);
-        if (parsedColors.length > 0) setSelectedColor(parsedColors[0]);
-      }
-      return;
-    }
-
-    // Not cached — fetch from DB via store (will cache for next visit)
-    fetchProductDetails(productId).then(details => {
+    const applyDetails = (details, isFreshFetch = false) => {
       if (!details) return;
-      setProductImages(details.images || []);
+      const rawImgs = Array.isArray(details.images) ? details.images : [];
+      const validImgs = [...new Set(rawImgs.map(u => typeof u === 'string' ? u.trim() : u).filter(Boolean))];
+
+      if (validImgs.length > 0) {
+        setProductImages(prev => {
+          // Fresh DB fetch for this product is authoritative
+          if (isFreshFetch) {
+            return validImgs;
+          }
+          // Never replace a longer list with a shorter stale one
+          if (prev.length > validImgs.length) {
+            return prev;
+          }
+          return validImgs;
+        });
+      }
       const baseData = details.base;
       setHasVariants(!!baseData?.has_variants);
       if (baseData?.has_variants) {
@@ -402,23 +409,43 @@ export default function ProductPage({ onBack }) {
         setVariants(variantRows);
         const sizes = extractSizes(variantRows, baseData);
         setSize(sizes);
-        setSelectedSize('');
+        if (isNewProduct) setSelectedSize('');
         const firstVariant = variantRows[0];
-        setSelectedColor(firstVariant?.color || '');
+        if (isNewProduct) setSelectedColor(firstVariant?.color || '');
       } else {
         setProductPrice(baseData);
         const sizes = extractSizes([], baseData);
         if (sizes.length > 0) {
           setSize(sizes);
-          setSelectedSize('');
+          if (isNewProduct) setSelectedSize('');
         }
         const parsedColors = Array.isArray(baseData?.colors)
           ? baseData.colors
           : (typeof baseData?.colors === 'string' ? baseData.colors.split(',').map(s => s.trim()).filter(Boolean) : []);
-        if (parsedColors.length > 0) setSelectedColor(parsedColors[0]);
+        if (parsedColors.length > 0 && isNewProduct) setSelectedColor(parsedColors[0]);
+      }
+    };
+
+    // Stale-While-Revalidate:
+    // 1. Show cached details immediately as placeholder if present
+    if (cachedEntry) {
+      applyDetails(cachedEntry, false);
+    }
+
+    // 2. Fetch fresh details & images (uses 5-min TTL in store, in-flight deduplicated)
+    let ignore = false;
+    fetchProductDetails(productId).then(freshDetails => {
+      if (ignore) return;
+      if (String(productId) !== String(lastLoadedIdRef.current)) return;
+      if (freshDetails) {
+        applyDetails(freshDetails, true);
       }
     });
-  }, [selectedProduct, cat, cachedEntry]);
+
+    return () => {
+      ignore = true;
+    };
+  }, [productId, cat, urlProductId, selectedProduct]);
 
   const showToast = (message, type = "success") => {
     setToastMsg("");
@@ -523,7 +550,7 @@ export default function ProductPage({ onBack }) {
     let imgs = [];
 
     if (hasVariants) {
-      if (selectedVariant?.images.length > 0) {
+      if (selectedVariant?.images?.length > 0) {
         imgs = selectedVariant.images;
       } else {
         const anyVariantWithImages = variants.find(v => v.images?.length > 0);
@@ -537,16 +564,24 @@ export default function ProductPage({ onBack }) {
       imgs = productImages;
     }
 
-    if (imgs.length == 0) {
+    if (imgs.length === 0 && Array.isArray(selectedProduct?.images) && selectedProduct.images.length > 0) {
+      imgs = selectedProduct.images;
+    }
+
+    if (imgs.length === 0) {
       imgs = [displayImage];
     }
-    return imgs.map((img, i) => ({
+
+    // De-duplicate by URL and filter out falsy values
+    const cleanImgs = [...new Set(imgs.map(u => typeof u === 'string' ? u.trim() : u).filter(Boolean))];
+
+    return cleanImgs.map((img, i) => ({
       id: i + 1,
       img: productService.getResizedImageUrl(img, 'detail'),
       rawImg: getOriginalImageUrl(img),
       alt: `${displayName} view ${i + 1}`
     }));
-  }, [productImages, displayImage, displayName, hasVariants, selectedVariant, variants])
+  }, [productImages, displayImage, displayName, hasVariants, selectedVariant, variants, selectedProduct?.images])
 
   // Fetch related products from DB when category changes
   useEffect(() => {
@@ -560,7 +595,7 @@ export default function ProductPage({ onBack }) {
     if (infoCol) {
       infoCol.scrollTop = 0;
     }
-    setActiveThumb(-1);
+    setActiveThumb(0);
     setQty(1);
   }, [selectedProduct]);
 
@@ -578,6 +613,7 @@ export default function ProductPage({ onBack }) {
           p.id !== currentId &&
           p.productId !== currentId
       )
+      .slice(0, 8)
       .map((p) => {
         const sellingPrice = Number(p.price) || 0;
         const mrp = Number(p.compare_price) || 0;
@@ -609,7 +645,7 @@ export default function ProductPage({ onBack }) {
 
   // Memoized callbacks to prevent unnecessary re-renders
   const handleThumbClick = useCallback((i) => {
-    setActiveThumb(prev => prev === i ? -1 : i);
+    setActiveThumb(i);
   }, []);
 
   const handleQtyChange = useCallback((delta) => {

@@ -18,69 +18,19 @@ const parsePrice = (v) => {
   return isNaN(n) ? 0 : n;
 };
 
-const getOriginalImageUrl = (url) => {
-  if (!url || typeof url !== 'string') return url;
-  let clean = url.replace('/storage/v1/render/image/public/', '/storage/v1/object/public/');
-  if (clean.includes('?')) {
-    const [baseUrl, query] = clean.split('?');
-    const params = new URLSearchParams(query);
-    params.delete('width');
-    params.delete('height');
-    params.delete('resize');
-    params.delete('quality');
-    params.delete('format');
-    const remaining = params.toString();
-    clean = remaining ? `${baseUrl}?${remaining}` : baseUrl;
-  }
-  return clean;
-};
 
-// ── Product Detail Cache (localStorage, 1-year TTL) ─────────────────────────
+// ── Product Detail Cache ────────────────────────────────────────────────────
+// In-memory session cache with 5-minute TTL and in-flight request deduplication.
 const PD_CACHE_KEY = 'anika_pd_cache';
-const PD_CACHE_TTL = 365 * 24 * 60 * 60 * 1000; // 1 year in ms
+const PD_TTL_MS = 5 * 60 * 1000;
+const inflightPd = new Map();
 
-/** Load image-only entries from localStorage (price/stock never persisted) */
+/** Clean up legacy stale cache from localStorage and return empty session cache */
 const loadPdCache = () => {
   try {
-    const raw = localStorage.getItem(PD_CACHE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    const now = Date.now();
-    const valid = {};
-    Object.entries(parsed).forEach(([id, entry]) => {
-      if (entry.cachedAt && (now - entry.cachedAt) < PD_CACHE_TTL) {
-        // Only restore images — price/stock are re-fetched fresh on every refresh
-        valid[id] = { cachedAt: entry.cachedAt, images: entry.images || [] };
-      }
-    });
-    return valid;
-  } catch {
-    return {};
-  }
-};
-
-/** Persist only image data to localStorage (price/stock intentionally excluded) */
-const savePdCache = (cache) => {
-  try {
-    const imgOnly = {};
-    Object.entries(cache).forEach(([id, entry]) => {
-      imgOnly[id] = { cachedAt: entry.cachedAt, images: entry.images || [] };
-    });
-    localStorage.setItem(PD_CACHE_KEY, JSON.stringify(imgOnly));
-  } catch (e) {
-    console.warn('Product detail cache write failed (localStorage full?):', e);
-  }
-};
-
-/** Remove one product entry from localStorage cache */
-const evictPdEntry = (productId) => {
-  try {
-    const raw = localStorage.getItem(PD_CACHE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    delete parsed[productId];
-    localStorage.setItem(PD_CACHE_KEY, JSON.stringify(parsed));
-  } catch { /* ignore */ }
+    localStorage.removeItem(PD_CACHE_KEY);
+  } catch {}
+  return {};
 };
 
 export const useStore = create((set, get) => ({
@@ -101,7 +51,7 @@ export const useStore = create((set, get) => ({
   // --- Catalog Caching ---
   categories: [],
   products: {}, // { categoryName: [products] }
-  productDetails: loadPdCache(), // { productId: { cachedAt, images, base, variants } } — persisted 1 year
+  productDetails: loadPdCache(), // { productId: { cachedAt, images, base, variants } } (session cache, 5-min TTL)
   loadingCategories: false,
   loadingProducts: false,
 
@@ -289,10 +239,15 @@ export const useStore = create((set, get) => ({
           ? variants.find(v => v.images?.length > 0)?.images?.[0]
           : null;
 
+        const productImgs = Array.isArray(p.images) && p.images.length > 0
+          ? p.images
+          : (p.image_url ? [p.image_url] : []);
+
         return {
           id: p.product_id || p.id,
           productId: p.product_id || p.id,
-          img: getOriginalImageUrl(firstVariantImage || p.image_url || (p.images && p.images[0]) || '/src/assets/cart/bangle1.webp'),
+          img: firstVariantImage || p.image_url || (p.images && p.images[0]) || '/src/assets/cart/bangle1.webp',
+          images: productImgs,
           name: p.name,
           desc: p.description,
           price: sellingPrice,
@@ -320,9 +275,36 @@ export const useStore = create((set, get) => ({
   },
 
   loadProductById: async (productId) => {
+    // If we have fresh productDetails AND already have name/desc, skip DB query
+    const cachedDetails = get().productDetails[productId];
+    const isFresh = cachedDetails?.base && (Date.now() - cachedDetails.cachedAt < PD_TTL_MS);
+    const sel = get().selectedProduct;
+    const sameSel = String(sel?.productId || sel?.id) === String(productId);
+
+    let existingMeta = sameSel ? sel : null;
+    if (!existingMeta) {
+      for (const catList of Object.values(get().products || {})) {
+        const found = (catList || []).find(p => String(p.productId || p.id) === String(productId));
+        if (found) { existingMeta = found; break; }
+      }
+    }
+
+    if (isFresh && existingMeta?.name) {
+      const product = {
+        ...existingMeta,
+        id: productId,
+        productId,
+        img: cachedDetails.images[0] || existingMeta.img,
+        images: cachedDetails.images,
+        has_variants: cachedDetails.base.has_variants,
+      };
+      get().setSelectedProduct(product);
+      return product;
+    }
+
     const { data, error } = await supabase
       .from('products')
-      .select('*, categories(name), product_variants(price, compare_price, stock, images)')
+      .select('product_id, name, description, price, compare_price, image_url, images, has_variants, categories(name), product_variants(price, compare_price, stock, images)')
       .eq('product_id', productId)
       .eq('is_active', true)
       .maybeSingle();
@@ -332,6 +314,10 @@ export const useStore = create((set, get) => ({
     const variants = data.product_variants || [];
     const hasVariants = !!data.has_variants && variants.length > 0;
     const prices = variants.map(v => Number(v.price)).filter(Boolean);
+
+    const productImgs = Array.isArray(data.images) && data.images.length > 0
+      ? data.images
+      : (data.image_url ? [data.image_url] : []);
 
     const product = {
       id: data.product_id,
@@ -343,7 +329,8 @@ export const useStore = create((set, get) => ({
       compare_price: hasVariants
         ? Math.max(...variants.map(v => Number(v.compare_price) || 0))
         : Number(data.compare_price) || 0,
-      img: variants.find(v => v.images?.length)?.images?.[0] || data.image_url || data.images?.[0],
+      img: variants.find(v => v.images?.length)?.images?.[0] || data.image_url || productImgs[0] || '',
+      images: productImgs,
       has_variants: hasVariants,
     };
     get().setSelectedProduct(product);
@@ -351,85 +338,74 @@ export const useStore = create((set, get) => ({
   },
 
   // Caching Individual Product Details (images + price + variants)
-  // Images: served from Zustand session cache (populated from localStorage on load)
-  // Price/stock/variants: ALWAYS fetched fresh from DB on first access per session
+  // Single embedded select with 5-minute TTL and in-flight deduplication
   fetchProductDetails: async (productId, { force = false } = {}) => {
     if (!productId) return null;
     const cached = get().productDetails[productId];
 
-    // Full session cache hit (images + base both present) — return immediately
-    if (!force && cached?.base) return cached;
-
-    try {
-      // If images already in cache (from localStorage), skip image DB call
-      const hasImages = cached?.images?.length > 0;
-
-      const fetchTasks = [
-        hasImages
-          ? Promise.resolve({ data: { images: cached.images, image_url: null }, error: null })
-          : supabase
-            .from('products')
-            .select('images, image_url')
-            .eq('product_id', productId)
-            .single(),
-        // Price/stock always fetched fresh
-        supabase
-          .from('products')
-          .select('price, compare_price, sku, stock, stock_alert, sizes, colors, has_variants')
-          .eq('product_id', productId)
-          .single(),
-      ];
-
-      const [imgResult, baseResult] = await Promise.all(fetchTasks);
-
-      const imgData = imgResult.data;
-      const baseData = baseResult.data;
-      if (baseResult.error) throw baseResult.error;
-
-      const images = hasImages
-        ? cached.images
-        : (Array.isArray(imgData?.images) && imgData.images.length > 0
-          ? imgData.images
-          : (imgData?.image_url ? [imgData.image_url] : []));
-
-      let variantRows = [];
-      if (baseData?.has_variants) {
-        try {
-          variantRows = await variantService.getVariantsByProductId(productId);
-        } catch (err) {
-          console.error('Failed to load variants in store:', err);
-        }
-      }
-
-      const details = { cachedAt: Date.now(), images, base: baseData, variants: variantRows };
-      const updatedCache = { ...get().productDetails, [productId]: details };
-      set({ productDetails: updatedCache });
-      savePdCache(updatedCache); // persists images only (price excluded by savePdCache)
-      return details;
-    } catch (err) {
-      console.error(`Error fetching product details for ${productId}:`, err);
-      return null;
+    // Cache hit only if within TTL and price/stock (base) is present
+    if (!force && cached?.base && (Date.now() - cached.cachedAt < PD_TTL_MS)) {
+      return cached;
     }
+
+    // In-flight request deduplication
+    if (inflightPd.has(productId)) {
+      return inflightPd.get(productId);
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select(`images, image_url, price, compare_price, sku, stock, stock_alert, sizes, colors, has_variants,
+                   product_variants(variant_id, sku, size, color, price, compare_price, stock, stock_alert, images, is_active, created_at)`)
+          .eq('product_id', productId)
+          .maybeSingle();
+
+        if (error || !data) return null;
+
+        let rawImgs = [];
+        if (Array.isArray(data.images) && data.images.length > 0) {
+          rawImgs = data.images;
+        } else if (data.image_url) {
+          rawImgs = [data.image_url];
+        }
+        // De-duplicate URLs and filter out falsy/empty values
+        const images = [...new Set(rawImgs.map(u => typeof u === 'string' ? u.trim() : u).filter(Boolean))];
+
+        const rawVariants = data.product_variants || [];
+        const variantRows = rawVariants
+          .filter(v => v.is_active !== false)
+          .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+        const baseData = {
+          price: data.price,
+          compare_price: data.compare_price,
+          sku: data.sku,
+          stock: data.stock,
+          stock_alert: data.stock_alert,
+          sizes: data.sizes,
+          colors: data.colors,
+          has_variants: data.has_variants,
+        };
+
+        const details = { cachedAt: Date.now(), images, base: baseData, variants: variantRows };
+        const updatedCache = { ...get().productDetails, [productId]: details };
+        set({ productDetails: updatedCache });
+        return details;
+      } catch (err) {
+        console.error(`Error fetching product details for ${productId}:`, err);
+        return null;
+      } finally {
+        inflightPd.delete(productId);
+      }
+    })();
+
+    inflightPd.set(productId, fetchPromise);
+    return fetchPromise;
   },
 
-  // On refresh: productDetails loaded from localStorage has images only.
-  // base (price/stock) and variants will be null/missing → triggers DB fetch.
-  // This ensures price/stock is ALWAYS fresh on every page refresh,
-  // while images are served from localStorage cache (1-year TTL).
-  validateProductImageCache: () => {
-    const cache = get().productDetails;
-    const now = Date.now();
-    let changed = false;
-    const updatedCache = { ...cache };
-    Object.entries(cache).forEach(([id, entry]) => {
-      if (!entry.cachedAt || (now - entry.cachedAt) >= PD_CACHE_TTL) {
-        delete updatedCache[id];
-        evictPdEntry(id);
-        changed = true;
-      }
-    });
-    if (changed) set({ productDetails: updatedCache });
-  },
+  validateProductImageCache: () => {},
 
   // Caching Orders
   fetchOrders: async (userId, { force = false } = {}) => {
@@ -525,7 +501,7 @@ export const useStore = create((set, get) => ({
       get()._adminOrderListeners.forEach((fn) => {
         try {
           fn(id, { admin_read: Boolean(read) });
-        } catch (_) {}
+        } catch (_) { }
       });
     });
 
@@ -547,7 +523,7 @@ export const useStore = create((set, get) => ({
         get()._adminOrderListeners.forEach((fn) => {
           try {
             fn(id, { admin_read: prevRead });
-          } catch (_) {}
+          } catch (_) { }
         });
       });
 
@@ -580,7 +556,7 @@ export const useStore = create((set, get) => ({
     if (updatedSelected && currentSelected && currentSelected.id === orderId) {
       try {
         localStorage.setItem('anika_selected_admin_order', JSON.stringify(updatedSelected));
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Broadcast update to all registered admin listeners (e.g. useAdminData)
@@ -620,27 +596,7 @@ export const useStore = create((set, get) => ({
           if (res && res.error) {
             failed++;
           } else if (res?.updates && Object.keys(res.updates).length > 0) {
-            try {
-              const { data: refreshedOrder, error: fetchErr } = await supabase
-                .from('orders')
-                .select('*')
-                .eq('id', order.id)
-                .single();
-
-              if (!fetchErr && refreshedOrder) {
-                const { data: items } = await supabase
-                  .from('order_items')
-                  .select('*')
-                  .eq('order_id', order.id);
-                const fullOrder = { ...refreshedOrder, order_items: items || [] };
-                get().updateOrderInList(order.id, fullOrder);
-              } else {
-                get().updateOrderInList(order.id, res.updates);
-              }
-            } catch (fetchOrderErr) {
-              console.warn(`[syncAllTracking] Failed to fetch fresh order ${order.id}, applying updates directly:`, fetchOrderErr);
-              get().updateOrderInList(order.id, res.updates);
-            }
+            get().updateOrderInList(order.id, res.updates);
             updated++;
           } else {
             unchanged++;
@@ -653,7 +609,7 @@ export const useStore = create((set, get) => ({
           if (typeof onProgress === 'function') {
             try {
               onProgress(done, total);
-            } catch (_) {}
+            } catch (_) { }
           }
         }
       }
@@ -1032,6 +988,15 @@ export const useStore = create((set, get) => ({
     if (!user) return;
 
     const cleanName = clean(user.user_metadata?.name || user.user_metadata?.full_name);
+    const cacheKey = `anika_profile_synced_${user.id}`;
+    const currentHash = `${user.email}|${cleanName || ''}`;
+
+    try {
+      if (sessionStorage.getItem(cacheKey) === currentHash) {
+        return; // Profile already synced in this session
+      }
+    } catch {}
+
     const profilePayload = {
       id: user.id,
       email: user.email,
@@ -1048,6 +1013,10 @@ export const useStore = create((set, get) => ({
       });
     if (error) {
       console.error("Profile sync failed:", error);
+    } else {
+      try {
+        sessionStorage.setItem(cacheKey, currentHash);
+      } catch {}
     }
   },
 }));

@@ -19,7 +19,9 @@ const STATUS_CONFIG = {
   Cancelled: { bg: "#fee2e2", color: "#dc2626", dot: "#ef4444" },
   Returned: { bg: "#fee2e2", color: "#dc2626", dot: "#ef4444" },
   Confirmed: { bg: "#f3e8ff", color: "#7c3aed", dot: "#8b5cf6" },
-  "Refund Completed": { bg: "#ecfdf5", color: "#047857", dot: "#10b981" }
+  "Refund Completed": { bg: "#ecfdf5", color: "#047857", dot: "#10b981" },
+  "Out for Delivery": { bg: "#ffedd5", color: "#c2410c", dot: "#f97316" },
+  "Out of Delivery": { bg: "#ffedd5", color: "#c2410c", dot: "#f97316" }
 };
 
 const StatusBadge = ({ status }) => {

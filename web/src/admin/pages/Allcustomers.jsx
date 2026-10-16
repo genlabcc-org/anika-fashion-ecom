@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import "./Allcustomers.css";
 
-const ROWS_PER_PAGE = 6;
+const ROWS_PER_PAGE = 10;
 
 const ChevronDown = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -123,10 +123,10 @@ const AddCustomerModal = ({ onClose, onAdd }) => {
 
   const validate = () => {
     const e = {};
-    if (!form.name.trim())       e.name       = "Name is required";
-    if (!form.email.trim())      e.email      = "Email is required";
-    if (!form.phone.trim())      e.phone      = "Phone is required";
-    if (!form.joined.trim())     e.joined     = "Joined date is required";
+    if (!form.name.trim()) e.name = "Name is required";
+    if (!form.email.trim()) e.email = "Email is required";
+    if (!form.phone.trim()) e.phone = "Phone is required";
+    if (!form.joined.trim()) e.joined = "Joined date is required";
     return e;
   };
 
@@ -140,13 +140,13 @@ const AddCustomerModal = ({ onClose, onAdd }) => {
     if (Object.keys(e).length) { setErrors(e); return; }
     onAdd({
       id: Date.now(),
-      name:       form.name.trim(),
-      email:      form.email.trim(),
-      phone:      form.phone.trim(),
-      orders:     parseInt(form.orders, 10)     || 0,
-      totalSpent: parseFloat(form.totalSpent)   || 0,
-      joined:     form.joined.trim(),
-      status:     form.status,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      orders: parseInt(form.orders, 10) || 0,
+      totalSpent: parseFloat(form.totalSpent) || 0,
+      joined: form.joined.trim(),
+      status: form.status,
     });
     onClose();
   };
@@ -264,12 +264,12 @@ const AddCustomerModal = ({ onClose, onAdd }) => {
 
 /* ── Main Component ────────────────────────────────────────────── */
 const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
-  const [selectedIds, setSelectedIds]   = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [customerFilter, setCustomerFilter] = useState("All Customers");
-  const [searchQuery, setSearchQuery]   = useState("");
-  const [currentPage, setCurrentPage]   = useState(1);
-  const [showFilters, setShowFilters]   = useState(false);
-  const [showModal, setShowModal]       = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [localCustomers, setLocalCustomers] = useState([]);
 
   // Merge local added customers (if any) with database customers
@@ -309,30 +309,30 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
-  const safePage   = Math.min(currentPage, totalPages);
-  const paginated  = filtered.slice((safePage - 1) * ROWS_PER_PAGE, safePage * ROWS_PER_PAGE);
+  const safePage = Math.min(currentPage, totalPages);
+  const paginated = filtered.slice((safePage - 1) * ROWS_PER_PAGE, safePage * ROWS_PER_PAGE);
 
   /* Select logic */
   const allChecked = paginated.length > 0 && paginated.every((c) => selectedIds.includes(c.id));
-  const toggleAll  = () => setSelectedIds(allChecked
+  const toggleAll = () => setSelectedIds(allChecked
     ? selectedIds.filter((id) => !paginated.find((c) => c.id === id))
     : [...new Set([...selectedIds, ...paginated.map((c) => c.id)])]);
-  const toggleOne  = (id) => setSelectedIds((prev) =>
+  const toggleOne = (id) => setSelectedIds((prev) =>
     prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]);
 
   /* Stats */
-  const totalCustomers   = allCustomers.length;
+  const totalCustomers = allCustomers.length;
   const now = new Date();
-  const newThisMonth     = allCustomers.filter((c) => {
+  const newThisMonth = allCustomers.filter((c) => {
     if (c.created_at) {
       const d = new Date(c.created_at);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }
     return c.joined?.includes("2026");
   }).length;
-  const activeAccounts   = allCustomers.filter((c) => (c.status || "Confirmed") === "Confirmed").length;
+  const activeAccounts = allCustomers.filter((c) => (c.status || "Confirmed") === "Confirmed").length;
   const disabledAccounts = allCustomers.filter((c) => c.status === "Disabled").length;
-  const avgOrderValue    = totalCustomers > 0
+  const avgOrderValue = totalCustomers > 0
     ? Math.round(allCustomers.reduce((s, c) => s + (c.totalSpent || 0), 0) / totalCustomers)
     : 0;
 
@@ -577,4 +577,4 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
   );
 };
 
-export default AllCustomers;
+export default AllCustomers;
