@@ -46,7 +46,7 @@ const indianStates = [
   "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
   "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim",
   "Telangana", "Tripura", "Uttar Pradesh", "West Bengal",
-  "Delhi", "Jammu & Kashmir",
+  "Delhi", "Jammu & Kashmir", "Pondicherry",
   "Arunachal Pradesh", "Jharkhand", "Uttarakhand", "Puducherry",
   "Chandigarh", "Ladakh", "Andaman & Nicobar Islands", "Lakshadweep",
 ];
