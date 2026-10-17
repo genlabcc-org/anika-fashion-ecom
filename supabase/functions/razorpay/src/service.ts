@@ -39,6 +39,7 @@ export interface CreateOrderInput {
   addressId?: number | string;
   discountCode?: string | null;
   isBuyNow?: boolean;
+  attemptId?: string | null;
 }
 
 export interface CreateOrderResult {
@@ -105,6 +106,34 @@ export class RazorpayService {
   }
 
   async createOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
+    // 0. Idempotency check: Reuse existing pending Razorpay order if same attemptId is open
+    if (input.attemptId) {
+      const { data: existingPending, error: pendingLookupErr } = await this.supabaseAdmin
+        .from("pending_orders")
+        .select("*")
+        .eq("attempt_id", input.attemptId)
+        .eq("user_id", input.userId)
+        .maybeSingle();
+
+      if (!pendingLookupErr && existingPending) {
+        if (existingPending.status === "pending" && existingPending.razorpay_order_id) {
+          console.log(`[RazorpayService] Reusing existing pending Razorpay order ${existingPending.razorpay_order_id} for attempt ${input.attemptId}`);
+          const pItems = Array.isArray(existingPending.items) ? existingPending.items : [];
+          const mainP = pItems[0];
+          const pName = pItems.length > 1
+            ? `${mainP?.name || 'Product'} + ${pItems.length - 1} other(s)`
+            : mainP?.name || "Anika Order";
+
+          return {
+            orderId: existingPending.razorpay_order_id,
+            amount: Math.round(Number(existingPending.amount) * 100),
+            currency: "INR",
+            productName: pName,
+          };
+        }
+      }
+    }
+
     const items = input.items;
     // 1. Query product details and variants from database for all items
     const productIds = items.map(item => item.productId).filter(Boolean);
@@ -239,7 +268,7 @@ export class RazorpayService {
         sku: it.sku,
       }));
 
-      await this.supabaseAdmin
+      const { error: insertErr } = await this.supabaseAdmin
         .from("pending_orders")
         .insert({
           razorpay_order_id: rzOrder.id,
@@ -251,8 +280,42 @@ export class RazorpayService {
           discount_code: input.discountCode || null,
           is_buy_now: Boolean(input.isBuyNow),
           status: "pending",
+          attempt_id: input.attemptId || null,
         } as any);
-      console.log(`[RazorpayService] Inserted pending order for ${rzOrder.id}`);
+
+      if (insertErr) {
+        if (
+          insertErr.code === "23505" ||
+          insertErr.message?.toLowerCase().includes("unique") ||
+          insertErr.message?.toLowerCase().includes("duplicate")
+        ) {
+          if (input.attemptId) {
+            const { data: winningPending } = await this.supabaseAdmin
+              .from("pending_orders")
+              .select("*")
+              .eq("attempt_id", input.attemptId)
+              .maybeSingle();
+
+            if (winningPending && winningPending.razorpay_order_id) {
+              console.log(`[RazorpayService] Concurrent pending order won for attempt ${input.attemptId}: ${winningPending.razorpay_order_id}`);
+              const winningItems = Array.isArray(winningPending.items) ? winningPending.items : [];
+              const mainIt = winningItems[0];
+              const pName = winningItems.length > 1
+                ? `${mainIt?.name || 'Product'} + ${winningItems.length - 1} other(s)`
+                : mainIt?.name || "Anika Order";
+              return {
+                orderId: winningPending.razorpay_order_id,
+                amount: Math.round(Number(winningPending.amount) * 100),
+                currency: "INR",
+                productName: pName,
+              };
+            }
+          }
+        }
+        console.error("[RazorpayService] Failed to insert pending_orders row:", insertErr);
+      } else {
+        console.log(`[RazorpayService] Inserted pending order for ${rzOrder.id} with attempt_id: ${input.attemptId || 'none'}`);
+      }
     } catch (pendingErr) {
       console.error("[RazorpayService] Failed to insert pending_orders row:", pendingErr);
     }

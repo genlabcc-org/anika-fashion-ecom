@@ -35,7 +35,7 @@ export default {
       const razorpayService = new RazorpayService(ctx.supabaseAdmin);
 
       if (action === "create_order") {
-        const { items, addressId, discountCode, isBuyNow } = body;
+        const { items, addressId, discountCode, isBuyNow, attemptId } = body;
 
         if (!items || !Array.isArray(items) || items.length === 0) {
           return new Response(
@@ -50,6 +50,7 @@ export default {
           addressId: addressId ? Number(addressId) : undefined,
           discountCode,
           isBuyNow: Boolean(isBuyNow),
+          attemptId: attemptId ? String(attemptId) : null,
         });
         return new Response(
           JSON.stringify({

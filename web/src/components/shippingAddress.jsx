@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { authService } from "../services/authService";
 import { orderService } from "../services/orderService";
@@ -77,6 +77,19 @@ export default function ShippingAddress() {
   const [toast, setToast] = useState({ message: "", type: "" });
   const [userId, setUserId] = useState(null);
 
+  // Submission Guard Refs & State (Step 2 hardening)
+  const submittingRef = useRef(false);
+  const verifiedPaymentIdsRef = useRef(new Set());
+  const isOrderCompletedRef = useRef(false);
+  const [isOrderCompleted, setIsOrderCompleted] = useState(false);
+
+  // Idempotency key: stable UUID per checkout attempt session
+  const [checkoutAttemptId, setCheckoutAttemptId] = useState(() => (
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : ('att_' + Date.now() + '_' + Math.random().toString(36).substring(2))
+  ));
+
   // Shopify layout states
   const [paymentMethod, setPaymentMethod] = useState('RAZORPAY'); // Default payment method RAZORPAY
   const [billingSame, setBillingSame] = useState(true);
@@ -99,6 +112,8 @@ export default function ShippingAddress() {
   const isCODAvailable = false;
 
   const categories = useStore((state) => state.categories);
+  const sessionLoading = useStore((state) => state.sessionLoading);
+  const loadingCart = useStore((state) => state.loadingCart);
 
   const handleNavClick = (link) => {
     navigate(getNavPath(link, categories));
@@ -325,6 +340,25 @@ export default function ShippingAddress() {
     ? [checkoutProduct]
     : (selectedCartItems && selectedCartItems.length > 0 ? selectedCartItems : cartItems);
 
+  // If customer changes shipping address details, reset the session attempt ID so a fresh rate/order is prepared
+  useEffect(() => {
+    if (!isOrderCompletedRef.current) {
+      setCheckoutAttemptId(
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : ('att_' + Date.now() + '_' + Math.random().toString(36).substring(2))
+      );
+    }
+  }, [selectedId, form.state, form.pinCode, form.flat, form.mobile]);
+
+  // If user lands on checkout with an empty cart (e.g. after order completion or pressing Back), redirect away
+  useEffect(() => {
+    if (isOrderCompletedRef.current) return;
+    if (!sessionLoading && !loadingCart && !checkoutProduct && (!checkoutItems || checkoutItems.length === 0)) {
+      navigate("/cart", { replace: true });
+    }
+  }, [sessionLoading, loadingCart, checkoutProduct, checkoutItems, navigate]);
+
   const subtotal = checkoutProduct
     ? (parsePrice(checkoutProduct.price) * checkoutProduct.qty)
     : checkoutItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.qty) || 1), 0);
@@ -347,12 +381,21 @@ export default function ShippingAddress() {
   const handleCheckoutSubmit = async (e) => {
     if (e) e.preventDefault();
 
+    // 0. Synchronous Submission Guard: Ref lock prevents double-click race conditions before React state updates
+    if (submittingRef.current || isOrderCompletedRef.current) {
+      console.log("[shippingAddress] Submission blocked: already in progress or completed");
+      return;
+    }
+    submittingRef.current = true;
+
     if (!ratesLoaded) {
+      submittingRef.current = false;
       showToast("Loading shipping rates, please wait a moment...", "warning");
       return;
     }
 
     if (pincodeChecking) {
+      submittingRef.current = false;
       showToast("Verifying delivery pincode, please wait a moment...", "warning");
       return;
     }
@@ -360,6 +403,7 @@ export default function ShippingAddress() {
     // 1. Validate form fields
     const eErrors = validate();
     if (Object.keys(eErrors).length > 0) {
+      submittingRef.current = false;
       setErrors(eErrors);
       showToast("Please fill all required shipping information.", "error");
       return;
@@ -371,6 +415,7 @@ export default function ShippingAddress() {
       const session = await authService.getSession();
       const currentUserId = session?.user?.id || userId;
       if (!currentUserId) {
+        submittingRef.current = false;
         showToast("You must be logged in to place an order.", "error");
         setIsProcessingPayment(false);
         return;
@@ -443,15 +488,21 @@ export default function ShippingAddress() {
       await proceedToPlaceOrder(activeAddrId);
 
     } catch (err) {
+      if (!isOrderCompletedRef.current) {
+        submittingRef.current = false;
+        setIsProcessingPayment(false);
+      }
       showToast("Failed to process shipping details: " + err.message, "error");
-      setIsProcessingPayment(false);
     }
   };
 
   const proceedToPlaceOrder = async (addressId) => {
     if (checkoutItems.length === 0) {
+      if (!isOrderCompletedRef.current) {
+        submittingRef.current = false;
+        setIsProcessingPayment(false);
+      }
       showToast("No items to checkout.", "error");
-      setIsProcessingPayment(false);
       return;
     }
 
@@ -459,8 +510,11 @@ export default function ShippingAddress() {
       const session = await authService.getSession();
       const token = session?.access_token;
       if (!token) {
+        if (!isOrderCompletedRef.current) {
+          submittingRef.current = false;
+          setIsProcessingPayment(false);
+        }
         showToast("You must be logged in to place an order.", "error");
-        setIsProcessingPayment(false);
         return;
       }
 
@@ -491,9 +545,6 @@ export default function ShippingAddress() {
         userMetaName ||
         "Customer";
 
-      // Temporary diagnostic log as requested
-      console.log('[shippingAddress] Resolved customer name for order:', resolvedCustomerName);
-
       const resolvedCustomerEmail =
         clean(session?.user?.email) ||
         clean(form.email) ||
@@ -506,8 +557,10 @@ export default function ShippingAddress() {
         "N/A";
 
       if (paymentMethod === "COD") {
-        // COD order placement
+        // COD order placement guarded by attempt_id uniqueness
         const mainItem = checkoutItems[0];
+        let orderRow = null;
+        let isOriginalInsert = false;
 
         const { data, error } = await supabase
           .from("orders")
@@ -522,43 +575,75 @@ export default function ShippingAddress() {
             payment: "COD",
             type: "Regular",
             status: "Order Placed",
+            attempt_id: checkoutAttemptId,
           })
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          if (
+            error.code === "23505" ||
+            error.message?.toLowerCase().includes("unique") ||
+            error.message?.toLowerCase().includes("duplicate")
+          ) {
+            console.log("[shippingAddress] Duplicate COD insert caught (23505), retrieving existing order for attempt:", checkoutAttemptId);
+            const { data: existingOrder } = await supabase
+              .from("orders")
+              .select("*")
+              .eq("attempt_id", checkoutAttemptId)
+              .maybeSingle();
 
-        const generatedOrderId = data.id;
+            if (existingOrder) {
+              orderRow = existingOrder;
+              isOriginalInsert = false;
+            } else {
+              throw error;
+            }
+          } else {
+            throw error;
+          }
+        } else {
+          orderRow = data;
+          isOriginalInsert = true;
+        }
 
-        // Insert order items
-        const orderItemsToInsert = checkoutItems.map(item => ({
-          order_id: generatedOrderId,
-          product_id: item.productId || item.id || null,
-          product_name: item.name,
-          quantity: item.qty || 1,
-          price: parsePrice(item.price),
-          size: item.size || null,
-          color: item.color || null,
-          image_url: item.img || item.image || (item.images && item.images[0]) || null,
-          sku: item.sku || item.sku_id || 'N/A',
-          category: item.category || item.category_name || item.categories?.name || 'N/A',
-        }));
+        const generatedOrderId = orderRow.id;
 
-        const { error: itemsError } = await supabase
-          .from("order_items")
-          .insert(orderItemsToInsert);
+        // Only insert child items & deduct stock if this call was the original creator
+        if (isOriginalInsert) {
+          const orderItemsToInsert = checkoutItems.map(item => ({
+            order_id: generatedOrderId,
+            product_id: item.productId || item.id || null,
+            product_name: item.name,
+            quantity: item.qty || 1,
+            price: parsePrice(item.price),
+            size: item.size || null,
+            color: item.color || null,
+            image_url: item.img || item.image || (item.images && item.images[0]) || null,
+            sku: item.sku || item.sku_id || 'N/A',
+            category: item.category || item.category_name || item.categories?.name || 'N/A',
+          }));
 
-        if (itemsError) throw itemsError;
+          const { error: itemsError } = await supabase
+            .from("order_items")
+            .insert(orderItemsToInsert);
 
-        // Deduct stock server-side (fire-and-forget, service role required)
-        supabase.functions.invoke('razorpay', {
-          body: { action: "deduct_stock", orderId: generatedOrderId },
-        }).catch(err => console.warn("[Stock] COD stock deduction failed:", err));
+          if (itemsError) throw itemsError;
 
-        // Trigger order notification email (server loads order and sends via Brevo)
-        emailService.sendOrderNotificationEmail({
-          orderId: generatedOrderId,
-        });
+          // Deduct stock server-side (fire-and-forget, service role required)
+          supabase.functions.invoke('razorpay', {
+            body: { action: "deduct_stock", orderId: generatedOrderId },
+          }).catch(err => console.warn("[Stock] COD stock deduction failed:", err));
+
+          // Trigger order notification email
+          emailService.sendOrderNotificationEmail({
+            orderId: generatedOrderId,
+          });
+        }
+
+        // Lock form state permanently
+        isOrderCompletedRef.current = true;
+        setIsOrderCompleted(true);
 
         // Clear cart
         if (!checkoutProduct) {
@@ -568,17 +653,34 @@ export default function ShippingAddress() {
           }
         }
 
+        try {
+          if (userId) {
+            await useStore.getState().refreshOrders(userId);
+          }
+        } catch (refreshErr) {
+          console.error("Failed to refresh orders before navigation:", refreshErr);
+        }
+
         showToast("Order placed successfully via Cash on Delivery!", "success");
+
+        // Clear history state so Back button cannot revive checkout
+        try {
+          window.history.replaceState({}, document.title);
+        } catch {}
+
         setTimeout(() => {
-          navigate("/profile/orders");
-        }, 2000);
+          navigate("/profile/orders", { replace: true });
+        }, 1500);
       } else {
 
         // Razorpay Online Payment flow
         const isLoaded = await loadRazorpayScript();
         if (!isLoaded) {
+          if (!isOrderCompletedRef.current) {
+            submittingRef.current = false;
+            setIsProcessingPayment(false);
+          }
           showToast("Failed to load Razorpay SDK. Please check your connection.", "error");
-          setIsProcessingPayment(false);
           return;
         }
 
@@ -599,10 +701,15 @@ export default function ShippingAddress() {
             discountPct: appliedDiscount?.pct || 0,
             shippingFee: shippingFee || 0,
             isBuyNow: Boolean(checkoutProduct),
+            attemptId: checkoutAttemptId,
           }
         });
 
         if (invokeError || !orderData) {
+          if (!isOrderCompletedRef.current) {
+            submittingRef.current = false;
+            setIsProcessingPayment(false);
+          }
           throw new Error(invokeError?.message || "Failed to initiate Razorpay order.");
         }
 
@@ -614,7 +721,21 @@ export default function ShippingAddress() {
           description: `Order for ${orderData.productName}`,
           order_id: orderData.orderId,
           handler: async function (response) {
+            const paymentId = response?.razorpay_payment_id;
+            if (!paymentId) return;
+
+            // Ref guard: Call verify_payment at most once per payment id
+            if (verifiedPaymentIdsRef.current.has(paymentId)) {
+              console.log("[shippingAddress] Payment ID already being verified:", paymentId);
+              return;
+            }
+            verifiedPaymentIdsRef.current.add(paymentId);
+
+            // Immediately mark checkout as completed in state, lock form & button
+            isOrderCompletedRef.current = true;
+            setIsOrderCompleted(true);
             setIsProcessingPayment(true);
+
             const targetUserId = userId || session?.user?.id;
 
             // Polling fallback when verify_payment fails or times out
@@ -631,7 +752,7 @@ export default function ShippingAddress() {
                   const matched = (orders || []).find(
                     (o) =>
                       o.razorpay_order_id === response.razorpay_order_id ||
-                      (response.razorpay_payment_id && o.razorpay_payment_id === response.razorpay_payment_id)
+                      (paymentId && o.razorpay_payment_id === paymentId)
                   );
                   if (matched) {
                     if (!checkoutProduct) {
@@ -641,7 +762,10 @@ export default function ShippingAddress() {
                       }
                     }
                     showToast("Payment successful! Order placed.", "success");
-                    navigate("/profile/orders");
+                    try {
+                      window.history.replaceState({}, document.title);
+                    } catch {}
+                    navigate("/profile/orders", { replace: true });
                     return true;
                   }
                 } catch (pollErr) {
@@ -651,7 +775,10 @@ export default function ShippingAddress() {
 
               // After 30s timeout without order confirmation
               showToast("Payment confirmed! Please check your orders page.", "info");
-              navigate("/profile/orders");
+              try {
+                window.history.replaceState({}, document.title);
+              } catch {}
+              navigate("/profile/orders", { replace: true });
               return false;
             };
 
@@ -660,7 +787,7 @@ export default function ShippingAddress() {
                 body: {
                   action: "verify_payment",
                   razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_payment_id: paymentId,
                   razorpay_signature: response.razorpay_signature,
                   items: paymentItems,
                   addressId: addressId ? Number(addressId) : null,
@@ -694,13 +821,18 @@ export default function ShippingAddress() {
                 console.error("Failed to refresh orders before navigation:", refreshErr);
               }
 
-              navigate("/profile/orders");
+              try {
+                window.history.replaceState({}, document.title);
+              } catch {}
+              navigate("/profile/orders", { replace: true });
             } catch (err) {
               console.warn("[shippingAddress] Unexpected error in payment handler:", err);
               // Fallback to polling so customer is not alarmed
               await pollForOrder();
             } finally {
-              setIsProcessingPayment(false);
+              if (!isOrderCompletedRef.current) {
+                setIsProcessingPayment(false);
+              }
             }
           },
           prefill: {
@@ -713,8 +845,11 @@ export default function ShippingAddress() {
           },
           modal: {
             ondismiss: function () {
-              setIsProcessingPayment(false);
-              showToast("Payment cancelled by user.", "warning");
+              if (!isOrderCompletedRef.current) {
+                submittingRef.current = false;
+                setIsProcessingPayment(false);
+                showToast("Payment cancelled by user.", "warning");
+              }
             }
           }
         };
@@ -723,8 +858,11 @@ export default function ShippingAddress() {
         rzp.open();
       }
     } catch (err) {
+      if (!isOrderCompletedRef.current) {
+        submittingRef.current = false;
+        setIsProcessingPayment(false);
+      }
       showToast(err.message, "error");
-      setIsProcessingPayment(false);
     }
   };
 
@@ -751,6 +889,7 @@ export default function ShippingAddress() {
 
               {/* Form */}
               <form onSubmit={handleCheckoutSubmit} className="checkout-form">
+                <fieldset disabled={isOrderCompleted} style={{ border: 'none', padding: 0, margin: 0 }}>
 
                 {/* Contact Section */}
                 <div className="checkout-section">
@@ -1073,14 +1212,35 @@ export default function ShippingAddress() {
                   </div>
                 </div>
 
+                </fieldset>
+
                 {/* Place Order Button */}
                 <div className="checkout-submit-wrap">
+                  {isOrderCompleted && (
+                    <div style={{
+                      padding: "12px 16px",
+                      marginBottom: "12px",
+                      backgroundColor: "#fff8f1",
+                      border: "1px solid #ffd8a8",
+                      borderRadius: "6px",
+                      color: "#b05700",
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      textAlign: "center"
+                    }}>
+                      Confirming your order, please do not close or refresh this page...
+                    </div>
+                  )}
                   <button
                     type="submit"
                     className="checkout-pay-btn"
-                    disabled={isProcessingPayment || !ratesLoaded}
+                    disabled={isOrderCompleted || isProcessingPayment || !ratesLoaded}
                   >
-                    {isProcessingPayment ? "Processing..." : (paymentMethod === "COD" ? "Place order" : "Pay now")}
+                    {isOrderCompleted
+                      ? "Confirming your order..."
+                      : isProcessingPayment
+                      ? "Processing..."
+                      : (paymentMethod === "COD" ? "Place order" : "Pay now")}
                   </button>
                 </div>
 
