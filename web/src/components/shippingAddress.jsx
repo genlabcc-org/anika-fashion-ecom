@@ -765,7 +765,7 @@ export default function ShippingAddress() {
                     try {
                       window.history.replaceState({}, document.title);
                     } catch {}
-                    navigate("/profile/orders", { replace: true });
+                    navigate("/profile/orders", { replace: true, state: { justPaid: true } });
                     return true;
                   }
                 } catch (pollErr) {
@@ -778,7 +778,7 @@ export default function ShippingAddress() {
               try {
                 window.history.replaceState({}, document.title);
               } catch {}
-              navigate("/profile/orders", { replace: true });
+              navigate("/profile/orders", { replace: true, state: { justPaid: true } });
               return false;
             };
 
@@ -824,7 +824,7 @@ export default function ShippingAddress() {
               try {
                 window.history.replaceState({}, document.title);
               } catch {}
-              navigate("/profile/orders", { replace: true });
+              navigate("/profile/orders", { replace: true, state: { justPaid: true } });
             } catch (err) {
               console.warn("[shippingAddress] Unexpected error in payment handler:", err);
               // Fallback to polling so customer is not alarmed

@@ -6,6 +6,7 @@ import "swiper/css";
 import "swiper/css/pagination";
 import "./AnikaHome.css";
 import SiteHeader from "./SiteHeader";
+import SearchBar from "./SearchBar";
 
 import { getNavPath } from "../services/categoryRoute";
 import { useStore } from "../hooks/useStore";
@@ -68,6 +69,13 @@ export default function AnikaHome() {
 
       {/* ── Header ── */}
       <SiteHeader activeLink="Home" onLinkClick={handleNavClick} />
+
+      {/* ── Search Bar (between SiteHeader & AnikaHome) ── */}
+      <div className="home-search-section">
+        <div className="home-search-inner">
+          <SearchBar />
+        </div>
+      </div>
 
       {/* ── Hero (Dynamic Banners with Swiper) ── */}
       {banners.length > 0 && (

@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 import { orderService } from "../services/orderService";
 import { productService } from "../services/productService";
 import { useStore } from "../hooks/useStore";
@@ -8,6 +9,12 @@ import "./AnikaOrders.css";
 import Navbar from "../components/SiteHeader";
 import Footer from "../components/SiteFooter";
 import ThermalInvoice from "../admin/components/ThermalInvoice";
+
+function formatHHMM(date = new Date()) {
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
 
 const TABS = ["Profile", "Orders", "Addresses", "Wishlists", "Account"];
 const PAGE_SIZE = 5;
@@ -26,8 +33,168 @@ export default function AnikaOrders() {
   const user = useStore((s) => s.user);
   const sessionLoading = useStore((s) => s.sessionLoading);
   const rawOrders = useStore((s) => s.orders);
+  const loadingOrders = useStore((s) => s.loadingOrders);
   const fetchOrders = useStore((s) => s.fetchOrders);
   const setSelectedProduct = useStore((s) => s.setSelectedProduct);
+
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Banner status: 'confirming' | 'delayed' | null
+  const [bannerStatus, setBannerStatus] = useState(() => {
+    return location.state?.justPaid ? "confirming" : null;
+  });
+
+  // Track page open timestamp to detect newly created orders
+  const pageOpenedAtRef = useRef(Date.now());
+  // Snapshot initial order IDs present when component mounts
+  const initialOrderIdsRef = useRef(new Set((rawOrders || []).map((o) => o.id)));
+
+  // Tab visibility state
+  const [isVisible, setIsVisible] = useState(() =>
+    typeof document !== "undefined" ? document.visibilityState === "visible" : true
+  );
+
+  // Helper to determine if an order was created after page opened
+  const isNewOrder = (order) => {
+    if (!order) return false;
+    const orderTime = new Date(order.created_at || order.order_date).getTime();
+    const isRecent = !isNaN(orderTime) && orderTime >= pageOpenedAtRef.current - 10000;
+    const isNewId = !initialOrderIdsRef.current.has(order.id);
+    return isRecent || (isNewId && initialOrderIdsRef.current.size > 0);
+  };
+
+  // Clear justPaid from history state after banner is shown so reload doesn't show it again
+  useEffect(() => {
+    if (location.state?.justPaid) {
+      try {
+        navigate(location.pathname + location.search, { replace: true, state: {} });
+      } catch (err) {
+        console.warn("Could not clear justPaid from history state:", err);
+      }
+    }
+  }, []);
+
+  // Track document visibility: pause polling/realtime when hidden, refetch on visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const visible = document.visibilityState === "visible";
+      setIsVisible(visible);
+      if (visible && user?.id) {
+        fetchOrders(user.id, { force: true })
+          .then(() => setLastUpdated(formatHHMM(new Date())))
+          .catch((err) => console.error("Visibility refetch error:", err));
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [user?.id, fetchOrders]);
+
+  // Supabase Realtime subscription on orders filtered by user_id
+  useEffect(() => {
+    if (!user?.id || !isVisible) return;
+
+    let debounceTimer = null;
+    const handleOrderChange = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        try {
+          await fetchOrders(user.id, { force: true });
+          setLastUpdated(formatHHMM(new Date()));
+        } catch (err) {
+          console.error("Realtime fetchOrders error:", err);
+        }
+      }, 300);
+    };
+
+    const channelName = `customer-orders-${user.id}-${Date.now()}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "orders",
+          filter: `user_id=eq.${user.id}`,
+        },
+        handleOrderChange
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "orders",
+          filter: `user_id=eq.${user.id}`,
+        },
+        handleOrderChange
+      )
+      .subscribe();
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, isVisible, fetchOrders]);
+
+  // Hide banner as soon as a new order appears in rawOrders
+  useEffect(() => {
+    if (bannerStatus && rawOrders.some(isNewOrder)) {
+      setBannerStatus(null);
+    }
+  }, [rawOrders, bannerStatus]);
+
+  // Poll fetchOrders (force) every 2s for up to 30s when justPaid is set
+  useEffect(() => {
+    if (bannerStatus !== "confirming" || !user?.id) return;
+
+    if (rawOrders.some(isNewOrder)) {
+      setBannerStatus(null);
+      return;
+    }
+
+    const maxDuration = 30000;
+    const pollIntervalMs = 2000;
+
+    let pollTimer = null;
+    let timeoutTimer = null;
+
+    if (isVisible) {
+      const elapsed = Date.now() - pageOpenedAtRef.current;
+      const remaining = Math.max(0, maxDuration - elapsed);
+
+      if (remaining <= 0) {
+        setBannerStatus("delayed");
+        return;
+      }
+
+      timeoutTimer = setTimeout(() => {
+        setBannerStatus((curr) => (curr === "confirming" ? "delayed" : curr));
+      }, remaining);
+
+      pollTimer = setInterval(async () => {
+        if (document.visibilityState !== "visible") return;
+        try {
+          const freshOrders = await fetchOrders(user.id, { force: true });
+          setLastUpdated(formatHHMM(new Date()));
+          if (freshOrders && freshOrders.some(isNewOrder)) {
+            setBannerStatus(null);
+          }
+        } catch (err) {
+          console.warn("Polling error in AnikaOrders:", err);
+        }
+      }, pollIntervalMs);
+    }
+
+    return () => {
+      if (pollTimer) clearInterval(pollTimer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+    };
+  }, [bannerStatus, user?.id, isVisible, fetchOrders]);
 
 
   useEffect(() => {
@@ -105,9 +272,20 @@ export default function AnikaOrders() {
     }
   }, [user, sessionLoading, navigate]);
 
+  // On mount, call fetchOrders(user.id, { force: true }). Keep cached orders visible while fresh fetch runs.
   useEffect(() => {
-    if (user?.id) fetchOrders(user.id, { force: true });
-  }, [user?.id]);
+    if (!user?.id) return;
+    let isCurrent = true;
+    fetchOrders(user.id, { force: true })
+      .then(() => {
+        if (isCurrent) setLastUpdated(formatHHMM(new Date()));
+      })
+      .catch((err) => console.error("Initial fetchOrders error:", err));
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [user?.id, fetchOrders]);
 
 
   const orders = useMemo(() => {
@@ -143,6 +321,19 @@ export default function AnikaOrders() {
     }));
   }, [rawOrders]);
 
+  const handleManualRefresh = async () => {
+    if (!user?.id || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await fetchOrders(user.id, { force: true });
+      setLastUpdated(formatHHMM(new Date()));
+    } catch (err) {
+      console.error("Failed to refresh orders:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const handleCancelOrder = async (orderId) => {
     if (!window.confirm("Are you sure you want to cancel this order?")) {
       return;
@@ -152,6 +343,7 @@ export default function AnikaOrders() {
       await orderService.cancelOrder(orderId);
       if (user) {
         await fetchOrders(user.id, { force: true });
+        setLastUpdated(formatHHMM(new Date()));
       }
     } catch (err) {
       alert("Failed to cancel order: " + err.message);
@@ -224,14 +416,80 @@ export default function AnikaOrders() {
           ))}
         </div>
 
+        {/* Just-Paid Confirmation Banner */}
+        {bannerStatus && (
+          <div
+            className={`ao-payment-banner ao-payment-banner--${bannerStatus}`}
+            role="status"
+          >
+            {bannerStatus === "confirming" ? (
+              <>
+                <div>
+                  Payment received ✓ We're confirming your order. This takes just a few seconds.
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  Your payment was received, but your order is taking longer than usual to appear. Please don't pay again. Contact us on WhatsApp at{" "}
+                  <a
+                    href="https://wa.me/919363631636"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ao-whatsapp-link"
+                  >
+                    +91 93636 31636
+                  </a>{" "}
+                  and we'll confirm it for you.
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── ORDER HISTORY CARD ── */}
         <div className="ao-card">
           <div className="ao-card-header">
-            <span className="ao-card-title">Order History</span>
-            <span className="ao-order-count">{orders.length} Orders</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span className="ao-card-title">Order History</span>
+              <span className="ao-order-count">{orders.length} Orders</span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              {lastUpdated && (
+                <span className="ao-last-updated">
+                  Last updated {lastUpdated}
+                </span>
+              )}
+              <button
+                type="button"
+                className="ao-refresh-btn"
+                onClick={handleManualRefresh}
+                disabled={isRefreshing}
+                title="Refresh orders"
+              >
+                <span
+                  style={{
+                    display: "inline-block",
+                    fontSize: "13px",
+                    lineHeight: 1,
+                    transformOrigin: "center"
+                  }}
+                  className={isRefreshing ? "ao-spin" : ""}
+                >
+                  ↻
+                </span>
+                <span>Refresh</span>
+              </button>
+            </div>
           </div>
 
           <div className="ao-order-list">
+            {orders.length === 0 && !loadingOrders && (
+              <div style={{ padding: "40px 20px", textAlign: "center", color: "#888", fontSize: "13.5px" }}>
+                No orders found.
+              </div>
+            )}
             {visibleOrders.map((order, idx) => {
               const orderItems = order.order_items && order.order_items.length > 0
                 ? order.order_items
@@ -427,10 +685,10 @@ export default function AnikaOrders() {
                             fontWeight: '600',
                             ...(isDelivered
                               ? {
-                                  background: '#dcfce7',
-                                  color: '#15803d',
-                                  border: '1px solid #bbf7d0'
-                                }
+                                background: '#dcfce7',
+                                color: '#15803d',
+                                border: '1px solid #bbf7d0'
+                              }
                               : {})
                           }}
                         >
@@ -463,15 +721,15 @@ export default function AnikaOrders() {
                           {(order.status === "Pending" || order.status === "Confirmed") &&
                             !isDelivered &&
                             !isCancelled && (
-                            <button
-                              className="ao-cancel-order-btn"
-                              onClick={() => handleCancelOrder(order.id)}
-                              disabled={cancellingOrderId === order.id}
-                              style={{ height: '28px', padding: '4px 10px', fontSize: '11.5px' }}
-                            >
-                              {cancellingOrderId === order.id ? 'Cancelling...' : 'Cancel'}
-                            </button>
-                          )}
+                              <button
+                                className="ao-cancel-order-btn"
+                                onClick={() => handleCancelOrder(order.id)}
+                                disabled={cancellingOrderId === order.id}
+                                style={{ height: '28px', padding: '4px 10px', fontSize: '11.5px' }}
+                              >
+                                {cancellingOrderId === order.id ? 'Cancelling...' : 'Cancel'}
+                              </button>
+                            )}
 
                           <span
                             onClick={() => handleTrackOrder(order, orderItems[0])}

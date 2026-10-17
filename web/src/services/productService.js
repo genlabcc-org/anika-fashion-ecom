@@ -315,9 +315,10 @@ export const productService = {
   /**
    * Resolves the public URL for a product image.
    * @param {string} filePath 
+   * @param {number} [quality=75]
    * @returns {string}
    */
-  getProductImagePublicUrl(filePath) {
+  getProductImagePublicUrl(filePath, quality = 75) {
     return `${import.meta.env.VITE_R2_PUBLIC_URL}/${filePath}`;
   },
 
@@ -440,13 +441,13 @@ export const productService = {
    * @param {number} limit
    * @returns {Promise<any[]>}
    */
-  async searchProductsByName(query, limit = 5) {
+  async searchProductsByName(query, limit = 6) {
     const normalizedQuery = String(query || '').trim();
     if (!normalizedQuery) return [];
 
     const { data, error } = await supabase
       .from('products')
-      .select('*, categories(name)')
+      .select('*, categories(name), product_variants(price, compare_price, stock, images)')
       .eq('is_active', true)
       .ilike('name', `%${normalizedQuery}%`)
       .order('created_at', { ascending: false })

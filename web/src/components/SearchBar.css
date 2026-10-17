@@ -1,0 +1,259 @@
+/* ── Search Bar Component ───────────────────────────────────── */
+.sb-container {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sb-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.sb-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #7b1d1d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.85;
+}
+
+.sb-input {
+  width: 100%;
+  height: 44px;
+  padding: 8px 38px 8px 42px;
+  border-radius: 10px;
+  border: 1.5px solid #dedede;
+  background: #ffffff;
+  color: #1a1a1a;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.4;
+  outline: none;
+  box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.sb-input::placeholder {
+  color: #767676;
+  opacity: 0.9;
+  font-size: 13.5px;
+}
+
+.sb-input:focus {
+  border-color: #7b1d1d;
+  box-shadow: 0 0 0 3px rgba(123, 29, 29, 0.15), 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.sb-clear-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #ebebeb;
+  border: none;
+  color: #555;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.sb-clear-btn:hover {
+  background: #d4d4d8;
+  color: #111;
+}
+
+/* ── Dropdown ─────────────────────────────────────────────────── */
+.sb-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  max-width: 100%;
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.05);
+  max-height: 380px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  z-index: 10005;
+  animation: sb-dropdown-fade 0.18s ease-out;
+  box-sizing: border-box;
+}
+
+@keyframes sb-dropdown-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Status State (Loading & Empty) ─────────────────────────── */
+.sb-status {
+  padding: 22px 16px;
+  text-align: center;
+  color: #666;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.sb-status--empty {
+  color: #888;
+}
+
+.sb-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(123, 29, 29, 0.2);
+  border-top-color: #7b1d1d;
+  border-radius: 50%;
+  animation: sb-spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+@keyframes sb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Result Items ────────────────────────────────────────────── */
+.sb-results-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sb-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f2f2f4;
+  transition: background 0.15s ease;
+  user-select: none;
+}
+
+.sb-item:last-child {
+  border-bottom: none;
+}
+
+.sb-item:hover,
+.sb-item:focus {
+  background: #fdf5f6;
+  outline: none;
+}
+
+.sb-item-img {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #f4f4f5;
+  flex-shrink: 0;
+  border: 1px solid #f0f0f0;
+}
+
+.sb-item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.sb-item-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1a1a1a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.sb-item:hover .sb-item-name {
+  color: #7b1d1d;
+}
+
+.sb-item-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sb-item-category {
+  font-size: 11.5px;
+  color: #777;
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-item-price {
+  font-size: 13px;
+  font-weight: 700;
+  color: #7b1d1d;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Mobile Overrides ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sb-input {
+    font-size: 16px; /* Prevents auto-zoom in iOS Safari */
+    height: 38px;
+    padding: 7px 34px 7px 36px;
+  }
+
+  .sb-input::placeholder {
+    font-size: 13px;
+  }
+
+  .sb-dropdown {
+    max-height: 340px;
+  }
+
+  .sb-item {
+    padding: 9px 12px;
+    gap: 10px;
+  }
+
+  .sb-item-img {
+    width: 40px;
+    height: 40px;
+  }
+
+  .sb-item-name {
+    font-size: 13px;
+  }
+}
