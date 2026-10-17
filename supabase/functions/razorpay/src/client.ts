@@ -59,4 +59,28 @@ export class RazorpayClient {
 
     return generatedSignature === signature;
   }
+
+  async listPayments(fromTimestamp: number, count: number = 100): Promise<any[]> {
+    if (!this.hasKeysConfigured()) {
+      throw new Error("Razorpay credentials are not configured in system environment variables");
+    }
+
+    const basicAuth = btoa(`${this.keyId}:${this.keySecret}`);
+    const url = `https://api.razorpay.com/v1/payments?from=${fromTimestamp}&count=${count}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Authorization": `Basic ${basicAuth}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Razorpay list payments API failure: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return Array.isArray(data.items) ? data.items : [];
+  }
 }

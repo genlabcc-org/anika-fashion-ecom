@@ -35,7 +35,7 @@ export default {
       const razorpayService = new RazorpayService(ctx.supabaseAdmin);
 
       if (action === "create_order") {
-        const { items, addressId, discountCode } = body;
+        const { items, addressId, discountCode, isBuyNow } = body;
 
         if (!items || !Array.isArray(items) || items.length === 0) {
           return new Response(
@@ -49,6 +49,7 @@ export default {
           items,
           addressId: addressId ? Number(addressId) : undefined,
           discountCode,
+          isBuyNow: Boolean(isBuyNow),
         });
         return new Response(
           JSON.stringify({
@@ -119,21 +120,65 @@ export default {
           );
         }
 
-        const { error: stockErr } = await ctx.supabaseAdmin.rpc(
-          "deduct_order_stock",
-          { p_order_id: orderId }
-        );
+        // Idempotent check: atomically claim stock_deducted flag
+        const { data: claimedOrder } = await ctx.supabaseAdmin
+          .from("orders")
+          .update({ stock_deducted: true } as any)
+          .eq("id", orderId)
+          .eq("stock_deducted", false)
+          .select("id")
+          .maybeSingle();
 
-        if (stockErr) {
-          console.error(`[Stock] deduct_order_stock failed for COD order ${orderId}:`, stockErr.message);
-          return new Response(
-            JSON.stringify({ error: stockErr.message }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        if (claimedOrder) {
+          const { error: stockErr } = await ctx.supabaseAdmin.rpc(
+            "deduct_order_stock",
+            { p_order_id: orderId }
           );
+
+          if (stockErr) {
+            console.error(`[Stock] deduct_order_stock failed for COD order ${orderId}:`, stockErr.message);
+            // Revert flag on failure
+            await ctx.supabaseAdmin
+              .from("orders")
+              .update({ stock_deducted: false } as any)
+              .eq("id", orderId);
+
+            return new Response(
+              JSON.stringify({ error: stockErr.message }),
+              { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+        } else {
+          console.log(`[Stock] Stock already deducted for COD order ${orderId}, skipping duplicate deduction`);
         }
 
         return new Response(
           JSON.stringify({ success: true }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (action === "reconcile_payments") {
+        // Admin authorization check
+        const { data: adminCheck, error: adminErr } = await ctx.supabaseAdmin
+          .from("admin_users")
+          .select("id")
+          .eq("id", user.id)
+          .eq("role", "admin")
+          .maybeSingle();
+
+        if (adminErr || !adminCheck) {
+          return new Response(
+            JSON.stringify({ error: "Forbidden: Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const days = Number(body.days) || 7;
+        const missingPayments = await razorpayService.reconcilePayments(days);
+
+        return new Response(
+          JSON.stringify({ success: true, missingPayments }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

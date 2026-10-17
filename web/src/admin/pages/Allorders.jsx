@@ -3,6 +3,7 @@ import { useStore } from "../../hooks/useStore";
 import { orderService } from "../../services/orderService";
 import { isRevenueOrder } from "../../utils/orderUtils";
 import { isSyncableOrder } from "../utils/trackingSync";
+import { supabase } from "../../lib/supabase";
 import Toast from "../../components/Toast";
 import "./Allorders.css";
 
@@ -173,6 +174,10 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncProgress, setSyncProgress] = useState(null);
 
+  const [reconciling, setReconciling] = useState(false);
+  const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [missingPayments, setMissingPayments] = useState([]);
+
   const toPackCount = useMemo(() => {
     return orders.filter((o) => {
       const s = (o.status || "").toLowerCase().trim();
@@ -283,6 +288,41 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     } finally {
       setSyncingAll(false);
       setSyncProgress(null);
+    }
+  };
+
+  const handleFindMissingPayments = async () => {
+    if (reconciling) return;
+    setReconciling(true);
+    try {
+      const { data, error: fnError } = await supabase.functions.invoke("razorpay", {
+        body: { action: "reconcile_payments", days: 7 },
+      });
+
+      if (fnError) {
+        let msg = fnError.message;
+        if (fnError.context && typeof fnError.context.json === "function") {
+          try {
+            const errJson = await fnError.context.json();
+            if (errJson?.error) msg = errJson.error;
+          } catch (_) { }
+        }
+        throw new Error(msg || "Failed to reconcile payments");
+      }
+
+      const list = data?.missingPayments || [];
+      setMissingPayments(list);
+      setShowReconcileModal(true);
+      if (list.length === 0) {
+        showToast("No missing paid orders found in the last 7 days.", "success");
+      } else {
+        showToast(`Found ${list.length} paid Razorpay payment(s) without orders.`, "warning");
+      }
+    } catch (err) {
+      console.error("Reconciliation error:", err);
+      showToast(err.message || "Error checking Razorpay payments", "error");
+    } finally {
+      setReconciling(false);
     }
   };
 
@@ -714,6 +754,17 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           <button
             type="button"
             className="ao__sync-btn"
+            onClick={handleFindMissingPayments}
+            disabled={reconciling || loading}
+            title="Scan Razorpay for paid transactions without orders (last 7 days)"
+          >
+            <span className={`ao__sync-icon${reconciling ? " ao__sync-icon--spin" : ""}`}>🔍</span>
+            <span>{reconciling ? "Checking Razorpay..." : "Find missing paid orders"}</span>
+          </button>
+
+          <button
+            type="button"
+            className="ao__sync-btn"
             onClick={handleSyncAll}
             disabled={syncingAll || loading}
             title={syncableCount > 0 ? `Sync tracking for ${syncableCount} shipment(s)` : "No shipments to sync"}
@@ -1093,6 +1144,89 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           </div>
         )}
       </div>
+
+      {/* ── Razorpay Payment Reconciliation Modal ── */}
+      {showReconcileModal && (
+        <div className="ao__modal-overlay" onClick={() => setShowReconcileModal(false)}>
+          <div className="ao__modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="ao__modal-header">
+              <div>
+                <h3 className="ao__modal-title">Razorpay Payment Reconciliation</h3>
+                <p className="ao__modal-subtitle">
+                  Captured payments from the last 7 days with no matching orders in Supabase
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ao__modal-close-icon"
+                onClick={() => setShowReconcileModal(false)}
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="ao__modal-body">
+              {missingPayments.length === 0 ? (
+                <div className="ao__reconcile-empty">
+                  <div className="ao__reconcile-check-icon">✓</div>
+                  <h4>All Payments Reconciled</h4>
+                  <p>Every captured Razorpay payment in the last 7 days has a corresponding order in Supabase.</p>
+                </div>
+              ) : (
+                <div className="ao__reconcile-table-wrap">
+                  <table className="ao__reconcile-table">
+                    <thead>
+                      <tr>
+                        <th>Payment ID</th>
+                        <th>Order ID</th>
+                        <th>Amount</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {missingPayments.map((p) => (
+                        <tr key={p.payment_id}>
+                          <td>
+                            <code className="ao__reconcile-code">{p.payment_id}</code>
+                          </td>
+                          <td>
+                            <code className="ao__reconcile-code">{p.order_id || "N/A"}</code>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>₹{Number(p.amount || 0).toLocaleString("en-IN")}</td>
+                          <td>{p.email || "N/A"}</td>
+                          <td>{p.phone || "N/A"}</td>
+                          <td>{new Date(p.created_at).toLocaleString("en-IN")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="ao__modal-footer">
+              <button
+                type="button"
+                className="ao__modal-btn ao__modal-btn--secondary"
+                onClick={() => setShowReconcileModal(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="ao__modal-btn ao__modal-btn--primary"
+                onClick={handleFindMissingPayments}
+                disabled={reconciling}
+              >
+                {reconciling ? "Scanning..." : "Re-scan Razorpay"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toast
         message={toast.message}

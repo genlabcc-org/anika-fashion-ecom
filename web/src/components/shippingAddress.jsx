@@ -598,13 +598,13 @@ export default function ShippingAddress() {
             discountCode: appliedDiscount?.code || null,
             discountPct: appliedDiscount?.pct || 0,
             shippingFee: shippingFee || 0,
+            isBuyNow: Boolean(checkoutProduct),
           }
         });
 
         if (invokeError || !orderData) {
           throw new Error(invokeError?.message || "Failed to initiate Razorpay order.");
         }
-
 
         const options = {
           key: import.meta.env.VITE_RAZORPAY_KEY_ID,
@@ -614,8 +614,48 @@ export default function ShippingAddress() {
           description: `Order for ${orderData.productName}`,
           order_id: orderData.orderId,
           handler: async function (response) {
+            setIsProcessingPayment(true);
+            const targetUserId = userId || session?.user?.id;
+
+            // Polling fallback when verify_payment fails or times out
+            const pollForOrder = async () => {
+              showToast("Payment received, confirming your order...", "info");
+              const startTime = Date.now();
+              const maxDuration = 30000; // 30 seconds
+              const pollInterval = 2000;  // 2 seconds
+
+              while (Date.now() - startTime < maxDuration) {
+                await new Promise((r) => setTimeout(r, pollInterval));
+                try {
+                  const orders = await useStore.getState().fetchOrders(targetUserId, { force: true });
+                  const matched = (orders || []).find(
+                    (o) =>
+                      o.razorpay_order_id === response.razorpay_order_id ||
+                      (response.razorpay_payment_id && o.razorpay_payment_id === response.razorpay_payment_id)
+                  );
+                  if (matched) {
+                    if (!checkoutProduct) {
+                      const removeFromCart = useStore.getState().removeFromCart;
+                      for (const item of checkoutItems) {
+                        await removeFromCart(item.id);
+                      }
+                    }
+                    showToast("Payment successful! Order placed.", "success");
+                    navigate("/profile/orders");
+                    return true;
+                  }
+                } catch (pollErr) {
+                  console.warn("[shippingAddress] Polling error:", pollErr);
+                }
+              }
+
+              // After 30s timeout without order confirmation
+              showToast("Payment confirmed! Please check your orders page.", "info");
+              navigate("/profile/orders");
+              return false;
+            };
+
             try {
-              setIsProcessingPayment(true);
               const { data: verifyData, error: verifyError } = await supabase.functions.invoke('razorpay', {
                 body: {
                   action: "verify_payment",
@@ -631,14 +671,10 @@ export default function ShippingAddress() {
               });
 
               if (verifyError) {
-                let errMsg = verifyError.message;
-                if (verifyError.context && typeof verifyError.context.json === 'function') {
-                  try {
-                    const errJson = await verifyError.context.json();
-                    if (errJson?.error) errMsg = errJson.error;
-                  } catch (_) { }
-                }
-                throw new Error(errMsg || "Payment verification failed.");
+                console.warn("[shippingAddress] verify_payment failed or timed out:", verifyError);
+                // Do not alarm user that payment failed; poll fetchOrders to catch server-side completion
+                await pollForOrder();
+                return;
               }
 
               if (!checkoutProduct) {
@@ -649,13 +685,10 @@ export default function ShippingAddress() {
               }
 
               showToast("Payment successful! Order placed.", "success");
-              // Note: Admin order notification email is triggered server-side in verify_payment edge function
 
               try {
-                const { user, refreshOrders } = useStore.getState();
-                const targetUserId = user?.id || userId;
                 if (targetUserId) {
-                  await refreshOrders(targetUserId);
+                  await useStore.getState().refreshOrders(targetUserId);
                 }
               } catch (refreshErr) {
                 console.error("Failed to refresh orders before navigation:", refreshErr);
@@ -663,7 +696,10 @@ export default function ShippingAddress() {
 
               navigate("/profile/orders");
             } catch (err) {
-              showToast(err.message, "error");
+              console.warn("[shippingAddress] Unexpected error in payment handler:", err);
+              // Fallback to polling so customer is not alarmed
+              await pollForOrder();
+            } finally {
               setIsProcessingPayment(false);
             }
           },

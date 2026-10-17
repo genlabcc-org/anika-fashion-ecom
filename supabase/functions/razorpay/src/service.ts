@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { RazorpayClient } from "./client.ts";
 import { Product, Order } from "../../_shared/types.ts";
-import { bookShipmentForOrder } from "../../_shared/bookShipment.ts";
+import { finalizeOrder } from "../../_shared/finalizeOrder.ts";
 
 /** Normalise a state name for comparison (same logic as the frontend). */
 function normState(s: string | null | undefined): string {
@@ -38,6 +38,7 @@ export interface CreateOrderInput {
   }>;
   addressId?: number | string;
   discountCode?: string | null;
+  isBuyNow?: boolean;
 }
 
 export interface CreateOrderResult {
@@ -109,7 +110,7 @@ export class RazorpayService {
     const productIds = items.map(item => item.productId).filter(Boolean);
     const { data: rawProducts, error: dbError } = await this.supabaseAdmin
       .from("products")
-      .select("product_id, name, price, discount_price, stock, product_variants(*)")
+      .select("product_id, name, price, discount_price, stock, image_url, images, sku, product_variants(*)")
       .in("product_id", productIds);
     const products = (rawProducts || []) as unknown as any[];
 
@@ -117,106 +118,7 @@ export class RazorpayService {
       throw new Error(`Products not found or database query failed: ${dbError?.message || "Unknown error"}`);
     }
 
-    // 2. Calculate subtotal matching variant price or base product price
-    let subtotal = 0;
-    for (const item of items) {
-      const product = products.find(p => String(p.product_id) === String(item.productId));
-      if (!product) {
-        throw new Error(`Product not found: ${item.productId}`);
-      }
-
-      const variants = product.product_variants || [];
-      let itemPrice = 0;
-      let matchedVariant: any = null;
-
-      if (variants.length > 0) {
-        matchedVariant = variants.find((v: any) => {
-          const matchSize = item.size ? String(v.size || '').trim().toLowerCase() === String(item.size).trim().toLowerCase() : true;
-          const matchColor = item.color ? String(v.color || '').trim().toLowerCase() === String(item.color).trim().toLowerCase() : true;
-          return matchSize && matchColor;
-        }) || variants.find((v: any) => {
-          return item.size ? String(v.size || '').trim().toLowerCase() === String(item.size).trim().toLowerCase() : true;
-        }) || variants[0];
-
-        itemPrice = Number(matchedVariant?.price || 0);
-      }
-
-      if (itemPrice === 0) {
-        const rawPrice = Number(product.price || 0);
-        const rawDiscount = Number(product.discount_price || 0);
-        itemPrice = rawDiscount > 0 ? rawPrice - rawDiscount : rawPrice;
-      }
-
-      if (itemPrice === 0) {
-        throw new Error(`Product ${item.productId} has no valid price in the database`);
-      }
-
-      // Stock check — fail fast before creating the Razorpay order
-      const requestedQty = Number(item.quantity || 1);
-      const availableStock = matchedVariant
-        ? Number(matchedVariant.stock ?? Infinity)
-        : Number(product.stock ?? Infinity);
-      if (availableStock < requestedQty) {
-        throw new Error(`"${product.name}" doesn't have enough stock`);
-      }
-
-      subtotal += itemPrice * requestedQty;
-    }
-
-    // Apply discount (server-side code lookup) and shipping fee
-    const discountAmount = Math.round((subtotal * discountPctFor(input.discountCode)) / 100);
-
-    const shipping = await this.computeShippingFee(input.userId, input.addressId, subtotal - discountAmount);
-    // GST is already included in product price — do not add extra
-    const grandTotal = Math.max(0, subtotal - discountAmount) + shipping;
-    const amountInPaise = Math.round(grandTotal * 100);
-
-    // 3. Create order on Razorpay
-    const receiptId = `receipt_order_${Date.now()}`;
-    const notes: Record<string, string> = {};
-    if (input.addressId) {
-      notes.address_id = String(input.addressId);
-    }
-    const rzOrder = await this.client.createOrder(amountInPaise, receiptId, notes);
-
-    const mainItem = items[0];
-    const mainProduct = products.find(p => String(p.product_id) === String(mainItem.productId));
-    const productName = items.length > 1
-      ? `${mainProduct?.name || 'Product'} + ${items.length - 1} other(s)`
-      : mainProduct?.name || "Anika Order";
-
-    return {
-      orderId: rzOrder.id,
-      amount: amountInPaise,
-      currency: "INR",
-      productName,
-    };
-  }
-
-  async verifyPayment(input: VerifyPaymentInput): Promise<Order> {
-    // 1. Verify Razorpay HMAC signature
-    const isSignatureValid = this.client.verifySignature(
-      input.razorpay_order_id,
-      input.razorpay_payment_id,
-      input.razorpay_signature
-    );
-
-    if (!isSignatureValid) {
-      throw new Error("Invalid signature verification failed");
-    }
-
-    // 2. Fetch authentic product details to record final order amount
-    const productIds = input.items.map(item => item.productId).filter(Boolean);
-    const { data: rawProducts, error: dbError } = await this.supabaseAdmin
-      .from("products")
-      .select("product_id, name, price, discount_price, image_url, images, sku, product_variants(*)")
-      .in("product_id", productIds);
-    const products = (rawProducts || []) as unknown as any[];
-
-    if (dbError || !products || products.length === 0) {
-      throw new Error(`Products not found or database query failed: ${dbError?.message || "Unknown error"}`);
-    }
-
+    // 2. Calculate subtotal matching variant price or base product price and build resolved items
     let subtotal = 0;
     const resolvedItemDetails: Array<{
       productId: any;
@@ -229,7 +131,7 @@ export class RazorpayService {
       sku: string | null;
     }> = [];
 
-    for (const item of input.items) {
+    for (const item of items) {
       const product = products.find(p => String(p.product_id) === String(item.productId));
       if (!product) {
         throw new Error(`Product not found: ${item.productId}`);
@@ -267,33 +169,46 @@ export class RazorpayService {
         throw new Error(`Product ${item.productId} has no valid price in the database`);
       }
 
-      const qty = Number(item.quantity || 1);
-      subtotal += itemPrice * qty;
+      // Stock check — fail fast before creating the Razorpay order
+      const requestedQty = Number(item.quantity || 1);
+      const availableStock = matchedVariant
+        ? Number(matchedVariant.stock ?? Infinity)
+        : Number(product.stock ?? Infinity);
+      if (availableStock < requestedQty) {
+        throw new Error(`"${product.name}" doesn't have enough stock`);
+      }
+
+      subtotal += itemPrice * requestedQty;
 
       resolvedItemDetails.push({
         productId: product.product_id,
         name: product.name || "Unknown Product",
         price: itemPrice,
-        quantity: qty,
-        size:  matchedVariant ? (matchedVariant.size ?? null)  : (item.size  || null),
+        quantity: requestedQty,
+        size: matchedVariant ? (matchedVariant.size ?? null) : (item.size || null),
         color: matchedVariant ? (matchedVariant.color ?? null) : (item.color || null),
         image: itemImage,
         sku: itemSku,
       });
     }
 
+    // Apply discount (server-side code lookup) and shipping fee
     const discountAmount = Math.round((subtotal * discountPctFor(input.discountCode)) / 100);
 
     const shipping = await this.computeShippingFee(input.userId, input.addressId, subtotal - discountAmount);
     // GST is already included in product price — do not add extra
     const grandTotal = Math.max(0, subtotal - discountAmount) + shipping;
-  
-    const mainItem = resolvedItemDetails[0];
-    const itemName = resolvedItemDetails.length > 1
-      ? `${mainItem?.name} + ${resolvedItemDetails.length - 1} other(s)`
-      : mainItem?.name || "Anika Order";
+    const amountInPaise = Math.round(grandTotal * 100);
 
-    // 3. Verify address ownership if addressId was provided (falls back to null without throwing)
+    // 3. Create order on Razorpay
+    const receiptId = `receipt_order_${Date.now()}`;
+    const notes: Record<string, string> = {};
+    if (input.addressId) {
+      notes.address_id = String(input.addressId);
+    }
+    const rzOrder = await this.client.createOrder(amountInPaise, receiptId, notes);
+
+    // 4. Safely verify address ownership and record pending_orders in DB
     let safeAddressId: number | null = null;
     if (input.addressId) {
       try {
@@ -305,145 +220,215 @@ export class RazorpayService {
           .maybeSingle();
         safeAddressId = addr?.address_id ?? null;
       } catch (err) {
-        console.warn("Failed to verify address ownership, falling back to null:", err);
-        safeAddressId = null;
+        console.warn("[RazorpayService] Address lookup warning for pending order:", err);
       }
     }
 
-    // 4. Insert order record using admin client (bypasses RLS limits if any)
-    const { data: rawOrder, error: insertError } = await this.supabaseAdmin
-      .from("orders")
-      .insert({
-        user_id: input.userId,
-        address_id: safeAddressId,
-        item_name: itemName,
-        quantity: resolvedItemDetails.reduce((sum, item) => sum + item.quantity, 0),
-        total_price: grandTotal,
-        shipping_fee: shipping,
-        payment: "Razorpay",
-        type: "Regular",
-        status: "Paid",
-        razorpay_order_id: input.razorpay_order_id,
-        razorpay_payment_id: input.razorpay_payment_id,
-        razorpay_signature: input.razorpay_signature,
-      } as unknown as never)
-      .select()
-      .single();
-    const order = rawOrder as unknown as Order | null;
+    try {
+      const pendingItems = resolvedItemDetails.map(it => ({
+        productId: it.productId,
+        product_id: it.productId,
+        name: it.name,
+        qty: it.quantity,
+        quantity: it.quantity,
+        price: it.price,
+        size: it.size,
+        color: it.color,
+        image: it.image,
+        image_url: it.image,
+        sku: it.sku,
+      }));
 
-    if (insertError || !order) {
-      throw new Error(`Failed to insert order: ${insertError?.message || "Unknown error"}`);
+      await this.supabaseAdmin
+        .from("pending_orders")
+        .insert({
+          razorpay_order_id: rzOrder.id,
+          user_id: input.userId,
+          address_id: safeAddressId,
+          items: pendingItems,
+          amount: grandTotal,
+          shipping: shipping,
+          discount_code: input.discountCode || null,
+          is_buy_now: Boolean(input.isBuyNow),
+          status: "pending",
+        } as any);
+      console.log(`[RazorpayService] Inserted pending order for ${rzOrder.id}`);
+    } catch (pendingErr) {
+      console.error("[RazorpayService] Failed to insert pending_orders row:", pendingErr);
     }
 
-    // 4. Insert child order items for each item in order
-    const orderItemsToInsert = resolvedItemDetails.map(item => ({
-      order_id: order.id,
-      product_id: item.productId,
-      product_name: item.name,
-      quantity: item.quantity,
-      price: item.price,
-      size: item.size,
-      color: item.color,
-      image_url: item.image,
-      sku: item.sku,
-    }));
+    const mainItem = items[0];
+    const mainProduct = products.find(p => String(p.product_id) === String(mainItem.productId));
+    const productName = items.length > 1
+      ? `${mainProduct?.name || 'Product'} + ${items.length - 1} other(s)`
+      : mainProduct?.name || "Anika Order";
 
-    const { error: itemsInsertError } = await this.supabaseAdmin
-      .from("order_items")
-      .insert(orderItemsToInsert as unknown as never[]);
+    return {
+      orderId: rzOrder.id,
+      amount: amountInPaise,
+      currency: "INR",
+      productName,
+    };
+  }
 
-    if (itemsInsertError) {
-      throw new Error(`Failed to insert order items: ${itemsInsertError.message}`);
+  async verifyPayment(input: VerifyPaymentInput): Promise<Order> {
+    // 1. Verify Razorpay HMAC signature
+    const isSignatureValid = this.client.verifySignature(
+      input.razorpay_order_id,
+      input.razorpay_payment_id,
+      input.razorpay_signature
+    );
+
+    if (!isSignatureValid) {
+      throw new Error("Invalid signature verification failed");
     }
 
-    // 5. Trigger admin order notification email server-side (fire-and-forget with error logging)
-    this.triggerOrderEmail(order.id).catch((emailErr) => {
-      console.warn(`[send-order-email] Background trigger failed for order ${order.id}:`, emailErr);
+    // 2. Finalize order idempotently using shared finalizeOrder
+    const result = await finalizeOrder({
+      razorpay_order_id: input.razorpay_order_id,
+      razorpay_payment_id: input.razorpay_payment_id,
+      razorpay_signature: input.razorpay_signature,
+      supabaseAdmin: this.supabaseAdmin,
     });
 
-    // 6. Deduct stock (idempotent Postgres function, service-role only)
-    try {
-      const { error: stockErr } = await this.supabaseAdmin.rpc(
-        "deduct_order_stock",
-        { p_order_id: order.id }
-      );
-      if (stockErr) {
-        console.error(`[Stock] deduct_order_stock failed for order ${order.id}:`, stockErr.message);
-        await this.supabaseAdmin.from("orders")
-          .update({ admin_notes: `STOCK NOT DEDUCTED: ${stockErr.message}` } as any)
-          .eq("id", order.id);
+    if (!result.success) {
+      if (result.missingPending) {
+        throw new Error(
+          `Order creation details not found for ${input.razorpay_order_id}. Payment ID: ${input.razorpay_payment_id}. Please contact support.`
+        );
       }
-    } catch (stockEx) {
-      const msg = stockEx instanceof Error ? stockEx.message : String(stockEx);
-      console.error(`[Stock] Unexpected error deducting stock for order ${order.id}:`, stockEx);
-      try {
-        await this.supabaseAdmin.from("orders")
-          .update({ admin_notes: `STOCK NOT DEDUCTED: ${msg}` } as any)
-          .eq("id", order.id);
-      } catch (_) { /* best-effort; never throw after payment */ }
+      throw new Error(result.error || "Failed to finalize order.");
     }
 
-    // 7. Automatically book shipment with iCarry after order and payment are confirmed
-    try {
-      const bookingResult = await bookShipmentForOrder(this.supabaseAdmin, order.id);
-      if (bookingResult.ok) {
-        order.waybill = bookingResult.waybill;
-        order.shipment_id = bookingResult.shipment_id;
-        order.courier_name = bookingResult.courier_name;
-        order.tracking_url = bookingResult.tracking_url;
-        order.delivery_status = "Booked";
-      } else {
-        console.warn(`[iCarry] Auto-booking after payment failed for order ${order.id}:`, bookingResult.error);
-        order.delivery_status = "Booking Failed";
-        order.shipment_error = bookingResult.error;
-      }
-    } catch (bookingErr) {
-      console.error(`[iCarry] Unexpected error during auto-booking for order ${order.id}:`, bookingErr);
-      // Never throw — the customer's payment succeeded and order is saved
-    }
-
-    return order;
+    return result.order;
   }
 
   /**
-   * Triggers the send-order-email edge function server-side using the shared internal secret.
-   * Runs fire-and-forget; failures are logged and will never disrupt order processing.
+   * Helper to ensure pending_orders exists if createOrder didn't persist it.
    */
-  private async triggerOrderEmail(orderId: string): Promise<void> {
+  private async createPendingOrderFallback(input: VerifyPaymentInput): Promise<void> {
     try {
-      const supabaseUrl = Deno.env.get("SUPABASE_URL");
-      const internalSecret = Deno.env.get("INTERNAL_FUNCTION_SECRET");
-      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      const productIds = input.items.map(item => item.productId).filter(Boolean);
+      const { data: rawProducts } = await this.supabaseAdmin
+        .from("products")
+        .select("product_id, name, price, discount_price, image_url, images, sku, product_variants(*)")
+        .in("product_id", productIds);
+      const products = (rawProducts || []) as unknown as any[];
 
-      if (!supabaseUrl) {
-        console.warn("[send-order-email] SUPABASE_URL not configured, skipping order email trigger");
-        return;
+      let subtotal = 0;
+      const resolvedItemDetails: any[] = [];
+
+      for (const item of input.items) {
+        const product = products.find(p => String(p.product_id) === String(item.productId));
+        if (!product) continue;
+
+        const variants = product.product_variants || [];
+        let itemPrice = 0;
+        let matchedVariant: any = null;
+        let itemImage = product.image_url || (product.images && product.images[0]) || null;
+        let itemSku: string | null = product.sku || null;
+
+        if (variants.length > 0) {
+          matchedVariant = variants.find((v: any) => {
+            const matchSize = item.size ? String(v.size || '').trim().toLowerCase() === String(item.size).trim().toLowerCase() : true;
+            const matchColor = item.color ? String(v.color || '').trim().toLowerCase() === String(item.color).trim().toLowerCase() : true;
+            return matchSize && matchColor;
+          }) || variants[0];
+
+          itemPrice = Number(matchedVariant?.price || 0);
+          itemSku = matchedVariant?.sku || itemSku;
+          if (matchedVariant?.images && matchedVariant.images.length > 0) {
+            itemImage = matchedVariant.images[0];
+          }
+        }
+
+        if (itemPrice === 0) {
+          const rawPrice = Number(product.price || 0);
+          const rawDiscount = Number(product.discount_price || 0);
+          itemPrice = rawDiscount > 0 ? rawPrice - rawDiscount : rawPrice;
+        }
+
+        const qty = Number(item.quantity || 1);
+        subtotal += itemPrice * qty;
+
+        resolvedItemDetails.push({
+          productId: product.product_id,
+          product_id: product.product_id,
+          name: product.name || "Product",
+          price: itemPrice,
+          quantity: qty,
+          qty: qty,
+          size: matchedVariant ? (matchedVariant.size ?? null) : (item.size || null),
+          color: matchedVariant ? (matchedVariant.color ?? null) : (item.color || null),
+          image: itemImage,
+          image_url: itemImage,
+          sku: itemSku,
+        });
       }
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (internalSecret) {
-        headers["x-internal-secret"] = internalSecret;
+      const discountAmount = Math.round((subtotal * discountPctFor(input.discountCode)) / 100);
+      let shipping = 0;
+      try {
+        shipping = await this.computeShippingFee(input.userId, input.addressId, subtotal - discountAmount);
+      } catch (_) {
+        shipping = 0;
       }
-      if (serviceRoleKey) {
-        headers["Authorization"] = `Bearer ${serviceRoleKey}`;
-      }
+      const grandTotal = Math.max(0, subtotal - discountAmount) + shipping;
 
-      const res = await fetch(`${supabaseUrl}/functions/v1/send-order-email`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ orderId }),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        console.warn(`[send-order-email] Trigger returned status ${res.status} for order ${orderId}:`, errText);
-      } else {
-        console.log(`[send-order-email] Server-side notification email triggered for order ${orderId}`);
-      }
+      await this.supabaseAdmin
+        .from("pending_orders")
+        .insert({
+          razorpay_order_id: input.razorpay_order_id,
+          user_id: input.userId,
+          address_id: input.addressId ? Number(input.addressId) : null,
+          items: resolvedItemDetails,
+          amount: grandTotal,
+          shipping: shipping,
+          discount_code: input.discountCode || null,
+          is_buy_now: false,
+          status: "pending",
+        } as any);
     } catch (err) {
-      console.warn(`[send-order-email] Failed to invoke send-order-email for order ${orderId}:`, err);
+      console.error("[createPendingOrderFallback] Failed to create pending order fallback:", err);
     }
+  }
+
+  /**
+   * Reconciles payments from Razorpay against public.orders.
+   * Lists captured payments from the last N days (default: 7) with no matching orders.razorpay_payment_id.
+   */
+  async reconcilePayments(days: number = 7): Promise<any[]> {
+    const now = Math.floor(Date.now() / 1000);
+    const fromTimestamp = now - (days * 24 * 60 * 60);
+
+    const payments = await this.client.listPayments(fromTimestamp, 100);
+    const captured = payments.filter((p: any) => p.status === "captured");
+
+    if (captured.length === 0) return [];
+
+    const paymentIds = captured.map((p: any) => p.id);
+    const { data: matchedOrders, error } = await this.supabaseAdmin
+      .from("orders")
+      .select("razorpay_payment_id")
+      .in("razorpay_payment_id", paymentIds);
+
+    if (error) {
+      throw new Error(`Failed to query orders for payment reconciliation: ${error.message}`);
+    }
+
+    const foundPaymentIds = new Set((matchedOrders || []).map((o: any) => o.razorpay_payment_id));
+
+    const missing = captured
+      .filter((p: any) => !foundPaymentIds.has(p.id))
+      .map((p: any) => ({
+        payment_id: p.id,
+        order_id: p.order_id,
+        amount: (Number(p.amount) || 0) / 100,
+        email: p.email || "N/A",
+        phone: p.contact || "N/A",
+        created_at: new Date(p.created_at * 1000).toISOString(),
+      }));
+
+    return missing;
   }
 }
