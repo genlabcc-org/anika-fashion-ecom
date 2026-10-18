@@ -57,8 +57,17 @@
 
 .ao__page-actions {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+@media (min-width: 640px) {
+  .ao__page-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+  }
 }
 
 .ao__sync-btn {
@@ -104,6 +113,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
@@ -920,6 +930,7 @@
   .ao__desktop-view {
     display: block;
   }
+
   .ao__mobile-view {
     display: none;
   }
@@ -1490,8 +1501,13 @@
 }
 
 @keyframes aoFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes aoScaleUp {
@@ -1499,6 +1515,7 @@
     opacity: 0;
     transform: scale(0.96);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
