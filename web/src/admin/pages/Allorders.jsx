@@ -5,6 +5,8 @@ import { isRevenueOrder } from "../../utils/orderUtils";
 import { isSyncableOrder } from "../utils/trackingSync";
 import { supabase } from "../../lib/supabase";
 import Toast from "../../components/Toast";
+import ExportOrdersModal from "../components/ExportOrdersModal";
+import { useAdmin } from "../../hooks/useAdmin";
 import "./Allorders.css";
 
 const STATUS_STYLE = {
@@ -16,6 +18,10 @@ const STATUS_STYLE = {
   Return: { bg: "#FEF2F2", color: "#DC2626" },
   Returned: { bg: "#FEF2F2", color: "#DC2626" },
   Cancelled: { bg: "#FEF2F2", color: "#DC2626" },
+  Refunded: { bg: "#ECFDF5", color: "#047857" },
+  "Refund Completed": { bg: "#ECFDF5", color: "#047857" },
+  "Partially Refunded": { bg: "#FEF3C7", color: "#B45309" },
+  "Refund Failed": { bg: "#FEF2F2", color: "#DC2626" },
   "Out for Delivery": { bg: "#FFEDD5", color: "#C2410C" },
   "Out of Delivery": { bg: "#FFEDD5", color: "#C2410C" },
 };
@@ -26,7 +32,7 @@ const PAYMENT_STYLE = {
 };
 
 const CATEGORIES = ["All Category", "Necklaces", "Earrings", "Rings", "Bracelets"];
-const STATUSES = ["All Status", "To Pack / Needs Action", "Paid", "Order Placed", "Confirmed", "Shipped", "Delivered", "Cancelled", "Returned"];
+const STATUSES = ["All Status", "To Pack / Needs Action", "Paid", "Order Placed", "Confirmed", "Shipped", "Delivered", "Refunded", "Partially Refunded", "Refund Failed", "Cancelled", "Returned"];
 const PER_PAGE = 8;
 
 /* ── Icons ── */
@@ -176,12 +182,17 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
   const [reconciling, setReconciling] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [missingPayments, setMissingPayments] = useState([]);
+
+  const { isAdmin: adminHookStatus } = useAdmin();
+  const storeIsAdmin = useStore((state) => state.isAdmin);
+  const isAdmin = storeIsAdmin || adminHookStatus;
 
   const toPackCount = useMemo(() => {
     return orders.filter((o) => {
       const s = (o.status || "").toLowerCase().trim();
-      return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed"].includes(s);
+      return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes(s);
     }).length;
   }, [orders]);
 
@@ -222,7 +233,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       if (status === "All Status") return true;
       if (status === "To Pack / Needs Action") {
         const s = (o.status || "").toLowerCase().trim();
-        return !["shipped", "delivered", "cancelled", "canceled", "returned", "return", "refund completed"].includes(s);
+        return !["shipped", "delivered", "cancelled", "canceled", "returned", "return", "refund completed", "refunded"].includes(s);
       }
       if (status.toLowerCase() === "returned") {
         return o.status?.toLowerCase() === "return" || o.status?.toLowerCase() === "returned";
@@ -246,7 +257,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       if (readFilter === "unread") return o.admin_read === false;
       if (readFilter === "to_pack") {
         const s = (o.status || "").toLowerCase().trim();
-        return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed"].includes(s);
+        return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes(s);
       }
       return true;
     })();
@@ -378,7 +389,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   // Unfulfilled orders that need packing/shipping (Pending, Confirmed, Order Placed, Paid, or Pickup Cancelled)
   const actionNeeded = orders.filter(o => {
     const s = (o.status || '').toLowerCase().trim();
-    if (['shipped', 'delivered', 'cancelled', 'canceled', 'returned', 'return', 'refund completed'].includes(s)) {
+    if (['shipped', 'delivered', 'cancelled', 'canceled', 'returned', 'return', 'refund completed', 'refunded'].includes(s)) {
       return false;
     }
     return true;
@@ -758,7 +769,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             disabled={reconciling || loading}
             title="Scan Razorpay for paid transactions without orders (last 7 days)"
           >
-            <span className={`ao__sync-icon${reconciling ? " ao__sync-icon--spin" : ""}`}>🔍</span>
+            {/* <span className={`ao__sync-icon${reconciling ? " ao__sync-icon--spin" : ""}`}>🔍</span> */}
             <span>{reconciling ? "Checking Razorpay..." : "Find missing paid orders"}</span>
           </button>
 
@@ -769,13 +780,25 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             disabled={syncingAll || loading}
             title={syncableCount > 0 ? `Sync tracking for ${syncableCount} shipment(s)` : "No shipments to sync"}
           >
-            <span className={`ao__sync-icon${syncingAll ? " ao__sync-icon--spin" : ""}`}>🔄</span>
+            {/* <span className={`ao__sync-icon${syncingAll ? " ao__sync-icon--spin" : ""}`}>🔄</span> */}
             <span>
               {syncingAll
                 ? (syncProgress ? `Syncing ${syncProgress.done}/${syncProgress.total}...` : "Syncing...")
                 : `Sync All Shipments${syncableCount > 0 ? ` (${syncableCount})` : ""}`}
             </span>
           </button>
+
+          {isAdmin && (
+            <button
+              type="button"
+              className="ao__sync-btn ao__export-btn"
+              onClick={() => setShowExportModal(true)}
+              disabled={loading}
+              title="Download order data (CSV export)"
+            >
+              <span>Download Data</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1227,6 +1250,13 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           </div>
         </div>
       )}
+
+      {/* ── CSV Export Modal ── */}
+      <ExportOrdersModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onToast={showToast}
+      />
 
       <Toast
         message={toast.message}

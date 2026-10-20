@@ -84,7 +84,7 @@ export default function OrderTracking() {
             const s = (data.status || "").toLowerCase();
             const d = (data.delivery_status || "").toLowerCase();
             const isTerminal =
-              ["delivered", "cancelled", "canceled", "refund completed"].some((t) => s.includes(t)) &&
+              ["delivered", "cancelled", "canceled", "refund completed", "refunded"].some((t) => s.includes(t)) &&
               ["delivered", "cancelled", "canceled"].some((t) => d.includes(t));
             if (!isTerminal) {
               icarryService
@@ -190,12 +190,14 @@ export default function OrderTracking() {
     fetchDbAddress();
   }, [order?.user_id, order?.address_id, user?.id]);
 
+  const isRefundCompleted = ["refund completed", "refunded"].includes((order?.status || "").toLowerCase());
+  const isPartiallyRefunded = (order?.status || "").toLowerCase() === "partially refunded";
+  const isRefundFailed = (order?.status || "").toLowerCase() === "refund failed";
   const isCancelled =
     ((order?.status || "").toLowerCase().includes("cancel") && !(order?.status || "").toLowerCase().includes("pickup cancel")) ||
     ((order?.delivery_status || order?.deliveryStatus || "").toLowerCase().includes("cancel") && !(order?.delivery_status || order?.deliveryStatus || "").toLowerCase().includes("pickup cancel")) ||
     (order?.delivery_status || order?.deliveryStatus || "").toLowerCase() === "voided" ||
-    (order?.status || "").toLowerCase() === "refund completed";
-  const isRefundCompleted = (order?.status || "").toLowerCase() === "refund completed";
+    isRefundCompleted;
 
   const rawItems = (order?.order_items && order.order_items.length > 0)
     ? order.order_items
@@ -261,7 +263,7 @@ export default function OrderTracking() {
     const s = rawStatus.toLowerCase();
     const d = (order?.delivery_status || order?.deliveryStatus || "").trim().toLowerCase();
 
-    if (s === "refund completed") {
+    if (s === "refund completed" || s === "refunded") {
       return [
         {
           key: "placed",
@@ -283,6 +285,27 @@ export default function OrderTracking() {
           key: "refund",
           title: "Refund Completed",
           desc: "Refund has been successfully processed and credited to your payment source.",
+          isDone: true,
+          isCurrent: true,
+          isCancelled: false,
+        }
+      ];
+    }
+
+    if (s === "partially refunded") {
+      return [
+        {
+          key: "placed",
+          title: "Order Placed",
+          desc: `Placed on ${orderDate}`,
+          isDone: true,
+          isCurrent: false,
+          isCancelled: false,
+        },
+        {
+          key: "refund",
+          title: "Partially Refunded",
+          desc: "A partial refund has been processed and credited to your payment source.",
           isDone: true,
           isCurrent: true,
           isCancelled: false,

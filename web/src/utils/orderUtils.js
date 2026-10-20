@@ -11,8 +11,8 @@ export function isRevenueOrder(order) {
   if (!order) return false;
   const s = (order.status || '').toLowerCase().trim();
 
-  // Exclude cancelled, returned, and refund completed
-  if (['cancelled', 'canceled', 'returned', 'return', 'refund completed'].includes(s)) {
+  // Exclude cancelled, returned, and refund completed / refunded
+  if (['cancelled', 'canceled', 'returned', 'return', 'refund completed', 'refunded'].includes(s)) {
     return false;
   }
 

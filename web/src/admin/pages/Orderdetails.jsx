@@ -20,6 +20,9 @@ const STATUS_CONFIG = {
   Returned: { bg: "#fee2e2", color: "#dc2626", dot: "#ef4444" },
   Confirmed: { bg: "#f3e8ff", color: "#7c3aed", dot: "#8b5cf6" },
   "Refund Completed": { bg: "#ecfdf5", color: "#047857", dot: "#10b981" },
+  Refunded: { bg: "#ecfdf5", color: "#047857", dot: "#10b981" },
+  "Partially Refunded": { bg: "#fef3c7", color: "#b45309", dot: "#f59e0b" },
+  "Refund Failed": { bg: "#fee2e2", color: "#b91c1c", dot: "#ef4444" },
   "Out for Delivery": { bg: "#ffedd5", color: "#c2410c", dot: "#f97316" },
   "Out of Delivery": { bg: "#ffedd5", color: "#c2410c", dot: "#f97316" }
 };
@@ -62,6 +65,15 @@ const OrderDetails = ({ order, onBack }) => {
     status: "Shipped",
     tracking_url: "https://stcourier.com",
   });
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [submittingRefund, setSubmittingRefund] = useState(false);
+  const [refundForm, setRefundForm] = useState({
+    reason: "Damaged",
+    isVerified: false,
+    amount: "",
+    note: "",
+  });
+  const [refundError, setRefundError] = useState("");
   const invoiceRef = useRef(null);
   const autoMarkedOrderIdRef = useRef(null);
 
@@ -81,6 +93,7 @@ const OrderDetails = ({ order, onBack }) => {
   const markOrdersRead = useStore(state => state.markOrdersRead);
   const fetchNewOrdersCount = useStore(state => state.fetchNewOrdersCount);
   const updateOrderInList = useStore(state => state.updateOrderInList);
+  const isAdmin = useStore(state => state.isAdmin);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -94,6 +107,23 @@ const OrderDetails = ({ order, onBack }) => {
       }
     }
   }, [order]);
+
+  // Refetch fresh order from DB on mount so stale localStorage doesn't hide updated refund status
+  useEffect(() => {
+    const orderId = order?.id;
+    if (!orderId) return;
+
+    orderService.getOrderById(orderId).then((fresh) => {
+      if (fresh) {
+        setCurrentOrder((prev) => ({ ...(prev || {}), ...fresh }));
+        if (fresh.admin_notes !== undefined) {
+          setAdminNote(fresh.admin_notes || "");
+        }
+      }
+    }).catch((err) => {
+      console.warn("Could not refetch fresh order details:", err);
+    });
+  }, [order?.id]);
 
   // Auto-mark order as read ONLY when opened from the list (guarded with sessionStorage).
   // Must NOT re-fire when the details page is refreshed (selectedAdminOrder restored from localStorage).
@@ -234,6 +264,9 @@ const OrderDetails = ({ order, onBack }) => {
               ...(prev || {}),
               ...payload.new
             }));
+            if (payload.new.admin_notes !== undefined) {
+              setAdminNote(payload.new.admin_notes || "");
+            }
           }
         }
       )
@@ -523,6 +556,7 @@ const OrderDetails = ({ order, onBack }) => {
         }
       }
 
+      const isOrderInRefundStatus = ["refund initiated", "refunded", "partially refunded", "refund failed", "refund completed"].includes((o.status || "").toLowerCase());
       const updates = {
         fulfillment_type: "manual",
         manual_courier_name: courierName,
@@ -531,11 +565,13 @@ const OrderDetails = ({ order, onBack }) => {
         courier_name: courierName,
         waybill: awb || null,
         tracking_url: trackingUrl || null,
-        status: statusVal,
-        delivery_status: statusVal,
+        ...(isOrderInRefundStatus ? {} : {
+          status: statusVal,
+          delivery_status: statusVal,
+        }),
         shipment_error: null,
         shipped_at: o.shipped_at || new Date().toISOString(),
-        delivered_at: statusVal === "Delivered" ? (o.delivered_at || new Date().toISOString()) : null,
+        delivered_at: (!isOrderInRefundStatus && statusVal === "Delivered") ? (o.delivered_at || new Date().toISOString()) : null,
       };
 
       const res = await icarryService.updateCourierStatus(o.id, updates);
@@ -567,6 +603,125 @@ const OrderDetails = ({ order, onBack }) => {
   const uniqueProducts = orderItems.length;
   const totalCount = orderItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
+  // Refund calculations & status determinations
+  const totalPrice = Number(o.total_price || 0);
+  const shippingFee = Number(o.shipping_fee || 0);
+  const maxRefundable = Math.max(0, totalPrice - shippingFee);
+  const isFullyRefunded = ["refunded", "refund completed"].includes((o.status || "").toLowerCase());
+  const isPartiallyRefunded = (o.status || "").toLowerCase() === "partially refunded";
+  const isRefundFailed = (o.status || "").toLowerCase() === "refund failed";
+  const hasRefundInitiated = (o.admin_notes || "").includes("[REFUND] initiated") && !isFullyRefunded && !isRefundFailed;
+
+  let refundBadgeText = "None";
+  let refundBadgeBg = "#f1f5f9";
+  let refundBadgeColor = "#475569";
+  let refundBadgeDot = "#94a3b8";
+
+  if (isFullyRefunded) {
+    refundBadgeText = "Refunded";
+    refundBadgeBg = "#ecfdf5";
+    refundBadgeColor = "#047857";
+    refundBadgeDot = "#10b981";
+  } else if (isPartiallyRefunded) {
+    refundBadgeText = "Partially Refunded";
+    refundBadgeBg = "#fef3c7";
+    refundBadgeColor = "#b45309";
+    refundBadgeDot = "#f59e0b";
+  } else if (isRefundFailed) {
+    refundBadgeText = "Refund Failed";
+    refundBadgeBg = "#fee2e2";
+    refundBadgeColor = "#b91c1c";
+    refundBadgeDot = "#ef4444";
+  } else if (hasRefundInitiated) {
+    refundBadgeText = "Refund Initiated";
+    refundBadgeBg = "#e0f2fe";
+    refundBadgeColor = "#0369a1";
+    refundBadgeDot = "#0284c7";
+  }
+
+  let isRefundDisabled = false;
+  let refundDisabledReason = "";
+
+  if (submittingRefund) {
+    isRefundDisabled = true;
+    refundDisabledReason = "Submitting refund...";
+  } else if (hasRefundInitiated) {
+    isRefundDisabled = true;
+    refundDisabledReason = "Refund already initiated. Awaiting Razorpay confirmation.";
+  } else if (isFullyRefunded) {
+    isRefundDisabled = true;
+    refundDisabledReason = "This order is already fully refunded.";
+  } else if (!o.razorpay_payment_id) {
+    isRefundDisabled = true;
+    refundDisabledReason = "Cannot refund via Razorpay: No Razorpay payment ID on record (unpaid or COD).";
+  } else if ((o.status || "").toLowerCase().includes("cancel")) {
+    isRefundDisabled = true;
+    refundDisabledReason = "Order is cancelled.";
+  }
+
+  const refundLogs = (o.admin_notes || "")
+    .split("\n")
+    .map(l => l.trim())
+    .filter(l => l.startsWith("[REFUND]"));
+
+  const handleOpenRefundModal = () => {
+    setRefundError("");
+    setRefundForm({
+      reason: "Damaged",
+      isVerified: false,
+      amount: maxRefundable > 0 ? String(maxRefundable) : "0",
+      note: ""
+    });
+    setShowRefundModal(true);
+  };
+
+  const handleInitiateRefundSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!refundForm.isVerified) {
+      setRefundError("You must verify the product is damaged or broken before initiating a refund.");
+      return;
+    }
+
+    const amt = Number(refundForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      setRefundError("Please enter a valid refund amount greater than 0.");
+      return;
+    }
+
+    if (amt > maxRefundable) {
+      setRefundError(`Refund amount cannot exceed eligible product price of ₹${maxRefundable}. Shipping fee of ₹${shippingFee} is non-refundable.`);
+      return;
+    }
+
+    setSubmittingRefund(true);
+    setRefundError("");
+
+    try {
+      const res = await orderService.initiateRefund({
+        orderId: o.id,
+        amount: amt,
+        reason: refundForm.reason,
+        note: refundForm.note
+      });
+
+      showToast(`Refund of ₹${amt} initiated successfully via Razorpay!`, "success");
+      setShowRefundModal(false);
+
+      // Immediately refetch updated order
+      const fresh = await orderService.getOrderById(o.id);
+      if (fresh) {
+        setCurrentOrder(prev => ({ ...(prev || {}), ...fresh }));
+        if (fresh.admin_notes !== undefined) setAdminNote(fresh.admin_notes || "");
+        if (typeof updateOrderInList === "function") updateOrderInList(fresh.id, fresh);
+      }
+    } catch (err) {
+      console.error("Failed to initiate refund:", err);
+      setRefundError(err.message || "Failed to initiate refund with Razorpay");
+    } finally {
+      setSubmittingRefund(false);
+    }
+  };
+
   // Dynamic order timeline based strictly on database status (only completed in green, real-time sync)
   const getTimelineSteps = () => {
     const rawStatus = (o?.status || "Pending").trim();
@@ -592,7 +747,7 @@ const OrderDetails = ({ order, onBack }) => {
       !isShippedOrDelivered &&
       (((s.includes("cancel") && !s.includes("pickup cancel")) || (d.includes("cancel") && !d.includes("pickup cancel")) || d === "voided"));
 
-    if (s === "refund completed") {
+    if (s === "refund completed" || s === "refunded") {
       return [
         {
           label: "Order placed",
@@ -609,6 +764,23 @@ const OrderDetails = ({ order, onBack }) => {
         {
           label: "Refund completed",
           date: "Refund Processed to Source",
+          done: true,
+          isCancelled: false
+        }
+      ];
+    }
+
+    if (s === "partially refunded") {
+      return [
+        {
+          label: "Order placed",
+          date: orderPlacedDate,
+          done: true,
+          isCancelled: false
+        },
+        {
+          label: "Partially Refunded",
+          date: "Partial Refund Processed",
           done: true,
           isCancelled: false
         }
@@ -981,7 +1153,7 @@ const OrderDetails = ({ order, onBack }) => {
                 <span className="od__info-label">Fulfillment</span>
                 <span className="od__info-value">
                   <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11.5px', fontWeight: '600', background: '#e0e7ff', color: '#3730a3' }}>
-                    📦 Manual Courier
+                    Manual Courier
                   </span>
                 </span>
               </>
@@ -1222,10 +1394,88 @@ const OrderDetails = ({ order, onBack }) => {
                 gap: '6px'
               }}
             >
-              📦 Edit Courier / Ship Manually
+              Edit Courier / Ship Manually
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Refund Management */}
+      <div className="od__card od__card--section">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <div className="od__card-title" style={{ marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Refund Management
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '3px 10px',
+                  borderRadius: '9999px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  backgroundColor: refundBadgeBg,
+                  color: refundBadgeColor,
+                }}
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: refundBadgeDot }} />
+                {refundBadgeText}
+              </span>
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b' }}>
+              Refunds are strictly for damaged/broken items (customer unboxing video verification required). Product price only; shipping fee is non-refundable.
+            </div>
+          </div>
+
+          {isAdmin && (
+            <button
+              type="button"
+              className="od__refund-btn"
+              onClick={handleOpenRefundModal}
+              disabled={isRefundDisabled}
+              title={refundDisabledReason || "Initiate refund via Razorpay"}
+            >
+              Update Refund
+            </button>
+          )}
+        </div>
+
+        <div className="od__info-grid" style={{ marginTop: '12px' }}>
+          <span className="od__info-label">Max Eligible Refund</span>
+          <span className="od__info-value" style={{ fontWeight: '600', color: '#047857' }}>
+            ₹{maxRefundable.toLocaleString('en-IN')} (Product Price)
+          </span>
+
+          <span className="od__info-label">Shipping Fee</span>
+          <span className="od__info-value" style={{ color: '#64748b' }}>
+            ₹{shippingFee.toLocaleString('en-IN')} (Non-refundable)
+          </span>
+
+          <span className="od__info-label">Payment ID</span>
+          <span className="od__info-value" style={{ fontFamily: 'monospace' }}>
+            {o.razorpay_payment_id || <span style={{ color: '#94a3b8' }}>None (COD / Unpaid)</span>}
+          </span>
+        </div>
+
+        {refundDisabledReason && !isFullyRefunded && (
+          <div style={{ marginTop: '10px', fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>
+            ℹ️ {refundDisabledReason}
+          </div>
+        )}
+
+        {refundLogs.length > 0 && (
+          <div style={{ marginTop: '14px', borderTop: '1px solid #f1f5f9', paddingTop: '12px' }}>
+            <div style={{ fontSize: '12px', fontWeight: '600', color: '#475569', marginBottom: '6px' }}>
+              Refund Audit Trail
+            </div>
+            <div className="od__refund-audit-box">
+              {refundLogs.map((log, idx) => (
+                <div key={idx}>{log}</div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Order Timeline */}
@@ -1376,6 +1626,269 @@ const OrderDetails = ({ order, onBack }) => {
           )}
         </button>
       </div>
+
+      {/* Refund Modal */}
+      {showRefundModal && (
+        <div
+          className="od__modal-overlay"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+          onClick={() => !submittingRefund && setShowRefundModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: '#fff',
+              borderRadius: '14px',
+              width: '100%',
+              maxWidth: '520px',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>
+                  Update Refund (Razorpay)
+                </h3>
+                <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+                  Order: #{o.id} • Razorpay Payment: {o.razorpay_payment_id || "N/A"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !submittingRefund && setShowRefundModal(false)}
+                disabled={submittingRefund}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: submittingRefund ? 'not-allowed' : 'pointer',
+                  color: '#94a3b8',
+                  padding: '2px 6px',
+                  borderRadius: '4px'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Warning Prompt */}
+            <div
+              style={{
+                backgroundColor: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '16px',
+                display: 'flex',
+                gap: '10px',
+                alignItems: 'flex-start'
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>⚠️</span>
+              <div style={{ fontSize: '12.5px', color: '#92400e', lineHeight: '1.4' }}>
+                <strong>Important:</strong> This will send the refund directly to the customer's original payment source via Razorpay. Once initiated, this action <u>cannot be undone</u>.
+              </div>
+            </div>
+
+            {refundError && (
+              <div
+                style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  color: '#b91c1c',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <span>✕</span> {refundError}
+              </div>
+            )}
+
+            <form onSubmit={handleInitiateRefundSubmit}>
+              {/* Reason Dropdown */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                  Refund Reason <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <select
+                  value={refundForm.reason}
+                  onChange={(e) => setRefundForm(prev => ({ ...prev, reason: e.target.value }))}
+                  disabled={submittingRefund}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13.5px',
+                    backgroundColor: '#fff',
+                    color: '#0f172a'
+                  }}
+                >
+                  <option value="Damaged">Damaged Item</option>
+                  <option value="Broken">Broken Item</option>
+                  <option value="Missing item">Missing item</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              {/* Amount Input */}
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+                    Refund Amount (₹) <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <span style={{ fontSize: '12px', color: '#047857', fontWeight: '600' }}>
+                    Max eligible: ₹{maxRefundable.toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  max={maxRefundable}
+                  value={refundForm.amount}
+                  onChange={(e) => setRefundForm(prev => ({ ...prev, amount: e.target.value }))}
+                  disabled={submittingRefund}
+                  placeholder={`e.g. ${maxRefundable}`}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    backgroundColor: '#fff',
+                    color: '#0f172a',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+                  Store policy: Product price only (₹{maxRefundable}). Shipping fee of ₹{shippingFee} is non-refundable.
+                </div>
+              </div>
+
+              {/* Note / Comments */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
+                  Admin Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={refundForm.note}
+                  onChange={(e) => setRefundForm(prev => ({ ...prev, note: e.target.value }))}
+                  disabled={submittingRefund}
+                  placeholder="e.g. Unboxing video verified by admin; ear hook broken"
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '13px',
+                    backgroundColor: '#fff',
+                    color: '#0f172a',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {/* Mandatory Verification Checkbox */}
+              <div
+                style={{
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  marginBottom: '20px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  id="refund-verification-check"
+                  checked={refundForm.isVerified}
+                  onChange={(e) => setRefundForm(prev => ({ ...prev, isVerified: e.target.checked }))}
+                  disabled={submittingRefund}
+                  style={{ marginTop: '3px', cursor: 'pointer', width: '16px', height: '16px' }}
+                />
+                <label
+                  htmlFor="refund-verification-check"
+                  style={{ fontSize: '12.5px', color: '#1e293b', lineHeight: '1.4', cursor: 'pointer', fontWeight: '500' }}
+                >
+                  <strong style={{ color: '#0f172a' }}>Verification Confirmation (Required):</strong> I have verified the product is damaged or broken (e.g., reviewed customer's unboxing video proof) per store policy.
+                </label>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowRefundModal(false)}
+                  disabled={submittingRefund}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#fff',
+                    color: '#475569',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: submittingRefund ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingRefund || !refundForm.isVerified}
+                  style={{
+                    padding: '9px 20px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: submittingRefund || !refundForm.isVerified ? '#cbd5e1' : '#8b0030',
+                    color: submittingRefund || !refundForm.isVerified ? '#94a3b8' : '#fff',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: submittingRefund || !refundForm.isVerified ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {submittingRefund ? (
+                    <>
+                      <span className="od__spinner" style={{ width: '13px', height: '13px', borderTopColor: '#fff' }} />
+                      Initiating Refund...
+                    </>
+                  ) : (
+                    "Confirm & Initiate Refund"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Invoice Preview Modal */}
       {showInvoiceModal && (
@@ -1572,26 +2085,34 @@ const OrderDetails = ({ order, onBack }) => {
                 <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
                   Order Status
                 </label>
-                <select
-                  value={courierForm.status}
-                  onChange={(e) => setCourierForm(f => ({ ...f, status: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    backgroundColor: '#fff'
-                  }}
-                >
-                  <option value="Shipped">Shipped (Dispatched)</option>
-                  <option value="Delivered">Delivered</option>
-                  <option value="Order Placed">Order Placed / Confirmed</option>
-                </select>
-                <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: '#64748b' }}>
-                  Setting to &quot;Shipped&quot; will preserve the order price and count in total revenue and orders.
-                </p>
+                {["refund initiated", "refunded", "partially refunded", "refund failed", "refund completed"].includes((o.status || "").toLowerCase()) ? (
+                  <div style={{ padding: '9px 12px', borderRadius: '6px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', fontSize: '13px', color: '#475569' }}>
+                    🔒 <strong>Status Locked:</strong> Order is in refund status (<strong>{o.status}</strong>). Status cannot be altered manually.
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={courierForm.status}
+                      onChange={(e) => setCourierForm(f => ({ ...f, status: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        backgroundColor: '#fff'
+                      }}
+                    >
+                      <option value="Shipped">Shipped (Dispatched)</option>
+                      <option value="Delivered">Delivered</option>
+                      <option value="Order Placed">Order Placed / Confirmed</option>
+                    </select>
+                    <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: '#64748b' }}>
+                      Setting to &quot;Shipped&quot; will preserve the order price and count in total revenue and orders.
+                    </p>
+                  </>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

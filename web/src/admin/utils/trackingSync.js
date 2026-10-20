@@ -6,7 +6,7 @@ export const isTerminalOrder = (order) => {
   if (!order) return false;
   const s = (order.status || '').toLowerCase();
   const d = (order.delivery_status || '').toLowerCase();
-  const terminalTerms = ['delivered', 'cancelled', 'canceled', 'refund completed'];
+  const terminalTerms = ['delivered', 'cancelled', 'canceled', 'refund completed', 'refunded'];
   return (
     terminalTerms.some((t) => s.includes(t)) &&
     terminalTerms.some((t) => d.includes(t))

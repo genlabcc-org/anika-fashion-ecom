@@ -183,7 +183,160 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Return 200 quickly for any other events (e.g., payment.authorized, refund.processed)
+    // Handle refund.processed and refund.failed
+    if (event === "refund.processed" || event === "refund.failed") {
+      const refundEntity = payload.payload?.refund?.entity || payload.payload?.refund;
+      const refundId = refundEntity?.id;
+      const paymentId = refundEntity?.payment_id;
+      const refundAmountPaise = Number(refundEntity?.amount || 0);
+      const refundAmountRupees = Math.round(refundAmountPaise / 100);
+
+      if (!paymentId) {
+        console.warn(`[razorpay-webhook] Event ${event} missing payment_id in refund entity`);
+        return new Response(
+          JSON.stringify({ received: true, warning: "Missing payment_id in refund entity", event }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Find order by razorpay_payment_id
+      let { data: order } = await supabaseAdmin
+        .from("orders")
+        .select("id, status, admin_notes, total_price, shipping_fee, razorpay_payment_id")
+        .eq("razorpay_payment_id", paymentId)
+        .maybeSingle();
+
+      // Fallback: check notes.order_id if present
+      if (!order && refundEntity?.notes?.order_id) {
+        const { data: orderById } = await supabaseAdmin
+          .from("orders")
+          .select("id, status, admin_notes, total_price, shipping_fee, razorpay_payment_id")
+          .eq("id", refundEntity.notes.order_id)
+          .maybeSingle();
+        if (orderById) {
+          order = orderById;
+        }
+      }
+
+      if (!order) {
+        console.warn(`[razorpay-webhook] No order found for payment_id: ${paymentId}, refund_id: ${refundId || "N/A"}. Returning 200.`);
+        return new Response(
+          JSON.stringify({ received: true, warning: "No matching order found", payment_id: paymentId, refund_id: refundId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const currentNotes = order.admin_notes || "";
+
+      // Idempotency check:
+      // Skip ONLY when admin_notes already contains a finalized line ("[REFUND] processed" or "[REFUND] failed")
+      // for this same refund ID. Must NOT skip on "[REFUND] initiated".
+      const hasFinalizedLine = refundId && currentNotes.split("\n").some((line) => {
+        const trimmed = line.trim();
+        if (event === "refund.processed") {
+          return trimmed.startsWith("[REFUND] processed") && trimmed.includes(refundId);
+        }
+        if (event === "refund.failed") {
+          return trimmed.startsWith("[REFUND] failed") && trimmed.includes(refundId);
+        }
+        return false;
+      });
+
+      if (hasFinalizedLine) {
+        console.log(`[razorpay-webhook] Event ${event} for refund ${refundId} already finalized in admin_notes on order ${order.id}. Returning 200.`);
+        return new Response(
+          JSON.stringify({ received: true, alreadyProcessed: true, orderId: order.id, refundId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const timestamp = new Date().toISOString();
+
+      if (event === "refund.processed") {
+        // Fetch payment details from Razorpay to get accurate total amount_refunded
+        const keyId = Deno.env.get("RAZORPAY_KEY_ID") || "";
+        const keySecret = Deno.env.get("RAZORPAY_KEY_SECRET") || "";
+        let totalRefundedPaise = refundAmountPaise;
+
+        if (keyId && keySecret) {
+          try {
+            const basicAuth = btoa(`${keyId}:${keySecret}`);
+            const pRes = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}`, {
+              headers: {
+                Authorization: `Basic ${basicAuth}`,
+                "Content-Type": "application/json",
+              },
+            });
+            if (pRes.ok) {
+              const pData = await pRes.json();
+              if (pData?.amount_refunded !== undefined) {
+                totalRefundedPaise = Number(pData.amount_refunded);
+              }
+            } else {
+              console.warn(`[razorpay-webhook] Razorpay payment fetch returned status ${pRes.status} for ${paymentId}`);
+            }
+          } catch (fetchErr) {
+            console.error(`[razorpay-webhook] Failed to fetch payment details from Razorpay:`, fetchErr);
+          }
+        }
+
+        const totalPriceRupees = Number(order.total_price || 0);
+        const shippingFeeRupees = Number(order.shipping_fee || 0);
+        const maxRefundableRupees = Math.max(0, totalPriceRupees - shippingFeeRupees);
+        const totalRefundedRupees = totalRefundedPaise / 100;
+
+        // If amount refunded covers the eligible product price (or total), status is 'Refunded'
+        const nextStatus = totalRefundedRupees >= maxRefundableRupees ? "Refunded" : "Partially Refunded";
+
+        const appendLog = `[REFUND] processed ${timestamp} | ${refundId || "unknown_refund"} | ₹${refundAmountRupees}`;
+        const newNotes = currentNotes ? `${currentNotes}\n${appendLog}` : appendLog;
+
+        const { error: updateErr } = await supabaseAdmin
+          .from("orders")
+          .update({
+            status: nextStatus,
+            admin_notes: newNotes,
+          })
+          .eq("id", order.id);
+
+        if (updateErr) {
+          console.error(`[razorpay-webhook] Failed to update order ${order.id} on refund.processed:`, updateErr);
+          throw updateErr;
+        }
+
+        console.log(`[razorpay-webhook] Order ${order.id} updated to status "${nextStatus}" for refund ${refundId}`);
+        return new Response(
+          JSON.stringify({ received: true, success: true, orderId: order.id, status: nextStatus, refundId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (event === "refund.failed") {
+        const appendLog = `[REFUND] failed ${timestamp} | ${refundId || "unknown_refund"}`;
+        const newNotes = currentNotes ? `${currentNotes}\n${appendLog}` : appendLog;
+
+        const { error: updateErr } = await supabaseAdmin
+          .from("orders")
+          .update({
+            status: "Refund Failed",
+            admin_notes: newNotes,
+          })
+          .eq("id", order.id);
+
+        if (updateErr) {
+          console.error(`[razorpay-webhook] Failed to update order ${order.id} on refund.failed:`, updateErr);
+          throw updateErr;
+        }
+
+        console.log(`[razorpay-webhook] Order ${order.id} marked as "Refund Failed" for refund ${refundId}`);
+        return new Response(
+          JSON.stringify({ received: true, success: true, orderId: order.id, status: "Refund Failed", refundId }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Return 200 quickly for any other events (e.g., payment.authorized)
     return new Response(
       JSON.stringify({ received: true, ignored: true, event }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

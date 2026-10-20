@@ -1,4 +1,8 @@
 import React, { useState } from "react";
+import Toast from "../../components/Toast";
+import ExportOrdersModal from "../components/ExportOrdersModal";
+import { useAdmin } from "../../hooks/useAdmin";
+import { useStore } from "../../hooks/useStore";
 import "./Allcustomers.css";
 
 const ROWS_PER_PAGE = 10;
@@ -270,7 +274,18 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [localCustomers, setLocalCustomers] = useState([]);
+
+  const { isAdmin: adminHookStatus } = useAdmin();
+  const storeIsAdmin = useStore((state) => state.isAdmin);
+  const isAdmin = storeIsAdmin || adminHookStatus;
+
+  const [toast, setToast] = useState({ message: "", type: "" });
+  const showToast = (message, type = "info") => {
+    setToast({ message: "", type: "" });
+    setTimeout(() => setToast({ message, type }), 10);
+  };
 
   // Merge local added customers (if any) with database customers
   const allCustomers = [...customers, ...localCustomers];
@@ -427,6 +442,19 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
           <h1 className="ac__title">All Customers</h1>
           <span className="ac__subtitle">{loading ? "Loading…" : `${filtered.length} customers`}</span>
         </div>
+        <div className="ac__header-actions">
+          {isAdmin && (
+            <button
+              type="button"
+              className="ac__export-btn"
+              onClick={() => setShowExportModal(true)}
+              title="Download order data (CSV export)"
+            >
+              <span className="ac__export-icon">📥</span>
+              <span>Download Data</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── Stat Cards ── */}
@@ -573,6 +601,19 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
           onAdd={handleAddCustomer}
         />
       )}
+
+      {/* ── CSV Export Modal ── */}
+      <ExportOrdersModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onToast={showToast}
+      />
+
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: "", type: "" })}
+      />
     </div>
   );
 };
