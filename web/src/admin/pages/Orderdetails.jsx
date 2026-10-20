@@ -533,6 +533,7 @@ const OrderDetails = ({ order, onBack }) => {
         tracking_url: trackingUrl || null,
         status: statusVal,
         delivery_status: statusVal,
+        shipment_error: null,
         shipped_at: o.shipped_at || new Date().toISOString(),
         delivered_at: statusVal === "Delivered" ? (o.delivered_at || new Date().toISOString()) : null,
       };
@@ -1093,7 +1094,7 @@ const OrderDetails = ({ order, onBack }) => {
                 <span className="od__info-value">{o.shipment_id}</span>
               </>
             )}
-            {(o.delivery_status === 'Booking Failed' || o.shipment_error) && (
+            {(o.delivery_status === 'Booking Failed' || (o.shipment_error && o.fulfillment_type !== 'manual')) && (
               <>
                 <span className="od__info-label" style={{ color: '#dc2626', fontWeight: '600' }}>Shipment Error</span>
                 <span className="od__info-value" style={{ color: '#dc2626', wordBreak: 'break-word', fontSize: '12.5px', background: '#fef2f2', padding: '6px 10px', borderRadius: '4px', border: '1px solid #fecaca' }}>

@@ -1,7 +1,12 @@
 import { supabase } from '../lib/supabase';
 
-export const normState = (s) =>
-  String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z]/g, '');
+export const normState = (s) => {
+  const n = String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z]/g, '');
+  if (n === 'pondicherry' || n === 'pondichery' || n === 'pondicherryy') return 'puducherry';
+  if (n === 'orissa') return 'odisha';
+  if (n === 'uttaranchal') return 'uttarakhand';
+  return n;
+};
 
 export const DEFAULT_STATE_KEY = '__default__';
 
@@ -33,6 +38,7 @@ export const INDIAN_STATES = [
   "Nagaland",
   "Odisha",
   "Puducherry",
+  "Pondicherry",
   "Punjab",
   "Rajasthan",
   "Sikkim",

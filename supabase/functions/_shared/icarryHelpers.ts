@@ -6,19 +6,27 @@
  */
 export const STATE_CODE: Record<string, string> = {
   'andaman and nicobar islands': 'AN',
+  'andaman & nicobar islands': 'AN',
+  'andaman and nicobar': 'AN',
+  'andaman & nicobar': 'AN',
   'andhra pradesh': 'AP',
   'arunachal pradesh': 'AR',
   'assam': 'AS',
   'bihar': 'BI',
   'chandigarh': 'CH',
   'dadra and nagar haveli': 'DA',
+  'dadra & nagar haveli': 'DA',
+  'dadra and nagar haveli and daman and diu': 'DA',
+  'dadra & nagar haveli and daman & diu': 'DA',
   'daman and diu': 'DM',
+  'daman & diu': 'DM',
   'delhi': 'DE',
   'goa': 'GO',
   'gujarat': 'GU',
   'haryana': 'HA',
   'himachal pradesh': 'HP',
   'jammu and kashmir': 'JA',
+  'jammu & kashmir': 'JA',
   'jharkhand': 'JH',
   'karnataka': 'KA',
   'kerala': 'KE',
@@ -32,7 +40,9 @@ export const STATE_CODE: Record<string, string> = {
   'mizoram': 'MI',
   'nagaland': 'NA',
   'odisha': 'OD',
+  'orissa': 'OD',
   'puducherry': 'PO',
+  'pondicherry': 'PO',
   'punjab': 'PU',
   'rajasthan': 'RA',
   'sikkim': 'SI',
@@ -41,6 +51,7 @@ export const STATE_CODE: Record<string, string> = {
   'tripura': 'TR',
   'uttar pradesh': 'UP',
   'uttarakhand': 'UK',
+  'uttaranchal': 'UK',
   'west bengal': 'WB',
   'chhattisgarh': 'CG',
   'chattisgarh': 'CG',
@@ -52,8 +63,29 @@ export const STATE_CODE: Record<string, string> = {
 export const toStateCode = (s?: string): string => {
   if (!s) return '';
   const t = s.trim();
-  if (t.length === 2) return t.toUpperCase();
-  return STATE_CODE[t.toLowerCase()] ?? '';
+  if (t.length === 2) {
+    const code = t.toUpperCase();
+    if (code === 'PY') return 'PO'; // ISO code for Puducherry -> iCarry code
+    return code;
+  }
+  const lower = t.toLowerCase();
+  const direct = STATE_CODE[lower];
+  if (direct) return direct;
+
+  const normalized = lower
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (STATE_CODE[normalized]) return STATE_CODE[normalized];
+
+  if (normalized.includes('pondicherry') || normalized.includes('puducherry')) return 'PO';
+  if (normalized.includes('andaman')) return 'AN';
+  if (normalized.includes('kashmir') || normalized.includes('jammu')) return 'JA';
+  if (normalized.includes('daman') || normalized.includes('diu') || normalized.includes('dadra')) return 'DA';
+  if (normalized.includes('odisha') || normalized.includes('orissa')) return 'OD';
+  if (normalized.includes('uttarakhand') || normalized.includes('uttaranchal')) return 'UK';
+  return '';
 };
 
 /**

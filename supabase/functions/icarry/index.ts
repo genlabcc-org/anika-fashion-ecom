@@ -372,6 +372,11 @@ Deno.serve(async (req: Request) => {
       if (payload.manual_courier_name !== undefined) updates.manual_courier_name = payload.manual_courier_name;
       if (payload.manual_awb !== undefined) updates.manual_awb = payload.manual_awb;
       if (payload.manual_tracking_url !== undefined) updates.manual_tracking_url = payload.manual_tracking_url;
+      if (payload.shipment_error !== undefined) {
+        updates.shipment_error = payload.shipment_error;
+      } else if (payload.fulfillment_type === "manual") {
+        updates.shipment_error = null;
+      }
 
       const { data: updatedOrder, error: updateErr } = await supabaseAdmin
         .from("orders")
