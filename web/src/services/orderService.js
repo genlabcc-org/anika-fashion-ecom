@@ -500,13 +500,13 @@ export const orderService = {
       const chunk = uniqueUserIds.slice(i, i + PROFILE_CHUNK);
       const { data: profs, error: profError } = await supabase
         .from('profiles')
-        .select('id, name, email')
+        .select('id, name, email, phone')
         .in('id', chunk);
       if (profError) throw profError;
       profs?.forEach((p) => profilesMap.set(p.id, p));
     }
 
-    // 4. Batch fetch addresses for recipient name (address_id -> public.addresses in chunks of 200)
+    // 4. Batch fetch customer addresses (address_id -> public.addresses in chunks of 200)
     const uniqueAddressIds = Array.from(new Set(allOrders.map((o) => o.address_id).filter(Boolean)));
     const addressesMap = new Map();
     const ADDR_CHUNK = 200;
@@ -514,7 +514,7 @@ export const orderService = {
       const chunk = uniqueAddressIds.slice(i, i + ADDR_CHUNK);
       const { data: addrs, error: addrError } = await supabase
         .from('addresses')
-        .select('address_id, full_name')
+        .select('address_id, full_name, phone_number, address_line1, address_line2, city, state, postal_code, country')
         .in('address_id', chunk);
       if (addrError) throw addrError;
       addrs?.forEach((a) => addressesMap.set(a.address_id, a));
@@ -533,6 +533,23 @@ export const orderService = {
       // Email ID: profiles.email. If empty, leave blank
       const email = (profile?.email || '').trim();
 
+      // Contact Phone: addresses.phone_number -> profiles.phone -> ""
+      const phone = (address?.phone_number || profile?.phone || '').trim();
+
+      // Street Address (Line 1 & Line 2)
+      const line1 = (address?.address_line1 || '').trim();
+      const line2 = (address?.address_line2 || '').trim();
+      const streetAddress = [line1, line2].filter(Boolean).join(', ');
+
+      const city = (address?.city || '').trim();
+      const state = (address?.state || '').trim();
+      const pincode = (address?.postal_code || '').trim();
+
+      // Full Formatted Address for one-click shipping label / dispatch
+      const statePin = state && pincode ? `${state} - ${pincode}` : (state || pincode);
+      const fullAddressParts = [streetAddress, city, statePin].filter(Boolean);
+      const fullAddress = fullAddressParts.join(', ');
+
       // Price: orders.total_price as plain number so Excel can sum it
       const price = isNaN(Number(order.total_price)) ? 0 : Number(order.total_price);
 
@@ -543,6 +560,12 @@ export const orderService = {
         orderId: order.id,
         customerName: customerName,
         email: email,
+        phone: phone,
+        address: streetAddress,
+        city: city,
+        state: state,
+        pincode: pincode,
+        fullAddress: fullAddress,
         price: price,
         dateTime: dateTime,
       };

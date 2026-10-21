@@ -130,19 +130,37 @@ export function escapeCsvField(val, isNumeric = false) {
 
 /**
  * Converts order export records into an Excel-friendly UTF-8 with BOM CSV string.
- * Columns: Order ID, Customer Name, Email ID, Price, Date & Time.
+ * Columns: Order ID, Customer Name, Email ID, Phone Number, Address, City, State, Pincode, Full Address, Price, Date & Time.
  * 
- * @param {Array<{ orderId: string, customerName: string, email: string, price: number, dateTime: string }>} rows
+ * @param {Array<{ orderId: string, customerName: string, email: string, phone: string, address: string, city: string, state: string, pincode: string, fullAddress: string, price: number, dateTime: string }>} rows
  * @returns {string}
  */
 export function generateOrdersCsv(rows = []) {
-  const headers = ['Order ID', 'Customer Name', 'Email ID', 'Price', 'Date & Time'];
+  const headers = [
+    'Order ID',
+    'Customer Name',
+    'Email ID',
+    'Phone Number',
+    'Address',
+    'City',
+    'State',
+    'Pincode',
+    'Full Address',
+    'Price',
+    'Date & Time',
+  ];
   const headerLine = headers.map((h) => escapeCsvField(h)).join(',');
 
   const rowLines = rows.map((r) => [
     escapeCsvField(r.orderId),
     escapeCsvField(r.customerName),
     escapeCsvField(r.email),
+    escapeCsvField(r.phone),
+    escapeCsvField(r.address),
+    escapeCsvField(r.city),
+    escapeCsvField(r.state),
+    escapeCsvField(r.pincode),
+    escapeCsvField(r.fullAddress),
     escapeCsvField(r.price, true),
     escapeCsvField(r.dateTime),
   ].join(','));

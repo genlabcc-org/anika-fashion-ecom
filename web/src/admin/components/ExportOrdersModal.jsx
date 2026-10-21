@@ -165,7 +165,7 @@ export default function ExportOrdersModal({ isOpen, onClose, onToast }) {
           <div className="eom__header-text">
             <h3 id="eom-title" className="eom__title">Download Order Data</h3>
             <p className="eom__subtitle">
-              Export customer names, emails, prices, and timestamps to an Excel-friendly CSV.
+              Export customer names, emails, addresses, prices, and timestamps to an Excel-friendly CSV.
             </p>
           </div>
           <button
@@ -269,7 +269,7 @@ export default function ExportOrdersModal({ isOpen, onClose, onToast }) {
                 <span className="eom__format-badge">UTF-8 with BOM</span>
               </div>
               <p className="eom__format-desc">
-                Columns: <strong>Order ID, Customer Name, Email ID, Price, Date &amp; Time (IST)</strong>.
+                Columns: <strong>Order ID, Customer Name, Email ID, Phone Number, Address, City, State, Pincode, Full Address, Price, Date &amp; Time (IST)</strong>.
                 Formula-injection safe and formatted for Excel / Google Sheets calculation.
               </p>
             </div>
