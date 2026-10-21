@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { orderService } from '../services/orderService';
 import { resolveCustomerName, resolveCustomerPhone } from '../utils/customerName';
+import { isCountableCustomerOrder, getOrderCustomerKey } from '../utils/orderUtils';
 import { useStore } from './useStore';
 
 export function useAdminData() {
@@ -133,9 +134,70 @@ export function useAdminData() {
     }
   };
 
+  // Precompute customer order counts and total spent in a single O(N) pass
+  const { customerOrderCountMap, customerTotalSpentMap } = useMemo(() => {
+    const countMap = new Map();
+    const spentMap = new Map();
+
+    for (const order of orders) {
+      if (!isCountableCustomerOrder(order)) continue;
+      const key = getOrderCustomerKey(order);
+      if (key) {
+        countMap.set(key, (countMap.get(key) || 0) + 1);
+      }
+      if (order.user_id) {
+        spentMap.set(order.user_id, (spentMap.get(order.user_id) || 0) + Number(order.total_price || 0));
+      }
+    }
+    return { customerOrderCountMap: countMap, customerTotalSpentMap: spentMap };
+  }, [orders]);
+
+  const aggregatedCustomers = useMemo(() => {
+    // Collect sample address / phone per customer ID in a single O(N) pass
+    const orderByUser = new Map();
+    for (const o of orders) {
+      if (o.user_id && !orderByUser.has(o.user_id)) {
+        orderByUser.set(o.user_id, o);
+      }
+    }
+
+    return customers.map((customer) => {
+      const sampleOrder = orderByUser.get(customer.id);
+      const phone = resolveCustomerPhone({
+        phone: customer.phone || customer.phone_number || customer.mobile || customer.phoneNumber || sampleOrder?.phone || sampleOrder?.phone_number || sampleOrder?.customer?.phone,
+        address: sampleOrder?.shipping_address || sampleOrder?.address,
+        fallback: 'No phone set',
+      });
+      const name = resolveCustomerName({
+        profileName: customer.name || customer.full_name || sampleOrder?.customer?.name,
+        address: sampleOrder?.shipping_address || sampleOrder?.address,
+        fallback: 'No name set',
+      });
+      const email = customer.email || sampleOrder?.customer?.email || '';
+
+      // O(1) Map lookups for count and spent
+      const orderCount = customerOrderCountMap.get(`user:${customer.id}`) || 0;
+      const totalSpent = customerTotalSpentMap.get(customer.id) || 0;
+
+      return {
+        ...customer,
+        name,
+        email,
+        phone,
+        orderCount,
+        totalSpent,
+      };
+    });
+  }, [orders, customers, customerOrderCountMap, customerTotalSpentMap]);
+
   const aggregatedOrders = useMemo(() => {
+    const customerById = new Map();
+    aggregatedCustomers.forEach((c) => {
+      if (c.id) customerById.set(c.id, c);
+    });
+
     return orders.map((order) => {
-      const matchedCustomer = customers.find((c) => c.id === order.user_id);
+      const matchedCustomer = order.user_id ? customerById.get(order.user_id) : null;
       const orderAddr = order.shipping_address || order.address;
       const phone = resolveCustomerPhone({
         phone: matchedCustomer?.phone || matchedCustomer?.phone_number || matchedCustomer?.mobile || order.phone || order.phone_number || order.customer?.phone,
@@ -149,6 +211,10 @@ export function useAdminData() {
       });
       const email = matchedCustomer?.email || order.customer?.email || 'N/A';
 
+      // Fast O(1) map lookup using group-by user_id first, guest phone/email only for null user_id
+      const key = getOrderCustomerKey(order);
+      const orderCount = customerOrderCountMap.get(key) || 0;
+
       return {
         ...order,
         customer: {
@@ -157,47 +223,11 @@ export function useAdminData() {
           phone,
           email,
           ...matchedCustomer,
+          orderCount,
         },
       };
     });
-  }, [orders, customers]);
-
-  const aggregatedCustomers = useMemo(() => {
-    return customers.map((customer) => {
-      const customerOrders = orders.filter((o) => o.user_id === customer.id);
-      const orderWithAddress = customerOrders.find((o) => o.shipping_address || o.address);
-      const orderWithPhone = customerOrders.find((o) => o.phone || o.phone_number || o.customer?.phone || o.shipping_address?.phone);
-      const orderPhone = orderWithPhone?.phone || orderWithPhone?.phone_number || orderWithPhone?.customer?.phone || orderWithPhone?.shipping_address?.phone;
-
-      const phone = resolveCustomerPhone({
-        phone: customer.phone || customer.phone_number || customer.mobile || customer.phoneNumber || orderPhone,
-        address: orderWithAddress?.shipping_address || orderWithAddress?.address,
-        fallback: 'No phone set',
-      });
-      const name = resolveCustomerName({
-        profileName: customer.name || customer.full_name || customerOrders[0]?.customer?.name,
-        address: orderWithAddress?.shipping_address || orderWithAddress?.address,
-        fallback: 'No name set',
-      });
-      const email = customer.email || (customerOrders[0]?.customer?.email) || '';
-
-      const totalSpent = customerOrders
-        .filter((o) => {
-          const s = o.status?.toLowerCase();
-          return s !== 'cancelled' && s !== 'returned';
-        })
-        .reduce((sum, o) => sum + Number(o.total_price || 0), 0);
-
-      return {
-        ...customer,
-        name,
-        email,
-        phone,
-        orderCount: customerOrders.length,
-        totalSpent,
-      };
-    });
-  }, [orders, customers]);
+  }, [orders, aggregatedCustomers, customerOrderCountMap]);
 
   return {
     orders: aggregatedOrders,
