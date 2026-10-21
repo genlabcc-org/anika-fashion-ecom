@@ -145,35 +145,52 @@ export const orderService = {
    * @returns {Promise<any[]>}
    */
   async getAllOrders() {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('order_date', { ascending: false });
-    if (error) throw error;
-    if (data && data.length > 0) {
+    const PAGE_SIZE = 1000;
+    let allOrders = [];
+    let pageIndex = 0;
+    while (true) {
+      const from = pageIndex * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('order_date', { ascending: false })
+        .range(from, to);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allOrders.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      pageIndex++;
+    }
+
+    if (allOrders.length > 0) {
       try {
-        const orderIds = data.map((o) => o.id);
-        const { data: allItems } = await supabase
-          .from('order_items')
-          .select('*')
-          .in('order_id', orderIds);
-        if (allItems && allItems.length > 0) {
-          const itemsByOrderId = {};
-          allItems.forEach((item) => {
-            if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];
-            itemsByOrderId[item.order_id].push(item);
-          });
-          data.forEach((o) => {
-            if (itemsByOrderId[o.id]) {
-              o.order_items = itemsByOrderId[o.id];
-            }
-          });
+        const orderIds = allOrders.map((o) => o.id);
+        const BATCH_SIZE = 200;
+        const itemsByOrderId = {};
+        for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+          const chunkIds = orderIds.slice(i, i + BATCH_SIZE);
+          const { data: allItems } = await supabase
+            .from('order_items')
+            .select('*')
+            .in('order_id', chunkIds);
+          if (allItems && allItems.length > 0) {
+            allItems.forEach((item) => {
+              if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];
+              itemsByOrderId[item.order_id].push(item);
+            });
+          }
         }
+        allOrders.forEach((o) => {
+          if (itemsByOrderId[o.id]) {
+            o.order_items = itemsByOrderId[o.id];
+          }
+        });
       } catch (e) {
         console.warn('Error joining order_items in getAllOrders:', e);
       }
     }
-    return data || [];
+    return allOrders || [];
   },
 
   /**
@@ -229,15 +246,28 @@ export const orderService = {
 
   /**
    * Retrieves all customer profiles in the system (admin view).
+   * Paginates in 1000-row chunks with .range() so lists stay complete beyond 1000 customers.
    * @returns {Promise<any[]>}
    */
   async getAllCustomers() {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('updated_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
+    const PAGE_SIZE = 1000;
+    let allCustomers = [];
+    let pageIndex = 0;
+    while (true) {
+      const from = pageIndex * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .range(from, to);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allCustomers.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      pageIndex++;
+    }
+    return allCustomers || [];
   },
 
   /**

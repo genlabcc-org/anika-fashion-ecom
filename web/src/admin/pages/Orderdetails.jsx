@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { orderService } from "../../services/orderService";
+import { formatCustomerOrderCount } from "../../utils/orderUtils";
 
 import { icarryService } from "../../services/icarryService";
 import { useStore } from "../../hooks/useStore";
@@ -47,6 +48,9 @@ const OrderDetails = ({ order, onBack }) => {
   const [addressLoading, setAddressLoading] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "" });
+  const [customerOrderCount, setCustomerOrderCount] = useState(
+    order?.customer?.orderCount ?? null
+  );
 
   const [invoicePrinted, setInvoicePrinted] = useState(order?.invoice_printed || false);
   const [printing, setPrinting] = useState(false);
@@ -105,6 +109,9 @@ const OrderDetails = ({ order, onBack }) => {
       if (order.invoice_printed !== undefined) {
         setInvoicePrinted(order.invoice_printed);
       }
+      if (order.customer?.orderCount !== undefined && order.customer?.orderCount !== null) {
+        setCustomerOrderCount(order.customer.orderCount);
+      }
     }
   }, [order]);
 
@@ -115,7 +122,7 @@ const OrderDetails = ({ order, onBack }) => {
 
     orderService.getOrderById(orderId).then((fresh) => {
       if (fresh) {
-        setCurrentOrder((prev) => ({ ...(prev || {}), ...fresh }));
+        setCurrentOrder((prev) => ({ ...(prev || order || {}), ...fresh }));
         if (fresh.admin_notes !== undefined) {
           setAdminNote(fresh.admin_notes || "");
         }
@@ -313,23 +320,58 @@ const OrderDetails = ({ order, onBack }) => {
     setAdminNote(o.admin_notes || "");
   }, [o.admin_notes]);
 
+  const targetUserId = o?.user_id || o?.customer?.id || order?.user_id || order?.customer?.id;
+
+  // 1. Fetch Shipping Address
   useEffect(() => {
-    if (o.user_id) {
-      const fetchAddress = async () => {
-        try {
-          setAddressLoading(true);
-          const data = await orderService.getAddresses(o.user_id);
-          const defaultAddr = data.find(a => a.is_default) || data[0];
-          setAddress(defaultAddr || null);
-        } catch (err) {
-          console.error("Error fetching shipping address:", err);
-        } finally {
-          setAddressLoading(false);
-        }
-      };
-      fetchAddress();
+    if (!targetUserId) return;
+    let isCurrent = true;
+    setAddressLoading(true);
+    orderService.getAddresses(targetUserId)
+      .then((data) => {
+        const defaultAddr = data.find((a) => a.is_default) || data[0];
+        if (isCurrent) setAddress(defaultAddr || null);
+      })
+      .catch((err) => {
+        console.error("Error fetching shipping address:", err);
+      })
+      .finally(() => {
+        if (isCurrent) setAddressLoading(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [targetUserId]);
+
+  // 2. Resolve Customer's Total Order Count: use precomputed count, only query Supabase (head: true) as fallback
+  useEffect(() => {
+    const precomputed = o?.customer?.orderCount ?? order?.customer?.orderCount;
+    if (typeof precomputed === "number") {
+      setCustomerOrderCount(precomputed);
+      return;
     }
-  }, [o.user_id]);
+
+    if (!targetUserId) return;
+
+    let isCurrent = true;
+    supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", targetUserId)
+      .not("status", "in", '("Cancelled","cancelled","canceled","Pending","pending","Refunded","refunded","Refund Completed","Partially Refunded","Returned","returned","return","Return","Failed","failed","Payment Failed","payment failed")')
+      .then(({ count, error }) => {
+        if (!error && typeof count === "number" && isCurrent) {
+          setCustomerOrderCount(count);
+        }
+      })
+      .catch((e) => {
+        console.warn("Fallback order count query error:", e);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [o?.customer?.orderCount, order?.customer?.orderCount, targetUserId]);
 
   const handleSaveNote = async () => {
     if (!o?.id) return;
@@ -920,6 +962,12 @@ const OrderDetails = ({ order, onBack }) => {
 
   const timelineSteps = getTimelineSteps();
 
+  const displayOrderCount =
+    customerOrderCount ??
+    o?.customer?.orderCount ??
+    order?.customer?.orderCount ??
+    1;
+
   return (
     <div className="od">
       {/* Header */}
@@ -1004,14 +1052,36 @@ const OrderDetails = ({ order, onBack }) => {
           <div className="od__card-title">Customer details</div>
           <div className="od__info-grid">
             <span className="od__info-label">Name</span>
-            <span className="od__info-value">{o.customer?.name || "Unknown"}</span>
+            <span className="od__info-value od__info-value--customer-name">
+              <span>{o.customer?.name || address?.full_name || "Unknown"}</span>
+              <span
+                className={`od__customer-order-count ${displayOrderCount === 1 ? 'od__customer-order-count--first' : 'od__customer-order-count--repeat'}`}
+                title={displayOrderCount === 1 ? 'New customer (1st order)' : `Repeat customer (${displayOrderCount} orders)`}
+              >
+                {formatCustomerOrderCount(displayOrderCount)}
+              </span>
+            </span>
             <span className="od__info-label">Phone</span>
-            <span className="od__info-value">{o.customer?.phone || "N/A"}</span>
+            <span className="od__info-value">
+              {o.customer?.phone && o.customer.phone !== "N/A"
+                ? o.customer.phone
+                : address?.phone_number || o.customer?.phone || "N/A"}
+            </span>
             <span className="od__info-label">Email</span>
             <span className="od__info-value od__info-value--wrap">{o.customer?.email || "N/A"}</span>
             <span className="od__info-label">Joined</span>
             <span className="od__info-value">
               {o.customer?.created_at ? new Date(o.customer.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "N/A"}
+            </span>
+            <span className="od__info-label">Orders</span>
+            <span className="od__info-value">
+              <span
+                className={`od__customer-order-count ${displayOrderCount === 1 ? 'od__customer-order-count--first' : 'od__customer-order-count--repeat'}`}
+                style={{ marginLeft: 0 }}
+                title={displayOrderCount === 1 ? 'New customer (1st order)' : `Repeat customer (${displayOrderCount} orders)`}
+              >
+                {formatCustomerOrderCount(displayOrderCount)}
+              </span>
             </span>
             <span className="od__info-label">Total products</span>
             <span className="od__info-value">{uniqueProducts} ({totalCount} {totalCount === 1 ? "item" : "items"})</span>

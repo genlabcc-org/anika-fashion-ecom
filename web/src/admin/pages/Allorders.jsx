@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useStore } from "../../hooks/useStore";
 import { orderService } from "../../services/orderService";
-import { isRevenueOrder } from "../../utils/orderUtils";
+import { isRevenueOrder, formatCustomerOrderCount, getOrderCustomerKey, isCountableCustomerOrder } from "../../utils/orderUtils";
 import { isSyncableOrder } from "../utils/trackingSync";
 import { supabase } from "../../lib/supabase";
 import Toast from "../../components/Toast";
@@ -379,6 +379,27 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     return `₹${v.toLocaleString('en-IN')}`;
   };
 
+  /* ── Precomputed fallback order count map (single O(N) pass, no per-row filtering) ── */
+  const fallbackCountMap = useMemo(() => {
+    const map = new Map();
+    for (const o of orders) {
+      if (!isCountableCustomerOrder(o)) continue;
+      const key = getOrderCustomerKey(o);
+      if (key) {
+        map.set(key, (map.get(key) || 0) + 1);
+      }
+    }
+    return map;
+  }, [orders]);
+
+  const getCustomerOrderCount = useCallback((order) => {
+    if (typeof order?.customer?.orderCount === "number") {
+      return order.customer.orderCount;
+    }
+    const key = getOrderCustomerKey(order);
+    return key ? (fallbackCountMap.get(key) || 0) : 0;
+  }, [fallbackCountMap]);
+
   const fulfillmentRate = orders.length > 0
     ? Math.round((count('Delivered') / orders.length) * 100)
     : 0;
@@ -528,9 +549,23 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           </td>
           <td className="ao__cell-customer">
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <span className="ao__cell-customer-name" style={{ fontWeight: isUnread ? "700" : "500", color: isUnread ? "#000" : "inherit" }}>
-                {order.customer?.name || "Unknown"}
-              </span>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                <span className="ao__cell-customer-name" style={{ fontWeight: isUnread ? "700" : "500", color: isUnread ? "#000" : "inherit" }}>
+                  {order.customer?.name || "Unknown"}
+                </span>
+                {(() => {
+                  const count = getCustomerOrderCount(order);
+                  const isFirst = count === 1;
+                  return (
+                    <span
+                      className={`ao__customer-order-count ${isFirst ? 'ao__customer-order-count--first' : 'ao__customer-order-count--repeat'}`}
+                      title={isFirst ? 'New customer (1st order)' : `Repeat customer (${count} orders)`}
+                    >
+                      {formatCustomerOrderCount(count)}
+                    </span>
+                  );
+                })()}
+              </div>
               <span style={{ fontSize: "11px", color: "#888" }}>{order.customer?.email || ""}</span>
             </div>
           </td>
@@ -709,9 +744,23 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                 </div>
                 <div className="ao__card-body">
                   <div className="ao__card-customer">
-                    <span className="ao__card-customer-name" style={{ fontWeight: isUnread ? "700" : "600", color: isUnread ? "#000" : "inherit" }}>
-                      {order.customer?.name || "Unknown"}
-                    </span>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                      <span className="ao__card-customer-name" style={{ fontWeight: isUnread ? "700" : "600", color: isUnread ? "#000" : "inherit" }}>
+                        {order.customer?.name || "Unknown"}
+                      </span>
+                      {(() => {
+                        const count = getCustomerOrderCount(order);
+                        const isFirst = count === 1;
+                        return (
+                          <span
+                            className={`ao__customer-order-count ${isFirst ? 'ao__customer-order-count--first' : 'ao__customer-order-count--repeat'}`}
+                            title={isFirst ? 'New customer (1st order)' : `Repeat customer (${count} orders)`}
+                          >
+                            {formatCustomerOrderCount(count)}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     {order.customer?.email && (
                       <span className="ao__card-customer-email">{order.customer?.email}</span>
                     )}
