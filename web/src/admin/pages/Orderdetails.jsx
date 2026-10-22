@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { orderService } from "../../services/orderService";
 import { formatCustomerOrderCount } from "../../utils/orderUtils";
+import { getColorName } from "../../utils/colorUtils";
 
 import { icarryService } from "../../services/icarryService";
 import { useStore } from "../../hooks/useStore";
@@ -1187,9 +1188,51 @@ const OrderDetails = ({ order, onBack }) => {
                       </span>
                     )}
                   </div>
-                  <div className="od__item-sku" style={{ color: '#888', fontSize: '12.5px', marginTop: '4px' }}>
-                    Order Ref: #{o.id?.slice(-8) || o.id} &nbsp;·&nbsp; Qty: {item.quantity || 1}
-                    {(item.size || item.color) && ` · Size: ${item.size || 'N/A'} · Color: ${item.color || 'N/A'}`}
+                  <div
+                    className="od__item-sku"
+                    style={{
+                      color: '#888',
+                      fontSize: '12.5px',
+                      marginTop: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>Order Ref: #{o.id?.slice(-8) || o.id}</span>
+                    <span>·</span>
+                    <span>Qty: {item.quantity || 1}</span>
+                    {item.size && item.size !== 'N/A' && (
+                      <>
+                        <span>·</span>
+                        <span>Size: <strong style={{ color: '#475569', fontWeight: '500' }}>{item.size}</strong></span>
+                      </>
+                    )}
+                    {item.color && item.color !== 'N/A' && (
+                      <>
+                        <span>·</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <span>Color:</span>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: '12px',
+                              height: '12px',
+                              borderRadius: '50%',
+                              backgroundColor: item.color,
+                              border: '1px solid #cbd5e1',
+                              boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                              flexShrink: 0
+                            }}
+                            title={item.color}
+                          />
+                          <strong style={{ color: '#475569', fontWeight: '500' }} title={item.color}>
+                            {getColorName(item.color)}
+                          </strong>
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="od__item-price" style={{ fontWeight: '600' }}>
