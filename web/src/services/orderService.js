@@ -287,6 +287,92 @@ export const orderService = {
   },
 
   /**
+   * Updates manual shipping details and marks order as Shipped.
+   * Sets manual_awb, manual_courier_name, status = 'Shipped', and shipped_at.
+   * @param {string} orderId 
+   * @param {object} params - { manualAwb, manualCourierName, shippedAt }
+   * @returns {Promise<any>}
+   */
+  async markManualOrderShipped(orderId, { manualAwb, manualCourierName, manualTrackingUrl, shippedAt = new Date().toISOString() }) {
+    if (!orderId) throw new Error('Order ID is required');
+    const cleanAwb = (manualAwb || '').trim();
+    const trackingUrl = manualTrackingUrl || (cleanAwb ? `https://t.17track.net/en#nums=${encodeURIComponent(cleanAwb)}` : null);
+    const updates = {
+      manual_awb: cleanAwb,
+      manual_courier_name: manualCourierName,
+      manual_tracking_url: trackingUrl,
+      tracking_url: trackingUrl,
+      status: 'Shipped',
+      shipped_at: shippedAt,
+      delivery_status: 'Shipped',
+      courier_name: manualCourierName,
+      waybill: cleanAwb,
+      fulfillment_type: 'manual',
+      shipment_error: null,
+    };
+    const { data, error } = await supabase
+      .from('orders')
+      .update(updates)
+      .eq('id', orderId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
+   * Updates manual tracking details without changing shipped_at (for typo fixes).
+   * @param {string} orderId 
+   * @param {object} params - { manualAwb, manualCourierName, manualTrackingUrl }
+   * @returns {Promise<any>}
+   */
+  async updateManualTracking(orderId, { manualAwb, manualCourierName, manualTrackingUrl }) {
+    if (!orderId) throw new Error('Order ID is required');
+    const cleanAwb = (manualAwb || '').trim();
+    const trackingUrl = manualTrackingUrl || (cleanAwb ? `https://t.17track.net/en#nums=${encodeURIComponent(cleanAwb)}` : null);
+    const updates = {
+      manual_awb: cleanAwb,
+      manual_courier_name: manualCourierName,
+      manual_tracking_url: trackingUrl,
+      tracking_url: trackingUrl,
+      waybill: cleanAwb,
+      courier_name: manualCourierName,
+    };
+    const { data, error } = await supabase
+      .from('orders')
+      .update(updates)
+      .eq('id', orderId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
+   * Marks an order as Delivered.
+   * Sets status = 'Delivered' and delivered_at.
+   * @param {string} orderId 
+   * @param {string} [deliveredAt]
+   * @returns {Promise<any>}
+   */
+  async markOrderDelivered(orderId, deliveredAt = new Date().toISOString()) {
+    if (!orderId) throw new Error('Order ID is required');
+    const updates = {
+      status: 'Delivered',
+      delivered_at: deliveredAt,
+      delivery_status: 'Delivered',
+    };
+    const { data, error } = await supabase
+      .from('orders')
+      .update(updates)
+      .eq('id', orderId)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
    * Updates the admin note for a specific order.
    * @param {string} orderId 
    * @param {string} note 

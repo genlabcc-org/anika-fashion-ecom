@@ -577,7 +577,17 @@ export default function AnikaOrders() {
                     const isManual = order.fulfillment_type === 'manual';
                     const activeCourier = isManual ? (order.manual_courier_name || order.courier_name || 'Manual') : (order.courier_name || order.courierName || order.deliveryProvider || 'iCarry');
                     const activeAwb = isManual ? (order.manual_awb || order.waybill) : order.waybill;
-                    const activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : (order.tracking_url || order.trackingUrl);
+                    let activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : (order.tracking_url || order.trackingUrl);
+
+                    // Auto-generate 17TRACK link if tracking URL is missing or generic
+                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com')) {
+                      activeTrackingUrl = `https://t.17track.net/en#nums=${encodeURIComponent(activeAwb)}`;
+                    }
+
+                    // If manual fulfillment has no AWB or tracking info yet, don't render an empty strip
+                    if (isManual && !activeAwb && !activeTrackingUrl) {
+                      return null;
+                    }
 
                     const statusStr = (order.delivery_status || order.deliveryStatus || '').trim();
                     const isPickupCancelled = statusStr.toLowerCase().includes('pickup cancel');
@@ -615,25 +625,29 @@ export default function AnikaOrders() {
                           {activeAwb && (
                             <>
                               <span style={{ color: boxBorder }}>·</span>
-                              <span><strong>AWB:</strong> {activeAwb}</span>
+                              <span><strong>{isManual ? 'Tracking ID:' : 'AWB:'}</strong> {activeAwb}</span>
                             </>
                           )}
-                          <span style={{ color: boxBorder }}>·</span>
-                          <span>
-                            <strong>Status:</strong>{' '}
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              background: badgeBg,
-                              color: badgeText,
-                              border: isDelivered ? '1px solid #bbf7d0' : undefined
-                            }}>
-                              {displayStatus}
-                            </span>
-                          </span>
+                          {!isManual && (
+                            <>
+                              <span style={{ color: boxBorder }}>·</span>
+                              <span>
+                                <strong>Status:</strong>{' '}
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  background: badgeBg,
+                                  color: badgeText,
+                                  border: isDelivered ? '1px solid #bbf7d0' : undefined
+                                }}>
+                                  {displayStatus}
+                                </span>
+                              </span>
+                            </>
+                          )}
                         </div>
                         {activeTrackingUrl && (
                           <a
@@ -715,7 +729,7 @@ export default function AnikaOrders() {
                               boxSizing: 'border-box'
                             }}
                           >
-                            <span>🧾</span> Invoice
+                            Invoice
                           </button>
 
                           {(order.status === "Pending" || order.status === "Confirmed") &&

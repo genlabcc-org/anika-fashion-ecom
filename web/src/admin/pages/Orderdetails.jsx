@@ -11,6 +11,7 @@ import { useStore } from "../../hooks/useStore";
 import { isSyncableOrder, isExternalCourierOrder } from "../utils/trackingSync";
 import Toast from "../../components/Toast";
 import ThermalInvoice from "../components/ThermalInvoice";
+import ManualShippingCard from "../components/ManualShippingCard";
 import "./Orderdetails.css";
 
 const STATUS_CONFIG = {
@@ -67,8 +68,7 @@ const OrderDetails = ({ order, onBack }) => {
   const [courierForm, setCourierForm] = useState({
     courier_name: "ST Courier",
     waybill: "",
-    status: "Shipped",
-    tracking_url: "https://stcourier.com",
+    tracking_url: "",
   });
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [submittingRefund, setSubmittingRefund] = useState(false);
@@ -238,12 +238,18 @@ const OrderDetails = ({ order, onBack }) => {
       }
 
       await orderService.setOrderPacked(o.id, nextPacked);
+      if (typeof setSelectedAdminOrder === "function") {
+        setSelectedAdminOrder((prev) => (prev ? { ...prev, ...patch } : prev));
+      }
       showToast(nextPacked ? "Order marked as packed" : "Order marked as unpacked", "success");
     } catch (err) {
       console.error("Toggle packed failed:", err);
       setCurrentOrder((prev) => (prev ? { ...prev, ...rollbackPatch } : prev));
       if (typeof updateOrderInList === "function") {
         updateOrderInList(o.id, rollbackPatch);
+      }
+      if (typeof setSelectedAdminOrder === "function") {
+        setSelectedAdminOrder((prev) => (prev ? { ...prev, ...rollbackPatch } : prev));
       }
       showToast("Failed to update packed status: " + (err?.message || "Unknown error"), "error");
     } finally {
@@ -560,46 +566,18 @@ const OrderDetails = ({ order, onBack }) => {
     }
 
     const awb = courierForm.waybill.trim();
-    const statusVal = courierForm.status || "Shipped";
-
-    if (statusVal === "Delivered" && !awb) {
-      showToast("AWB / Docket number is required when marking an order as Delivered.", "error");
-      return;
-    }
-
-    // Confirmation dialog if marking Delivered
-    if (statusVal === "Delivered" && o.status !== "Delivered" && o.delivery_status !== "Delivered") {
-      const confirmDelivered = window.confirm(
-        "Are you sure you want to mark this order as Delivered?\n\nThis will complete the order fulfillment and record delivery."
-      );
-      if (!confirmDelivered) return;
-    }
-
-    // Confirmation dialog if reverting a mistaken Delivered back to Shipped
+    const isOrderInRefundStatus = ["refund initiated", "refunded", "partially refunded", "refund failed", "refund completed"].includes((o.status || "").toLowerCase());
     const isCurrentlyDelivered = (o.status === "Delivered" || o.delivery_status === "Delivered");
-    if (isCurrentlyDelivered && statusVal !== "Delivered") {
-      const confirmRevert = window.confirm(
-        `This order is currently marked as Delivered.\n\nAre you sure you want to change its status back to ${statusVal}?`
-      );
-      if (!confirmRevert) return;
-    }
+    const statusVal = isCurrentlyDelivered ? "Delivered" : "Shipped";
 
     setUpdatingCourier(true);
     try {
-      // Auto-construct tracking URL if not provided
+      // Auto-construct 17TRACK tracking URL if not provided
       let trackingUrl = courierForm.tracking_url.trim();
-      if (!trackingUrl) {
-        const lowerCourier = courierName.toLowerCase();
-        if (lowerCourier.includes("st")) {
-          trackingUrl = "https://stcourier.com";
-        } else if (lowerCourier.includes("professional")) {
-          trackingUrl = "https://www.tpcindia.com";
-        } else if (lowerCourier.includes("dtdc")) {
-          trackingUrl = "https://www.dtdc.in";
-        }
+      if (!trackingUrl && awb) {
+        trackingUrl = `https://t.17track.net/en#nums=${encodeURIComponent(awb)}`;
       }
 
-      const isOrderInRefundStatus = ["refund initiated", "refunded", "partially refunded", "refund failed", "refund completed"].includes((o.status || "").toLowerCase());
       const updates = {
         fulfillment_type: "manual",
         manual_courier_name: courierName,
@@ -614,7 +592,7 @@ const OrderDetails = ({ order, onBack }) => {
         }),
         shipment_error: null,
         shipped_at: o.shipped_at || new Date().toISOString(),
-        delivered_at: (!isOrderInRefundStatus && statusVal === "Delivered") ? (o.delivered_at || new Date().toISOString()) : null,
+        delivered_at: (!isOrderInRefundStatus && isCurrentlyDelivered) ? (o.delivered_at || new Date().toISOString()) : null,
       };
 
       const res = await icarryService.updateCourierStatus(o.id, updates);
@@ -623,7 +601,12 @@ const OrderDetails = ({ order, onBack }) => {
       setCurrentOrder((prev) => (prev ? { ...prev, ...updates } : prev));
       if (typeof updateOrderInList === "function") updateOrderInList(o.id, updates);
       setShowCourierModal(false);
-      showToast(`Order updated to manual fulfillment (${courierName}) and marked as ${statusVal}!`, "success");
+      showToast(
+        isOrderInRefundStatus
+          ? `Order updated to manual fulfillment (${courierName})!`
+          : `Order updated to manual fulfillment (${courierName}) and marked as ${statusVal}!`,
+        "success"
+      );
       await fetchFreshOrder();
     } catch (err) {
       console.error("Failed to update courier details:", err);
@@ -1258,259 +1241,276 @@ const OrderDetails = ({ order, onBack }) => {
         </div>
 
         {/* Logistics & Delivery */}
-        <div className="od__card">
-          <div className="od__card-title">Logistics & Delivery</div>
-          <div className="od__info-grid">
-            {o.fulfillment_type === 'manual' && (
-              <>
-                <span className="od__info-label">Fulfillment</span>
-                <span className="od__info-value">
-                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11.5px', fontWeight: '600', background: '#e0e7ff', color: '#3730a3' }}>
-                    Manual Courier
+        {o.fulfillment_type === 'manual' ? (
+          <ManualShippingCard
+            order={o}
+            onOrderUpdated={(updates) => {
+              setCurrentOrder((prev) => ({ ...(prev || {}), ...updates }));
+              if (typeof updateOrderInList === "function") {
+                updateOrderInList(o.id, updates);
+              }
+              if (typeof setSelectedAdminOrder === "function") {
+                setSelectedAdminOrder((prev) => ({ ...(prev || {}), ...updates }));
+              }
+            }}
+            showToast={showToast}
+          />
+        ) : (
+          <div className="od__card">
+            <div className="od__card-title">Logistics & Delivery</div>
+            <div className="od__info-grid">
+              {o.fulfillment_type === 'manual' && (
+                <>
+                  <span className="od__info-label">Fulfillment</span>
+                  <span className="od__info-value">
+                    <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11.5px', fontWeight: '600', background: '#e0e7ff', color: '#3730a3' }}>
+                      Manual Courier
+                    </span>
                   </span>
+                </>
+              )}
+              <span className="od__info-label">Carrier</span>
+              <span className="od__info-value">{o.manual_courier_name || o.courier_name || o.delivery_provider || "iCarry"}</span>
+              <span className="od__info-label">Parcel</span>
+              <span className="od__info-value">
+                <span className={`od__pack-chip ${o.is_packed ? "od__pack-chip--packed" : "od__pack-chip--unpacked"}`}>
+                  {o.is_packed ? "Packed ✓" : "Not packed"}
                 </span>
-              </>
-            )}
-            <span className="od__info-label">Carrier</span>
-            <span className="od__info-value">{o.manual_courier_name || o.courier_name || o.delivery_provider || "iCarry"}</span>
-            <span className="od__info-label">Parcel</span>
-            <span className="od__info-value">
-              <span className={`od__pack-chip ${o.is_packed ? "od__pack-chip--packed" : "od__pack-chip--unpacked"}`}>
-                {o.is_packed ? "Packed ✓" : "Not packed"}
               </span>
-            </span>
-            <span className="od__info-label">Status</span>
-            <span
-              className="od__info-value"
-              style={{
-                fontWeight: '600',
-                color:
-                  o.delivery_status === 'Booked' || o.delivery_status === 'Delivered'
-                    ? '#16a34a'
-                    : o.delivery_status === 'Booking Failed' || o.delivery_status === 'Cancelled'
-                      ? '#dc2626'
-                      : o.delivery_status === 'Pickup Cancelled'
-                        ? '#d97706'
-                        : o.delivery_status?.toUpperCase()?.startsWith('NDR')
-                          ? '#ea580c'
-                          : '#d97706'
-              }}
-            >
-              {o.delivery_status || "Pending Booking"}
-            </span>
-            {(o.manual_awb || o.waybill) && (
-              <>
-                <span className="od__info-label">AWB / Waybill</span>
-                <span className="od__info-value">
-                  {(o.manual_tracking_url || o.tracking_url) ? (
+              <span className="od__info-label">Status</span>
+              <span
+                className="od__info-value"
+                style={{
+                  fontWeight: '600',
+                  color:
+                    o.delivery_status === 'Booked' || o.delivery_status === 'Delivered'
+                      ? '#16a34a'
+                      : o.delivery_status === 'Booking Failed' || o.delivery_status === 'Cancelled'
+                        ? '#dc2626'
+                        : o.delivery_status === 'Pickup Cancelled'
+                          ? '#d97706'
+                          : o.delivery_status?.toUpperCase()?.startsWith('NDR')
+                            ? '#ea580c'
+                            : '#d97706'
+                }}
+              >
+                {o.delivery_status || "Pending Booking"}
+              </span>
+              {(o.manual_awb || o.waybill) && (
+                <>
+                  <span className="od__info-label">AWB / Waybill</span>
+                  <span className="od__info-value">
+                    {(o.manual_tracking_url || o.tracking_url) ? (
+                      <a
+                        href={o.manual_tracking_url || o.tracking_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#8b0030', textDecoration: 'underline', fontWeight: '600' }}
+                      >
+                        {o.manual_awb || o.waybill} ↗
+                      </a>
+                    ) : (
+                      <span>{o.manual_awb || o.waybill}</span>
+                    )}
+                  </span>
+                </>
+              )}
+              {o.tracking_url && (
+                <>
+                  <span className="od__info-label">Tracking</span>
+                  <span className="od__info-value">
                     <a
-                      href={o.manual_tracking_url || o.tracking_url}
+                      href={o.tracking_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ color: '#8b0030', textDecoration: 'underline', fontWeight: '600' }}
+                      style={{ color: '#C42049', textDecoration: 'none', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                     >
-                      {o.manual_awb || o.waybill} ↗
+                      Track Package ↗
                     </a>
-                  ) : (
-                    <span>{o.manual_awb || o.waybill}</span>
-                  )}
-                </span>
-              </>
+                  </span>
+                </>
+              )}
+              {o.fulfillment_type !== 'manual' && (o.waybill || o.shipment_id) && (
+                <>
+                  <span className="od__info-label">Live Sync</span>
+                  <span className="od__info-value">
+                    <button
+                      type="button"
+                      onClick={handleSyncTracking}
+                      disabled={syncingTracking}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '5px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: '#f8fafc',
+                        color: '#0f172a',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: syncingTracking ? 'not-allowed' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                      }}
+                    >
+                      {syncingTracking ? (
+                        <>
+                          <span className="od__spinner" style={{ width: '12px', height: '12px' }} />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="23 4 23 10 17 10" />
+                            <polyline points="1 20 1 14 7 14" />
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                          </svg>
+                          Sync Status from iCarry
+                        </>
+                      )}
+                    </button>
+                  </span>
+                </>
+              )}
+              {o.shipment_id && (
+                <>
+                  <span className="od__info-label">Shipment ID</span>
+                  <span className="od__info-value">{o.shipment_id}</span>
+                </>
+              )}
+              {(o.delivery_status === 'Booking Failed' || (o.shipment_error && o.fulfillment_type !== 'manual')) && (
+                <>
+                  <span className="od__info-label" style={{ color: '#dc2626', fontWeight: '600' }}>Shipment Error</span>
+                  <span className="od__info-value" style={{ color: '#dc2626', wordBreak: 'break-word', fontSize: '12.5px', background: '#fef2f2', padding: '6px 10px', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                    {o.shipment_error || "Carrier booking failed. Please check address details and retry booking."}
+                  </span>
+                </>
+              )}
+              {o.estimated_delivery_date && (
+                <>
+                  <span className="od__info-label">Est. Delivery</span>
+                  <span className="od__info-value">
+                    {new Date(o.estimated_delivery_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {o.delivery_status === 'Pickup Cancelled' && (
+              <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', color: '#92400e', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>⚠️</span>
+                <span><strong>Courier Pickup Cancelled:</strong> The carrier pickup was cancelled. You can retry booking with iCarry or fulfill manually with an external courier.</span>
+              </div>
             )}
-            {o.tracking_url && (
-              <>
-                <span className="od__info-label">Tracking</span>
-                <span className="od__info-value">
-                  <a
-                    href={o.tracking_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#C42049', textDecoration: 'none', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    Track Package ↗
-                  </a>
-                </span>
-              </>
+
+            {o.delivery_status?.toUpperCase()?.startsWith('NDR') && (
+              <div style={{ marginTop: '12px', padding: '9px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', color: '#92400e', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>⚠️</span>
+                <span><strong>Delivery Exception (NDR):</strong> The carrier reported: <em>{o.delivery_status}</em>. Please review or coordinate with the customer.</span>
+              </div>
             )}
-            {o.fulfillment_type !== 'manual' && (o.waybill || o.shipment_id) && (
-              <>
-                <span className="od__info-label">Live Sync</span>
-                <span className="od__info-value">
+
+            {o.delivery_status === 'Cancelled' && (
+              <div style={{ marginTop: '12px', padding: '9px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#b91c1c', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>✕</span>
+                <span><strong>Shipment Cancelled:</strong> The shipping order has been cancelled with the carrier.</span>
+              </div>
+            )}
+
+            {/* Shipment Actions */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
+              {(o.delivery_status === 'Booking Failed' || o.delivery_status === 'Pickup Cancelled') && (
+                <button
+                  onClick={handleRetryBooking}
+                  disabled={retryingBooking}
+                  style={{
+                    backgroundColor: '#dc2626',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '7px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: '600',
+                    cursor: retryingBooking ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {retryingBooking ? 'Retrying Booking...' : '🔄 Retry Booking'}
+                </button>
+              )}
+
+              {o.waybill && o.delivery_status !== 'Cancelled' && o.fulfillment_type !== 'manual' && (
+                <>
                   <button
-                    type="button"
-                    onClick={handleSyncTracking}
-                    disabled={syncingTracking}
+                    onClick={handlePrintLabel}
+                    disabled={loadingLabel}
                     style={{
-                      padding: '4px 10px',
-                      borderRadius: '5px',
-                      border: '1px solid #cbd5e1',
-                      backgroundColor: '#f8fafc',
-                      color: '#0f172a',
-                      fontSize: '12px',
+                      backgroundColor: '#fff',
+                      color: '#1c1c1e',
+                      border: '1px solid #d4d4d8',
+                      borderRadius: '6px',
+                      padding: '7px 14px',
+                      fontSize: '12.5px',
                       fontWeight: '600',
-                      cursor: syncingTracking ? 'not-allowed' : 'pointer',
+                      cursor: loadingLabel ? 'not-allowed' : 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '5px',
+                      gap: '4px'
                     }}
                   >
-                    {syncingTracking ? (
-                      <>
-                        <span className="od__spinner" style={{ width: '12px', height: '12px' }} />
-                        Syncing...
-                      </>
-                    ) : (
-                      <>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="23 4 23 10 17 10" />
-                          <polyline points="1 20 1 14 7 14" />
-                          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                        </svg>
-                        Sync Status from iCarry
-                      </>
-                    )}
+                    {loadingLabel ? 'Loading Label...' : '🏷️ Print Label'}
                   </button>
-                </span>
-              </>
-            )}
-            {o.shipment_id && (
-              <>
-                <span className="od__info-label">Shipment ID</span>
-                <span className="od__info-value">{o.shipment_id}</span>
-              </>
-            )}
-            {(o.delivery_status === 'Booking Failed' || (o.shipment_error && o.fulfillment_type !== 'manual')) && (
-              <>
-                <span className="od__info-label" style={{ color: '#dc2626', fontWeight: '600' }}>Shipment Error</span>
-                <span className="od__info-value" style={{ color: '#dc2626', wordBreak: 'break-word', fontSize: '12.5px', background: '#fef2f2', padding: '6px 10px', borderRadius: '4px', border: '1px solid #fecaca' }}>
-                  {o.shipment_error || "Carrier booking failed. Please check address details and retry booking."}
-                </span>
-              </>
-            )}
-            {o.estimated_delivery_date && (
-              <>
-                <span className="od__info-label">Est. Delivery</span>
-                <span className="od__info-value">
-                  {new Date(o.estimated_delivery_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                </span>
-              </>
-            )}
-          </div>
 
-          {o.delivery_status === 'Pickup Cancelled' && (
-            <div style={{ marginTop: '12px', padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', color: '#92400e', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>⚠️</span>
-              <span><strong>Courier Pickup Cancelled:</strong> The carrier pickup was cancelled. You can retry booking with iCarry or fulfill manually with an external courier.</span>
-            </div>
-          )}
+                  {!isDelivered && !isOrderCancelled && (
+                    <button
+                      onClick={() => setShowCancelModal(true)}
+                      disabled={cancellingShipment}
+                      style={{
+                        backgroundColor: '#fff',
+                        color: '#dc2626',
+                        border: '1px solid #fca5a5',
+                        borderRadius: '6px',
+                        padding: '7px 14px',
+                        fontSize: '12.5px',
+                        fontWeight: '600',
+                        cursor: cancellingShipment ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {cancellingShipment ? 'Cancelling...' : 'Cancel Shipment'}
+                    </button>
+                  )}
+                </>
+              )}
 
-          {o.delivery_status?.toUpperCase()?.startsWith('NDR') && (
-            <div style={{ marginTop: '12px', padding: '9px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', color: '#92400e', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>⚠️</span>
-              <span><strong>Delivery Exception (NDR):</strong> The carrier reported: <em>{o.delivery_status}</em>. Please review or coordinate with the customer.</span>
-            </div>
-          )}
-
-          {o.delivery_status === 'Cancelled' && (
-            <div style={{ marginTop: '12px', padding: '9px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#b91c1c', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>✕</span>
-              <span><strong>Shipment Cancelled:</strong> The shipping order has been cancelled with the carrier.</span>
-            </div>
-          )}
-
-          {/* Shipment Actions */}
-          <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
-            {(o.delivery_status === 'Booking Failed' || o.delivery_status === 'Pickup Cancelled') && (
               <button
-                onClick={handleRetryBooking}
-                disabled={retryingBooking}
+                type="button"
+                onClick={() => {
+                  const initialAwb = o.manual_awb || (o.waybill && o.waybill !== o.courier_name ? o.waybill : "");
+                  const defaultUrl = o.manual_tracking_url || o.tracking_url || (initialAwb ? `https://t.17track.net/en#nums=${encodeURIComponent(initialAwb.trim())}` : "");
+                  setCourierForm({
+                    courier_name: o.manual_courier_name || o.courier_name || "ST Courier",
+                    waybill: initialAwb,
+                    tracking_url: defaultUrl
+                  });
+                  setShowCourierModal(true);
+                }}
                 style={{
-                  backgroundColor: '#dc2626',
+                  backgroundColor: '#1e293b',
                   color: '#fff',
                   border: 'none',
                   borderRadius: '6px',
                   padding: '7px 14px',
                   fontSize: '12.5px',
                   fontWeight: '600',
-                  cursor: retryingBooking ? 'not-allowed' : 'pointer'
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
               >
-                {retryingBooking ? 'Retrying Booking...' : '🔄 Retry Booking'}
+                Edit Courier / Ship Manually
               </button>
-            )}
-
-            {o.waybill && o.delivery_status !== 'Cancelled' && o.fulfillment_type !== 'manual' && (
-              <>
-                <button
-                  onClick={handlePrintLabel}
-                  disabled={loadingLabel}
-                  style={{
-                    backgroundColor: '#fff',
-                    color: '#1c1c1e',
-                    border: '1px solid #d4d4d8',
-                    borderRadius: '6px',
-                    padding: '7px 14px',
-                    fontSize: '12.5px',
-                    fontWeight: '600',
-                    cursor: loadingLabel ? 'not-allowed' : 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  {loadingLabel ? 'Loading Label...' : '🏷️ Print Label'}
-                </button>
-
-                {!isDelivered && !isOrderCancelled && (
-                  <button
-                    onClick={() => setShowCancelModal(true)}
-                    disabled={cancellingShipment}
-                    style={{
-                      backgroundColor: '#fff',
-                      color: '#dc2626',
-                      border: '1px solid #fca5a5',
-                      borderRadius: '6px',
-                      padding: '7px 14px',
-                      fontSize: '12.5px',
-                      fontWeight: '600',
-                      cursor: cancellingShipment ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    {cancellingShipment ? 'Cancelling...' : 'Cancel Shipment'}
-                  </button>
-                )}
-              </>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                setCourierForm({
-                  courier_name: o.manual_courier_name || o.courier_name || "ST Courier",
-                  waybill: o.manual_awb || (o.waybill && o.waybill !== o.courier_name ? o.waybill : ""),
-                  status: o.status === "Cancelled" ? "Shipped" : (o.status || "Shipped"),
-                  tracking_url: o.manual_tracking_url || o.tracking_url || (o.courier_name?.toLowerCase()?.includes("st") ? "https://stcourier.com" : "")
-                });
-                setShowCourierModal(true);
-              }}
-              style={{
-                backgroundColor: '#1e293b',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '7px 14px',
-                fontSize: '12.5px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              Edit Courier / Ship Manually
-            </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Refund Management */}
@@ -1709,7 +1709,7 @@ const OrderDetails = ({ order, onBack }) => {
             gap: '6px'
           }}
         >
-          <span>👁️</span> Preview Invoice
+          Preview Invoice
         </button>
         <button
           onClick={handlePrintInvoice}
@@ -2096,7 +2096,7 @@ const OrderDetails = ({ order, onBack }) => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#0f172a' }}>
-                📦 Update Courier & Status
+                Ship Manually / Update Courier
               </h3>
               <button
                 type="button"
@@ -2119,8 +2119,7 @@ const OrderDetails = ({ order, onBack }) => {
                       type="button"
                       onClick={() => setCourierForm(f => ({
                         ...f,
-                        courier_name: name,
-                        tracking_url: name.toLowerCase().includes('st') ? 'https://stcourier.com' : f.tracking_url
+                        courier_name: name
                       }))}
                       style={{
                         padding: '4px 8px',
@@ -2161,7 +2160,15 @@ const OrderDetails = ({ order, onBack }) => {
                 <input
                   type="text"
                   value={courierForm.waybill}
-                  onChange={(e) => setCourierForm(f => ({ ...f, waybill: e.target.value }))}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const clean = raw.trim();
+                    setCourierForm(f => ({
+                      ...f,
+                      waybill: raw,
+                      tracking_url: clean ? `https://t.17track.net/en#nums=${encodeURIComponent(clean)}` : ''
+                    }));
+                  }}
                   placeholder="e.g. Consignment / Docket Number"
                   style={{
                     width: '100%',
@@ -2174,15 +2181,27 @@ const OrderDetails = ({ order, onBack }) => {
                 />
               </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                  Tracking URL (Optional)
-                </label>
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+                    Tracking URL (Auto-generated 17TRACK Link)
+                  </label>
+                  {courierForm.tracking_url && (
+                    <a
+                      href={courierForm.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '11.5px', color: '#8b0030', fontWeight: '600', textDecoration: 'underline' }}
+                    >
+                      Test Link ↗
+                    </a>
+                  )}
+                </div>
                 <input
                   type="url"
                   value={courierForm.tracking_url}
                   onChange={(e) => setCourierForm(f => ({ ...f, tracking_url: e.target.value }))}
-                  placeholder="https://stcourier.com"
+                  placeholder="https://t.17track.net/en#nums=..."
                   style={{
                     width: '100%',
                     padding: '8px 12px',
@@ -2192,40 +2211,6 @@ const OrderDetails = ({ order, onBack }) => {
                     boxSizing: 'border-box'
                   }}
                 />
-              </div>
-
-              <div style={{ marginBottom: '20px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                  Order Status
-                </label>
-                {["refund initiated", "refunded", "partially refunded", "refund failed", "refund completed"].includes((o.status || "").toLowerCase()) ? (
-                  <div style={{ padding: '9px 12px', borderRadius: '6px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', fontSize: '13px', color: '#475569' }}>
-                    🔒 <strong>Status Locked:</strong> Order is in refund status (<strong>{o.status}</strong>). Status cannot be altered manually.
-                  </div>
-                ) : (
-                  <>
-                    <select
-                      value={courierForm.status}
-                      onChange={(e) => setCourierForm(f => ({ ...f, status: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
-                        backgroundColor: '#fff'
-                      }}
-                    >
-                      <option value="Shipped">Shipped (Dispatched)</option>
-                      <option value="Delivered">Delivered</option>
-                      <option value="Order Placed">Order Placed / Confirmed</option>
-                    </select>
-                    <p style={{ margin: '6px 0 0', fontSize: '11.5px', color: '#64748b' }}>
-                      Setting to &quot;Shipped&quot; will preserve the order price and count in total revenue and orders.
-                    </p>
-                  </>
-                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

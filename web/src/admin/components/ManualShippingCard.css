@@ -1,0 +1,378 @@
+/* ── Manual Shipping Card ── */
+.msc {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.msc__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.msc__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.msc__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+.msc__badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8b5cf6;
+}
+
+/* ── Logistics Info Summary ── */
+.msc__info-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  row-gap: 8px;
+  column-gap: 16px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px solid #edf2f7;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+.msc__info-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.msc__info-value {
+  color: #1e293b;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── 3-Stage Progress Container ── */
+.msc__stages {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.msc__stage {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  background: #ffffff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.msc__stage--active {
+  border-color: #cbd5e1;
+  background: #fff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.msc__stage--completed {
+  border-color: #bbf7d0;
+  background: #fcfdfc;
+}
+
+.msc__stage--locked {
+  border-color: #f1f5f9;
+  background: #f8fafc;
+  opacity: 0.75;
+}
+
+.msc__stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.msc__stage-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.msc__stage-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.msc__stage--active .msc__stage-num {
+  background: #8b0030;
+  color: #fff;
+}
+
+.msc__stage--completed .msc__stage-num {
+  background: #16a34a;
+  color: #fff;
+}
+
+.msc__stage-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.msc__stage-badge {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.msc__stage-badge--done {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.msc__stage-badge--active {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.msc__stage-badge--pending {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+/* ── Stage Content ── */
+.msc__stage-body {
+  padding-left: 34px;
+}
+
+.msc__stage-desc {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 0 0 12px 0;
+  line-height: 1.4;
+}
+
+/* ── Buttons ── */
+.msc__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.msc__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed !important;
+}
+
+.msc__btn--primary {
+  background: #8b0030;
+  color: #fff;
+}
+
+.msc__btn--primary:hover:not(:disabled) {
+  background: #6f0026;
+}
+
+.msc__btn--pack {
+  background: #0284c7;
+  color: #fff;
+}
+
+.msc__btn--pack:hover:not(:disabled) {
+  background: #0369a1;
+}
+
+.msc__btn--deliver {
+  background: #16a34a;
+  color: #fff;
+}
+
+.msc__btn--deliver:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.msc__btn--secondary {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.msc__btn--secondary:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.msc__btn--edit {
+  background: #fff;
+  color: #0284c7;
+  border: 1px solid #bae6fd;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.msc__btn--edit:hover:not(:disabled) {
+  background: #f0f9ff;
+  border-color: #7dd3fc;
+}
+
+/* ── Form Inputs ── */
+.msc__form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 640px) {
+  .msc__form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.msc__form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.msc__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.msc__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.msc__input:focus {
+  border-color: #8b0030;
+  box-shadow: 0 0 0 2px rgba(139, 0, 48, 0.12);
+}
+
+.msc__input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.msc__input--error {
+  border-color: #ef4444;
+}
+
+.msc__error-text {
+  font-size: 11.5px;
+  color: #dc2626;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.msc__hint {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+/* ── Read-only Tracking Box ── */
+.msc__readonly-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.msc__tracking-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.5px;
+  background: #fff;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid #cbd5e1;
+}
+
+.msc__shipped-time {
+  font-size: 11.5px;
+  color: #64748b;
+  margin-top: 6px;
+  display: block;
+}
+
+/* ── Spinner ── */
+.msc__spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: msc-spin 0.6s linear infinite;
+  display: inline-block;
+}
+
+.msc__btn--secondary .msc__spinner,
+.msc__btn--edit .msc__spinner {
+  border-color: rgba(15, 23, 42, 0.2);
+  border-top-color: #0f172a;
+}
+
+@keyframes msc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

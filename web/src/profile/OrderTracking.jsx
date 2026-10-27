@@ -93,7 +93,7 @@ export default function OrderTracking() {
                   if (res?.updates && Object.keys(res.updates).length > 0) {
                     setOrder((prev) => ({
                       ...prev,
-                       status: res.updates.status || prev?.status,
+                      status: res.updates.status || prev?.status,
                       delivery_status: res.updates.delivery_status || prev?.delivery_status,
                     }));
                   }
@@ -520,7 +520,12 @@ export default function OrderTracking() {
                     const isManual = order.fulfillment_type === 'manual';
                     const activeCourier = isManual ? (order.manual_courier_name || order.courier_name || "External Courier") : (order.courier_name || order.delivery_provider || "iCarry");
                     const activeAwb = isManual ? (order.manual_awb || order.waybill) : order.waybill;
-                    const activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : order.tracking_url;
+                    let activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : order.tracking_url;
+
+                    // Auto-generate 17TRACK link if tracking URL is missing or generic
+                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com')) {
+                      activeTrackingUrl = `https://t.17track.net/en#nums=${encodeURIComponent(activeAwb)}`;
+                    }
 
                     const statusStr = (order.delivery_status || "").trim();
                     const isPickupCancelled = statusStr.toLowerCase().includes("pickup cancel");
@@ -556,14 +561,16 @@ export default function OrderTracking() {
                           </div>
                           {activeAwb && (
                             <div style={{ fontSize: "13.5px", color: textColor }}>
-                              <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Waybill (AWB): </span>
+                              <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>{isManual ? "Tracking ID: " : "Waybill (AWB): "}</span>
                               <strong style={{ letterSpacing: "0.5px" }}>{activeAwb}</strong>
                             </div>
                           )}
-                          <div style={{ fontSize: "13.5px", color: textColor }}>
-                            <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Delivery Status: </span>
-                            <strong style={{ color: statusColor }}>{displayStatus}</strong>
-                          </div>
+                          {!isManual && (
+                            <div style={{ fontSize: "13.5px", color: textColor }}>
+                              <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Delivery Status: </span>
+                              <strong style={{ color: statusColor }}>{displayStatus}</strong>
+                            </div>
+                          )}
                         </div>
                         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                           {!isManual && (
@@ -602,7 +609,7 @@ export default function OrderTracking() {
                                 cursor: refreshingLiveStatus ? "not-allowed" : "pointer",
                               }}
                             >
-                              {refreshingLiveStatus ? "Syncing..." : "🔄 Refresh"}
+                              {refreshingLiveStatus ? "Syncing..." : "Refresh"}
                             </button>
                           )}
                           {activeTrackingUrl && (
