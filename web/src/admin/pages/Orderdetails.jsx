@@ -12,7 +12,8 @@ import { isSyncableOrder, isExternalCourierOrder } from "../utils/trackingSync";
 import Toast from "../../components/Toast";
 import ThermalInvoice from "../components/ThermalInvoice";
 import ManualShippingCard from "../components/ManualShippingCard";
-import { whatsappService } from "../../services/whatsappService";
+import BarcodeScannerModal from "../components/BarcodeScannerModal";
+import { TbScan } from "react-icons/tb";
 import "./Orderdetails.css";
 
 const STATUS_CONFIG = {
@@ -65,6 +66,7 @@ const OrderDetails = ({ order, onBack }) => {
   const [togglingPacked, setTogglingPacked] = useState(false);
   const [syncingTracking, setSyncingTracking] = useState(false);
   const [showCourierModal, setShowCourierModal] = useState(false);
+  const [showCourierScanner, setShowCourierScanner] = useState(false);
   const [updatingCourier, setUpdatingCourier] = useState(false);
   const [courierForm, setCourierForm] = useState({
     courier_name: "ST Courier",
@@ -2175,9 +2177,30 @@ const OrderDetails = ({ order, onBack }) => {
               </div>
 
               <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: '#334155', marginBottom: '6px' }}>
-                  AWB / Tracking Number (Optional)
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>
+                    AWB / Tracking Number (Optional)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCourierScanner(true)}
+                    style={{
+                      background: '#fdf2f4',
+                      color: '#8b0030',
+                      border: '1px solid #fecdd3',
+                      borderRadius: '5px',
+                      padding: '2px 8px',
+                      fontSize: '11.5px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <TbScan size={13} /> Scan Barcode
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={courierForm.waybill}
@@ -2272,6 +2295,21 @@ const OrderDetails = ({ order, onBack }) => {
           </div>
         </div>
       )}
+
+      {/* Courier Modal Barcode Scanner */}
+      <BarcodeScannerModal
+        isOpen={showCourierScanner}
+        onClose={() => setShowCourierScanner(false)}
+        onScan={(code) => {
+          const clean = (code || "").trim();
+          setCourierForm(f => ({
+            ...f,
+            waybill: clean,
+            tracking_url: clean ? `https://t.17track.net/en#nums=${encodeURIComponent(clean)}` : ''
+          }));
+        }}
+        title="Scan Courier Tracking / Waybill"
+      />
 
       {/* Cancel Shipment Scope Modal */}
       {showCancelModal && (
