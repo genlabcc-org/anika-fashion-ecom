@@ -12,45 +12,40 @@ export const productService = {
    * @returns {Promise<any[]>}
    */
   async getCategories() {
-    try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*, subcategories(*), products(count)')
-        .order('sort_order', { ascending: true });
-      if (!error && data) {
-        return data.map(c => ({
-          ...c,
-          productCount: c.products?.[0]?.count ?? 0,
-          subcategories: (c.subcategories || []).filter(s => s.is_active !== false)
-        }));
-      }
-    } catch (e) {
-      console.warn('Foreign key subcategories join fallback:', e);
-    }
-
     const { data: cats, error: catErr } = await supabase
       .from('categories')
-      .select('*, products(count)')
+      .select('*, subcategories(*)')
       .order('sort_order', { ascending: true });
     if (catErr) throw catErr;
 
-    const { data: subs } = await supabase
-      .from('subcategories')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // Count products across all categories they belong to (multiple categories per product)
+    let productCounts = {};
+    try {
+      const { data: prods } = await supabase
+        .from('products')
+        .select('category_id, category_ids')
+        .eq('is_active', true);
 
-    const subsByParent = {};
-    (subs || []).forEach(s => {
-      if (s.parent_id) {
-        if (!subsByParent[s.parent_id]) subsByParent[s.parent_id] = [];
-        subsByParent[s.parent_id].push(s);
-      }
-    });
+      (prods || []).forEach(p => {
+        const catIds = new Set();
+        if (p.category_id) catIds.add(Number(p.category_id));
+        if (Array.isArray(p.category_ids)) {
+          p.category_ids.forEach(cid => {
+            if (cid != null && !isNaN(cid)) catIds.add(Number(cid));
+          });
+        }
+        catIds.forEach(cid => {
+          productCounts[cid] = (productCounts[cid] || 0) + 1;
+        });
+      });
+    } catch (countErr) {
+      console.warn('Could not compute multi-category product counts:', countErr);
+    }
 
     return (cats || []).map(c => ({
       ...c,
-      productCount: c.products?.[0]?.count ?? 0,
-      subcategories: subsByParent[c.category_id] || subsByParent[c.id] || []
+      productCount: productCounts[c.category_id] ?? 0,
+      subcategories: (c.subcategories || []).filter(s => s.is_active !== false)
     }));
   },
 
@@ -110,7 +105,7 @@ export const productService = {
   async getProducts() {
     const { data, error } = await supabase
       .from('products')
-      .select('product_id, name, price, compare_price, stock, sku, image_url, images, is_active, has_variants, category_id, subcategory_id, categories(name), subcategories(name), product_variants(variant_id, price, compare_price, stock, sku, color, size, images)')
+      .select('product_id, name, price, compare_price, stock, sku, image_url, images, is_active, has_variants, category_id, category_ids, subcategory_id, categories!category_id(name), subcategories(name), product_variants(variant_id, price, compare_price, stock, sku, color, size, images)')
       .order('created_at', { ascending: false });
     if (error) throw error;
     return data;
@@ -196,11 +191,24 @@ export const productService = {
   },
 
   /**
-   * Helper to ensure Postgres text[] array columns (colors, sizes, images) are valid arrays.
+   * Helper to ensure Postgres array columns (category_ids, colors, sizes, images) are valid arrays.
    */
   formatProductPayload(productData) {
     if (!productData) return {};
     const payload = { ...productData };
+
+    if (payload.category_ids !== undefined && payload.category_ids !== null) {
+      if (!Array.isArray(payload.category_ids)) {
+        payload.category_ids = [Number(payload.category_ids)].filter(n => !isNaN(n) && n > 0);
+      } else {
+        payload.category_ids = payload.category_ids.map(Number).filter(n => !isNaN(n) && n > 0);
+      }
+      if (payload.category_ids.length > 0 && !payload.category_id) {
+        payload.category_id = payload.category_ids[0];
+      }
+    } else if (payload.category_id) {
+      payload.category_ids = [Number(payload.category_id)];
+    }
 
     if (payload.colors !== undefined && payload.colors !== null) {
       if (typeof payload.colors === 'string') {
@@ -230,7 +238,7 @@ export const productService = {
   },
 
   /**
-   * Inserts a new product record.
+   * Inserts a new product record and syncs product_categories junction table.
    * @param {object} productData 
    * @returns {Promise<any>}
    */
@@ -275,7 +283,7 @@ export const productService = {
   },
 
   /**
-   * Updates an existing product.
+   * Updates an existing product and syncs product_categories junction table.
    * @param {string|number} productId 
    * @param {object} productData 
    * @returns {Promise<any>}
@@ -372,8 +380,8 @@ export const productService = {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('product_id, name, description, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, category_id, subcategories(name), product_variants(price, compare_price, stock, images)')
-        .eq('category_id', catData.category_id)
+        .select('product_id, name, description, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, category_id, category_ids, subcategories(name), product_variants(price, compare_price, stock, images)')
+        .or(`category_id.eq.${catData.category_id},category_ids.cs.{${catData.category_id}}`)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -390,8 +398,8 @@ export const productService = {
     if (!queryData) {
       const { data, error } = await supabase
         .from('products')
-        .select('product_id, name, description, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, category_id, product_variants(price, compare_price, stock, images)')
-        .eq('category_id', catData.category_id)
+        .select('product_id, name, description, price, compare_price, stock, image_url, images, sizes, has_variants, subcategory_id, category_id, category_ids, product_variants(price, compare_price, stock, images)')
+        .or(`category_id.eq.${catData.category_id},category_ids.cs.{${catData.category_id}}`)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -447,7 +455,7 @@ export const productService = {
 
     const { data, error } = await supabase
       .from('products')
-      .select('*, categories(name), product_variants(price, compare_price, stock, images)')
+      .select('*, categories!category_id(name), product_variants(price, compare_price, stock, images)')
       .eq('is_active', true)
       .ilike('name', `%${normalizedQuery}%`)
       .order('created_at', { ascending: false })

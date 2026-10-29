@@ -739,14 +739,14 @@ const Dashboard = () => {
       try {
         const data = await productService.getCategories();
         if (data) {
-          setCategories(
-            data.map((row) => ({
-              ...row,
-              id: row.category_id,
-              categoryImage: row.image_url || null,
-              status: row.is_active ? "Active" : "Draft",
-            }))
-          );
+          const catData = data.map((row) => ({
+            ...row,
+            id: row.category_id,
+            categoryImage: row.image_url || null,
+            status: row.is_active ? "Active" : "Draft",
+          }));
+          setCategories(catData);
+          setProducts((prev) => prev.map((p) => normalizeProductRow(p, catData)));
         }
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -756,7 +756,7 @@ const Dashboard = () => {
   }, []);
 
   // Normalize a raw Supabase product row into the shape productlist.jsx expects
-  const normalizeProductRow = (row) => {
+  const normalizeProductRow = (row, catList = categories) => {
     const variants = row.product_variants || [];
     const prices = variants.map(v => Number(v.price)).filter(n => !isNaN(n));
     const totalStock = variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
@@ -774,12 +774,28 @@ const Dashboard = () => {
         : "No variants")
       : `₹${Number(row.price || 0).toLocaleString('en-IN')}`;
 
+    const catIds = Array.isArray(row.category_ids) && row.category_ids.length > 0
+      ? row.category_ids.map(Number)
+      : (row.category_id ? [Number(row.category_id)] : []);
+
+    const categoriesList = catIds
+      .map(cid => (catList || []).find(c => Number(c.category_id ?? c.id) === cid)?.name)
+      .filter(Boolean);
+
+    const primaryCategory = categoriesList[0] || row.categories?.name || row.category || "";
+    if (categoriesList.length === 0 && primaryCategory) {
+      categoriesList.push(primaryCategory);
+    }
+
     return {
       ...row,
       id: row.product_id ?? row.id,
       images,
       image: row.image_url || images[0] || null,
-      category: row.categories?.name || row.category || "",
+      category_id: row.category_id || catIds[0] || null,
+      category_ids: catIds,
+      category: primaryCategory,
+      categoriesList,
       subcategory: row.subcategories?.name || row.subcategory || null,
       status: row.is_active ? "Visible" : "Draft",
       price: row.has_variants ? (prices.length ? Math.min(...prices) : 0) : row.price,
@@ -796,7 +812,7 @@ const Dashboard = () => {
       try {
         const data = await productService.getProducts();
         if (data) {
-          setProducts(data.map(normalizeProductRow));
+          setProducts(data.map((p) => normalizeProductRow(p, categories)));
         }
       } catch (error) {
         console.error("Error fetching products:", error);
@@ -893,6 +909,7 @@ const Dashboard = () => {
   const handleDeleteProduct = async (id) => {
     try {
       await productService.deleteProduct(id);
+      useStore.getState().invalidateProductsCache?.();
       setProducts((p) => p.filter((x) => x.id !== id));
     } catch (error) {
       console.error("Error deleting product:", error);
@@ -901,6 +918,7 @@ const Dashboard = () => {
   };
 
   const handlePublish = (data) => {
+    useStore.getState().invalidateProductsCache?.();
     const normalized = normalizeProductRow(data);
     setProducts((p) =>
       editingProduct
@@ -912,6 +930,7 @@ const Dashboard = () => {
   };
 
   const handleSaveDraft = (data) => {
+    useStore.getState().invalidateProductsCache?.();
     const normalized = normalizeProductRow(data);
     setProducts((p) =>
       editingProduct

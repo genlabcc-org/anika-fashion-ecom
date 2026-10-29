@@ -26,6 +26,7 @@ export default function Offers({ onProductClick }) {
         let productsData = [];
 
         if (catIds.length > 0) {
+          const orConditions = catIds.map((cid) => `category_id.eq.${cid},category_ids.cs.{${cid}}`).join(",");
           const { data } = await supabase
             .from('products')
             .select(`
@@ -37,9 +38,9 @@ export default function Offers({ onProductClick }) {
               images,
               has_variants,
               product_variants(price, compare_price, stock),
-              categories(name)
+              categories!category_id(name)
             `)
-            .in('category_id', catIds)
+            .or(orConditions)
             .eq('is_active', true)
             .order('created_at', { ascending: false })
             .limit(5);
@@ -59,7 +60,7 @@ export default function Offers({ onProductClick }) {
               images,
               has_variants,
               product_variants(price, compare_price, stock),
-              categories(name)
+              categories!category_id(name)
             `)
             .ilike('name', '%toe%')
             .eq('is_active', true)

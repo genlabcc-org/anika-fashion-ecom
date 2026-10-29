@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { variantService } from "../../../services/variantService";
 import ConfirmDialog from "../dialogs/confirmdialogs";
+import "../addproduct.css";
 import "./ProductVariant.css";
 
 const COLOR_SWATCHES = [
@@ -90,6 +91,7 @@ const CreateMultipleProduct = ({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [categoryIds, setCategoryIds] = useState([]);
   const [subCategory, setSubCategory] = useState("");
   const [loadingSubcategories, setLoadingSubcategories] = useState(false);
   const subcategories = subcategoriesCache[category] || [];
@@ -105,6 +107,35 @@ const CreateMultipleProduct = ({
   const [deletedVariantIds, setDeletedVariantIds] = useState([]);
   const [variantToDelete, setVariantToDelete] = useState(null);
 
+  // ── Category helpers ──
+  const handleAddCategory = (catId) => {
+    const num = Number(catId);
+    if (!num) return;
+    if (categoryIds.includes(num)) return;
+    const updated = [...categoryIds, num];
+    setCategoryIds(updated);
+    if (updated.length === 1) {
+      setCategory(String(num));
+    }
+  };
+
+  const handleRemoveCategory = (catId) => {
+    const updated = categoryIds.filter((id) => id !== catId);
+    setCategoryIds(updated);
+    if (Number(category) === catId) {
+      const nextCat = updated.length > 0 ? String(updated[0]) : "";
+      setCategory(nextCat);
+      setSubCategory("");
+    }
+  };
+
+  const handleMakePrimary = (catId) => {
+    const filtered = categoryIds.filter((id) => id !== catId);
+    setCategoryIds([catId, ...filtered]);
+    setCategory(String(catId));
+    setSubCategory("");
+  };
+
   // ── Load existing product + variants when editing ──
   useEffect(() => {
     if (!editingProductId) return;
@@ -114,7 +145,11 @@ const CreateMultipleProduct = ({
         const { product, variants: existingVariants } = await variantService.getProductWithVariants(editingProductId);
         setTitle(product.name || "");
         setDescription(product.description || "");
-        setCategory(product.category_id != null ? String(product.category_id) : "");
+        const cIds = Array.isArray(product.category_ids) && product.category_ids.length > 0
+          ? product.category_ids.map(Number)
+          : (product.category_id ? [Number(product.category_id)] : []);
+        setCategoryIds(cIds);
+        setCategory(cIds[0] ? String(cIds[0]) : (product.category_id != null ? String(product.category_id) : ""));
         setSubCategory(product.subcategory_id != null ? String(product.subcategory_id) : "");
         setShowOnStore(!!product.is_active);
         setFeaturedProduct(!!product.is_featured);
@@ -311,10 +346,14 @@ const CreateMultipleProduct = ({
   const handleSave = async () => {
     if (!validate()) return;
 
+    const primaryId = categoryIds[0] || (category ? parseInt(category) : null);
+    const catIds = categoryIds.length > 0 ? categoryIds : (primaryId ? [primaryId] : []);
+
     const productData = {
       name: title,
       description,
-      category_id: parseInt(category) || null,
+      category_id: primaryId,
+      category_ids: catIds,
       subcategory_id: subCategory || null,
       is_active: showOnStore,
       is_featured: featuredProduct,
@@ -425,24 +464,66 @@ const CreateMultipleProduct = ({
         </label>
 
         <div className="cmp-row">
-          <label className="cmp-field">
-            <span className="cmp-label">Category</span>
+          <div className="cmp-field">
+            <span className="cmp-label">Categories (Multiple)</span>
+            {categoryIds.length > 0 && (
+              <div className="ap-selected-cats-list">
+                {categoryIds.map((cid, idx) => {
+                  const catObj = categories.find((c) => Number(c.category_id ?? c.id) === cid);
+                  const isPrimary = idx === 0;
+                  return (
+                    <span
+                      key={cid}
+                      className={`ap-cat-chip ${isPrimary ? "ap-cat-chip--primary" : ""}`}
+                    >
+                      {isPrimary && <span className="ap-cat-chip__star">★ Primary</span>}
+                      <span>{catObj?.name || `Category #${cid}`}</span>
+                      {!isPrimary && (
+                        <button
+                          type="button"
+                          className="ap-cat-chip__make-primary"
+                          onClick={() => handleMakePrimary(cid)}
+                        >
+                          Make Primary
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="ap-cat-chip__remove"
+                        onClick={() => handleRemoveCategory(cid)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <select
               className="cmp-select"
-              value={category}
+              value=""
               onChange={(e) => {
-                setCategory(e.target.value);
-                setSubCategory("");
+                if (e.target.value) {
+                  handleAddCategory(e.target.value);
+                  clearTopError("category");
+                }
               }}
             >
-              <option value="">Select Your Category</option>
-              {categories.map((c) => (
-                <option key={c.category_id ?? c.name} value={c.category_id ?? c.id}>
-                  {c.name}
-                </option>
-              ))}
+              <option value="">
+                {categoryIds.length === 0 ? "Select Your Category" : "+ Add another category..."}
+              </option>
+              {categories
+                .filter((c) => !categoryIds.includes(Number(c.category_id ?? c.id)))
+                .map((c) => (
+                  <option key={c.category_id ?? c.name} value={c.category_id ?? c.id}>
+                    {c.name}
+                  </option>
+                ))}
             </select>
-          </label>
+            {errors.category?.map((msg) => (
+              <FieldError key={msg}>{msg}</FieldError>
+            ))}
+          </div>
 
           <label className="cmp-field">
             <span className="cmp-label">Sub Category</span>

@@ -256,7 +256,8 @@ export const useStore = create((set, get) => ({
           stock: totalStock > 0 ? 'in-stock' : 'out-of-stock',
           subcategory: p.subcategory || p.subcategories?.name || null,
           subcategory_id: p.subcategory_id || null,
-          has_variants: hasVariants,
+          category_id: p.category_id,
+          category_ids: p.category_ids || (p.category_id ? [p.category_id] : []),
         };
       });
       set(state => ({
@@ -273,6 +274,8 @@ export const useStore = create((set, get) => ({
       return [];
     }
   },
+
+  invalidateProductsCache: () => set({ products: {} }),
 
   loadProductById: async (productId) => {
     // If we have fresh productDetails AND already have name/desc, skip DB query
@@ -304,7 +307,7 @@ export const useStore = create((set, get) => ({
 
     const { data, error } = await supabase
       .from('products')
-      .select('product_id, name, description, price, compare_price, image_url, images, has_variants, categories(name), product_variants(price, compare_price, stock, images)')
+      .select('product_id, name, description, price, compare_price, image_url, images, has_variants, categories!category_id(name), product_variants(price, compare_price, stock, images)')
       .eq('product_id', productId)
       .eq('is_active', true)
       .maybeSingle();

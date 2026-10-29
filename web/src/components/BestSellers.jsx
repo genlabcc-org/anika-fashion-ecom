@@ -43,7 +43,7 @@ export default function BestSellers({ onProductClick }) {
             has_variants,
             is_featured,
             product_variants(price, compare_price, stock),
-            categories(name, slug)
+            categories!category_id(name, slug)
           `)
           .eq('is_active', true);
 
@@ -78,7 +78,7 @@ export default function BestSellers({ onProductClick }) {
               has_variants,
               is_featured,
               product_variants(price, compare_price, stock),
-              categories(name, slug)
+              categories!category_id(name, slug)
             `)
             .eq('is_active', true)
             .order('name', { ascending: true })

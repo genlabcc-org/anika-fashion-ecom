@@ -31,7 +31,7 @@ export default function NewArrivals({ onProductClick }) {
             has_variants,
             is_featured,
             product_variants(price, compare_price, stock),
-            categories(name, slug)
+            categories!category_id(name, slug)
           `)
           .eq('is_active', true)
           .order('created_at', { ascending: false })

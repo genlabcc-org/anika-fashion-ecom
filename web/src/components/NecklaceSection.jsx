@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './ProductSection.css';
 import { supabase } from '../lib/supabase';
+import { productService } from '../services/productService';
 import { Skeleton } from './ui/Skeleton';
 
 const VISIBLE = 10;
@@ -15,57 +16,40 @@ export default function NecklaceSection({ onProductClick }) {
 
   useEffect(() => {
     const fetchProducts = async () => {
-      const { data, error } = await supabase
-        .from('products')
-        .select(`
-          product_id,
-          name,
-          price,
-          compare_price,
-          discount_price,
-          images,
-          has_variants,
-          product_variants(price, compare_price, stock),
-          categories!inner(name)
-        `)
-        .eq('is_active', true)
-        .eq('categories.name', 'Necklaces')
-        .order('created_at', { ascending: false })
-        .limit(10);
+      try {
+        const data = await productService.getProductsByCategoryName('Necklaces');
+        const sliced = (data || []).slice(0, 10);
+        const mapped = sliced.map(p => {
+          const variants = p.product_variants || [];
+          const hasVariants = !!p.has_variants && variants.length > 0;
 
-      if (error) {
+          const sellingPrice = hasVariants
+            ? Math.min(...variants.map(v => Number(v.price) || Infinity).filter(isFinite))
+            : (Number(p.price) || 0);
+
+          const mrp = hasVariants
+            ? Math.max(...variants.map(v => Number(v.compare_price) || 0))
+            : (Number(p.compare_price) || 0);
+
+          return {
+            id: p.product_id,
+            productId: p.product_id,
+            img: p.images?.[0] || p.image_url || '',
+            images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image_url ? [p.image_url] : []),
+            name: p.name,
+            category: 'Necklaces',
+            price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',
+            original: mrp && mrp > sellingPrice ? `₹${mrp.toLocaleString('en-IN')}` : '',
+          };
+        });
+
+        setProducts(mapped);
+      } catch (error) {
         console.error('Error fetching Necklaces for NecklaceSection:', error);
         setProducts([]);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const mapped = (data || []).map(p => {
-        const variants = p.product_variants || [];
-        const hasVariants = !!p.has_variants && variants.length > 0;
-
-        const sellingPrice = hasVariants
-          ? Math.min(...variants.map(v => Number(v.price) || Infinity).filter(isFinite))
-          : (Number(p.price) || 0);
-
-        const mrp = hasVariants
-          ? Math.max(...variants.map(v => Number(v.compare_price) || 0))
-          : (Number(p.compare_price) || 0);
-
-        return {
-          id: p.product_id,
-          productId: p.product_id,
-          img: p.images?.[0] || p.image_url || '',
-          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image_url ? [p.image_url] : []),
-          name: p.name,
-          category: p.categories?.name || '',
-          price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',
-          original: mrp && mrp > sellingPrice ? `₹${mrp.toLocaleString('en-IN')}` : '',
-        };
-      });
-
-      setProducts(mapped);
-      setLoading(false);
     };
 
     fetchProducts();

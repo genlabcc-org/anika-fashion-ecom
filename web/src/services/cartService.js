@@ -35,7 +35,7 @@ export const cartService = {
     if (!userId) return [];
     const { data, error } = await supabase
       .from('cart_items')
-      .select('*, products(*, categories(name), product_variants(*))')
+      .select('*, products(*, categories!category_id(name), product_variants(*))')
       .eq('user_id', userId);
 
     if (error) throw error;

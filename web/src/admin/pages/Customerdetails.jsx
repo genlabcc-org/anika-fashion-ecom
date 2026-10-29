@@ -52,7 +52,7 @@ const CustomerDetails = ({ customer, onBack }) => {
     if (!item.product_id) return;
     const { data: product, error } = await supabase
       .from("products")
-      .select("product_id, name, description, price, compare_price, image_url, images, sizes, stock, sku, categories(name)")
+      .select("product_id, name, description, price, compare_price, image_url, images, sizes, stock, sku, categories!category_id(name)")
       .eq("product_id", item.product_id)
       .single();
     if (error || !product) return;

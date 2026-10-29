@@ -31,6 +31,7 @@ const EMPTY_FORM = {
   description: "",
   sku: "",
   category_id: "",
+  category_ids: [],
   subcategory_id: "",
   price: "",
   compare_price: "",
@@ -42,6 +43,18 @@ const EMPTY_FORM = {
   sizes: "",
   colors: [],
   care: "",
+};
+
+const getInitialCategoryIds = (data) => {
+  if (!data) return [];
+  if (Array.isArray(data.category_ids) && data.category_ids.length > 0) {
+    return data.category_ids.map(Number).filter((n) => !isNaN(n) && n > 0);
+  }
+  if (data.category_id) {
+    const num = Number(data.category_id);
+    return !isNaN(num) && num > 0 ? [num] : [];
+  }
+  return [];
 };
 
 // ── Image Upload to Supabase Storage ──────────────────────────
@@ -100,13 +113,16 @@ export const generateSKU = (categoryName, sequenceNum = 1) => {
 export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVariant, initialData }) {
   const isEditing = !!initialData;
 
-  const [form, setForm] = useState(() =>
-    initialData
+  const [form, setForm] = useState(() => {
+    const initCatIds = getInitialCategoryIds(initialData);
+    const primaryCat = initCatIds[0] ? String(initCatIds[0]) : (initialData?.category_id ? String(initialData.category_id) : "");
+    return initialData
       ? {
         name: initialData.name || "",
         description: initialData.description || "",
         sku: initialData.sku || "",
-        category_id: initialData.category_id || "",
+        category_id: primaryCat,
+        category_ids: initCatIds,
         subcategory_id: initialData.subcategory_id || "",
         price: initialData.price || "",
         compare_price: (initialData.compare_price && Number(initialData.compare_price) > 0) ? String(initialData.compare_price) : "",
@@ -126,8 +142,8 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
       : {
         ...EMPTY_FORM,
         sku: "",
-      }
-  );
+      };
+  });
 
   const [imageList, setImageList] = useState(() =>
     initialData?.images?.map((url, i) => ({
@@ -198,11 +214,14 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
   // Reset form when initialData changes
   useEffect(() => {
     if (initialData) {
+      const initCatIds = getInitialCategoryIds(initialData);
+      const primaryCat = initCatIds[0] ? String(initCatIds[0]) : (initialData?.category_id ? String(initialData.category_id) : "");
       setForm({
         name: initialData.name || "",
         description: initialData.description || "",
         sku: initialData.sku || "",
-        category_id: initialData.category_id || "",
+        category_id: primaryCat,
+        category_ids: initCatIds,
         subcategory_id: initialData.subcategory_id || "",
         price: initialData.price || "",
         compare_price: (initialData.compare_price && Number(initialData.compare_price) > 0) ? String(initialData.compare_price) : "",
@@ -354,11 +373,19 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
         return { error: uploadError };
       }
 
+      const primaryCatId = (form.category_ids && form.category_ids.length > 0)
+        ? parseInt(form.category_ids[0])
+        : (parseInt(form.category_id) || null);
+      const catIds = Array.isArray(form.category_ids) && form.category_ids.length > 0
+        ? form.category_ids.map(Number).filter((n) => !isNaN(n) && n > 0)
+        : (primaryCatId ? [primaryCatId] : []);
+
       const productData = {
         name: form.name,
         description: form.description,
         sku: form.sku || null,
-        category_id: parseInt(form.category_id) || null,
+        category_id: primaryCatId,
+        category_ids: catIds,
         subcategory_id: form.subcategory_id || null,
         price: parseFloat(form.price) || 0,
         compare_price: Number(form.compare_price) > 0 ? Number(form.compare_price) : null,
@@ -398,7 +425,10 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
   const handlePublish = async () => {
     if (submitting || uploading) return;
     if (!form.name.trim()) { alert("Product name is required."); return; }
-    if (!form.category_id) { alert("Please select a category."); return; }
+    if (!form.category_id && (!form.category_ids || form.category_ids.length === 0)) {
+      alert("Please select at least one category.");
+      return;
+    }
     if (!form.price) { alert("Price is required."); return; }
     setSavingAction("publish");
     const result = await saveProduct("Visible");
@@ -414,39 +444,115 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
     if (!result.error && onSaveDraft) onSaveDraft(result.data);
   };
 
-  const handleCategoryChange = async (e) => {
-    const newCategoryId = e.target.value;
-    if (!newCategoryId) {
+  const handleAddCategory = async (newCategoryId) => {
+    if (!newCategoryId) return;
+    const catIdNum = Number(newCategoryId);
+    if (!catIdNum) return;
+
+    const currentIds = form.category_ids || [];
+    if (currentIds.includes(catIdNum)) return;
+
+    const updatedIds = [...currentIds, catIdNum];
+    const isFirst = updatedIds.length === 1;
+
+    if (isFirst) {
+      const selectedCategory = categories.find(
+        (c) => Number(c.category_id ?? c.id) === catIdNum
+      );
+      const categoryName = selectedCategory?.name || "";
+      const initialSku = generateSKU(categoryName, 1);
+
+      setForm((f) => ({
+        ...f,
+        category_id: String(catIdNum),
+        category_ids: updatedIds,
+        subcategory_id: "",
+        sku: f.sku || initialSku,
+      }));
+
+      if (!isEditing || !form.sku) {
+        try {
+          const nextSku = await productService.getNextSku(categoryName);
+          if (nextSku) {
+            setForm((f) => (Number(f.category_id) === catIdNum ? { ...f, sku: nextSku } : f));
+          }
+        } catch (err) {
+          console.warn("Failed to fetch next sequential SKU:", err);
+        }
+      }
+    } else {
+      setForm((f) => ({
+        ...f,
+        category_ids: updatedIds,
+      }));
+    }
+  };
+
+  const handleRemoveCategory = (catIdToRemove) => {
+    const currentIds = form.category_ids || [];
+    const updatedIds = currentIds.filter((id) => id !== catIdToRemove);
+    const wasPrimary = Number(form.category_id) === catIdToRemove;
+
+    if (updatedIds.length === 0) {
       setForm((f) => ({
         ...f,
         category_id: "",
+        category_ids: [],
         subcategory_id: "",
-        sku: "",
+        sku: isEditing ? f.sku : "",
       }));
       return;
     }
 
+    if (wasPrimary) {
+      const newPrimaryId = updatedIds[0];
+      const selectedCategory = categories.find(
+        (c) => Number(c.category_id ?? c.id) === newPrimaryId
+      );
+      const categoryName = selectedCategory?.name || "";
+      setForm((f) => ({
+        ...f,
+        category_id: String(newPrimaryId),
+        category_ids: updatedIds,
+      }));
+      if (!isEditing) {
+        productService.getNextSku(categoryName).then((nextSku) => {
+          if (nextSku) setForm((f) => (Number(f.category_id) === newPrimaryId ? { ...f, sku: nextSku } : f));
+        }).catch(console.warn);
+      }
+    } else {
+      setForm((f) => ({
+        ...f,
+        category_ids: updatedIds,
+      }));
+    }
+  };
+
+  const handleSetPrimaryCategory = async (catIdToPrimary) => {
+    const currentIds = form.category_ids || [];
+    const filtered = currentIds.filter((id) => id !== catIdToPrimary);
+    const updatedIds = [catIdToPrimary, ...filtered];
+
     const selectedCategory = categories.find(
-      (c) => String(c.category_id) === String(newCategoryId)
+      (c) => Number(c.category_id ?? c.id) === catIdToPrimary
     );
     const categoryName = selectedCategory?.name || "";
 
-    // Generate immediate SKU with category code while loading next sequence from DB
-    const initialSku = generateSKU(categoryName, 1);
     setForm((f) => ({
       ...f,
-      category_id: newCategoryId,
-      subcategory_id: "",
-      sku: initialSku,
+      category_id: String(catIdToPrimary),
+      category_ids: updatedIds,
     }));
 
-    try {
-      const nextSku = await productService.getNextSku(categoryName);
-      if (nextSku) {
-        setForm((f) => (f.category_id === newCategoryId ? { ...f, sku: nextSku } : f));
+    if (!isEditing) {
+      try {
+        const nextSku = await productService.getNextSku(categoryName);
+        if (nextSku) {
+          setForm((f) => (Number(f.category_id) === catIdToPrimary ? { ...f, sku: nextSku } : f));
+        }
+      } catch (err) {
+        console.warn("Failed to fetch next sequential SKU:", err);
       }
-    } catch (err) {
-      console.warn("Failed to fetch next sequential SKU, keeping fallback:", err);
     }
   };
 
@@ -525,18 +631,69 @@ export default function AddProduct({ onBack, onPublish, onSaveDraft, onAddVarian
             </div>
           </div>
           <div className="field">
-            <label>Category</label>
-            <select
-              value={form.category_id}
-              onChange={handleCategoryChange}
-            >
-              <option value="">Select Category</option>
-              {categories.map((cat) => (
-                <option key={cat.category_id} value={cat.category_id}>
-                  {cat.name}
+            <label>Categories (Multiple)</label>
+            <div className="ap-categories-selector">
+              {form.category_ids && form.category_ids.length > 0 && (
+                <div className="ap-selected-cats-list">
+                  {form.category_ids.map((cid, idx) => {
+                    const catObj = categories.find((c) => Number(c.category_id ?? c.id) === Number(cid));
+                    const isPrimary = idx === 0;
+                    return (
+                      <span
+                        key={cid}
+                        className={`ap-cat-chip ${isPrimary ? "ap-cat-chip--primary" : ""}`}
+                      >
+                        {isPrimary && <span className="ap-cat-chip__star">★ Primary</span>}
+                        <span>{catObj?.name || `Category #${cid}`}</span>
+                        {!isPrimary && (
+                          <button
+                            type="button"
+                            className="ap-cat-chip__make-primary"
+                            onClick={() => handleSetPrimaryCategory(Number(cid))}
+                            title="Make this the primary category (used for SKU & main display)"
+                          >
+                            Make Primary
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="ap-cat-chip__remove"
+                          onClick={() => handleRemoveCategory(Number(cid))}
+                          title="Remove category"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleAddCategory(e.target.value);
+                  }
+                }}
+              >
+                <option value="">
+                  {(!form.category_ids || form.category_ids.length === 0)
+                    ? "Select Category..."
+                    : "+ Add another category..."}
                 </option>
-              ))}
-            </select>
+                {categories
+                  .filter((cat) => !(form.category_ids || []).includes(Number(cat.category_id ?? cat.id)))
+                  .map((cat) => (
+                    <option key={cat.category_id ?? cat.id} value={cat.category_id ?? cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="auto-hint">
+              First category is Primary (used for SKU). Click "Make Primary" to change.
+            </div>
           </div>
           <div className="field">
             <label>Subcategory <span className="scc-optional-tag">optional</span></label>

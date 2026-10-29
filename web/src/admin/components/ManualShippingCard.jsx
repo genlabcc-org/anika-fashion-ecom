@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { orderService } from "../../services/orderService";
+import { whatsappService } from "../../services/whatsappService";
 import "./ManualShippingCard.css";
 
 const formatDateTime = (dateStr) => {
@@ -19,7 +20,7 @@ const formatDateTime = (dateStr) => {
   }
 };
 
-export default function ManualShippingCard({ order, onOrderUpdated, showToast }) {
+export default function ManualShippingCard({ order, address, onOrderUpdated, showToast }) {
   const [manualCourierName, setManualCourierName] = useState(
     order?.manual_courier_name || "Franch Express"
   );
@@ -27,6 +28,7 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [savingAction, setSavingAction] = useState(null); // 'pack' | 'ship' | 'edit' | 'deliver' | null
   const [awbError, setAwbError] = useState("");
+  const [sendingWa, setSendingWa] = useState(false);
 
   // Sync state when order prop changes
   useEffect(() => {
@@ -149,12 +151,31 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
         shippedAt: now,
       });
 
+      // Dispatch WhatsApp notification to customer for manual order
+      let waNotice = "";
+      try {
+        const waRes = await whatsappService.sendManualOrderShippingNotification({
+          order: { ...order, ...updates },
+          address,
+          courierName: courier,
+          trackingId,
+          trackingUrl,
+        });
+        if (waRes?.success) {
+          waNotice = " • WhatsApp notification sent!";
+        } else if (waRes?.error) {
+          console.warn("[ManualShippingCard] WhatsApp notification warning:", waRes.error);
+        }
+      } catch (waErr) {
+        console.warn("[ManualShippingCard] WhatsApp notification error:", waErr);
+      }
+
       if (typeof onOrderUpdated === "function") {
         onOrderUpdated(updates);
       }
       setIsEditingTracking(false);
       if (typeof showToast === "function") {
-        showToast(`Tracking ID saved! Order marked as Shipped (${courier}).`, "success");
+        showToast(`Tracking ID saved! Order marked as Shipped (${courier})${waNotice}.`, "success");
       }
     } catch (err) {
       console.error("Failed to save tracking:", err);
@@ -205,12 +226,31 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
         manualTrackingUrl: trackingUrl,
       });
 
+      // Dispatch WhatsApp notification on tracking update
+      let waNotice = "";
+      try {
+        const waRes = await whatsappService.sendManualOrderShippingNotification({
+          order: { ...order, ...updates },
+          address,
+          courierName: courier,
+          trackingId,
+          trackingUrl,
+        });
+        if (waRes?.success) {
+          waNotice = " • WhatsApp notification sent!";
+        } else if (waRes?.error) {
+          console.warn("[ManualShippingCard] WhatsApp notification warning:", waRes.error);
+        }
+      } catch (waErr) {
+        console.warn("[ManualShippingCard] WhatsApp notification error:", waErr);
+      }
+
       if (typeof onOrderUpdated === "function") {
         onOrderUpdated(updates);
       }
       setIsEditingTracking(false);
       if (typeof showToast === "function") {
-        showToast("Tracking ID updated successfully!", "success");
+        showToast(`Tracking ID updated successfully!${waNotice}`, "success");
       }
     } catch (err) {
       console.error("Failed to update tracking:", err);
@@ -221,6 +261,45 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
       setSavingAction(null);
     }
   };
+
+  // ── Manual / On-Demand WhatsApp Dispatch ──
+  const handleResendWhatsApp = async () => {
+    if (sendingWa || !order?.id) return;
+    setSendingWa(true);
+    try {
+      const courier = order.manual_courier_name || order.courier_name || "Franch Express";
+      const awb = order.manual_awb || order.waybill || "";
+      const trackingUrl =
+        order.manual_tracking_url ||
+        order.tracking_url ||
+        (awb ? `https://t.17track.net/en#nums=${encodeURIComponent(awb.trim())}` : "");
+
+      const waRes = await whatsappService.sendManualOrderShippingNotification({
+        order,
+        address,
+        courierName: courier,
+        trackingId: awb,
+        trackingUrl,
+      });
+
+      if (waRes?.success) {
+        if (typeof showToast === "function") {
+          showToast(`WhatsApp message delivered to ${waRes.recipient}!`, "success");
+        }
+      } else {
+        if (typeof showToast === "function") {
+          showToast(`WhatsApp dispatch failed: ${waRes?.error || "Unknown error"}`, "error");
+        }
+      }
+    } catch (err) {
+      if (typeof showToast === "function") {
+        showToast(`WhatsApp error: ${err.message || err}`, "error");
+      }
+    } finally {
+      setSendingWa(false);
+    }
+  };
+
 
   // ── Stage 3: Mark as Delivered ──
   const handleMarkDelivered = async () => {
@@ -455,7 +534,7 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
                     <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>
                       Carrier: <strong>{order.manual_courier_name || "Franch Express"}</strong>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                       <span className="msc__tracking-pill" id="msc-readonly-awb">{order.manual_awb}</span>
                       {(order?.manual_tracking_url || order?.tracking_url || order?.manual_awb) && (
                         <a
@@ -467,6 +546,28 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
                           Track on 17TRACK ↗
                         </a>
                       )}
+                      <button
+                        type="button"
+                        onClick={handleResendWhatsApp}
+                        disabled={sendingWa}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          backgroundColor: "#25D366",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "4px",
+                          padding: "2px 8px",
+                          fontSize: "11px",
+                          fontWeight: "600",
+                          cursor: sendingWa ? "not-allowed" : "pointer",
+                          opacity: sendingWa ? 0.7 : 1,
+                        }}
+                        title="Send / resend WhatsApp shipping notification to customer"
+                      >
+                        {sendingWa ? "Sending WA..." : "Send WhatsApp"}
+                      </button>
                     </div>
                     {order?.shipped_at && (
                       <span className="msc__shipped-time">

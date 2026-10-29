@@ -24,12 +24,22 @@ export const variantService = {
    * Creates a base product plus all its variants in one flow.
    */
   async createProductWithVariants(productData, variants) {
+    const payload = { ...productData, has_variants: true };
+    if (payload.category_ids !== undefined && payload.category_ids !== null) {
+      if (Array.isArray(payload.category_ids)) {
+        payload.category_ids = payload.category_ids.map(Number).filter(n => !isNaN(n) && n > 0);
+      }
+    } else if (payload.category_id) {
+      payload.category_ids = [Number(payload.category_id)];
+    }
+
     const { data: product, error: productError } = await supabase
       .from('products')
-      .insert([{ ...productData, has_variants: true }])
+      .insert([payload])
       .select()
       .single();
     if (productError) throw productError;
+
 
     const baseSku = product.sku?.trim() || generateBaseSku(product.name);
 
@@ -98,13 +108,23 @@ export const variantService = {
    * Updates an existing product plus its variants (create/update/delete in one call).
    */
   async updateProductWithVariants(productId, productData, variants, deletedVariantIds = []) {
+    const payload = { ...productData };
+    if (payload.category_ids !== undefined && payload.category_ids !== null) {
+      if (Array.isArray(payload.category_ids)) {
+        payload.category_ids = payload.category_ids.map(Number).filter(n => !isNaN(n) && n > 0);
+      }
+    } else if (payload.category_id) {
+      payload.category_ids = [Number(payload.category_id)];
+    }
+
     const { data: product, error: productError } = await supabase
       .from('products')
-      .update(productData)
+      .update(payload)
       .eq('product_id', productId)
       .select()
       .single();
     if (productError) throw productError;
+
 
     if (deletedVariantIds.length > 0) {
       const { error: deleteError } = await supabase

@@ -80,7 +80,20 @@ const MobileProductCard = ({ product, onEdit, onDelete, selectedRows, toggleSele
         </div>
       </div>
       <div className="pl-mobile-card__meta">
-        <span className="pl-category-badge" style={getCategoryStyle(product.category)}>{product.category}</span>
+        <div className="pl-categories-wrap">
+          {(product.categoriesList && product.categoriesList.length > 0
+            ? product.categoriesList
+            : [product.category]
+          ).filter(Boolean).map((catName, idx) => (
+            <span
+              key={catName + idx}
+              className="pl-category-badge"
+              style={getCategoryStyle(catName)}
+            >
+              {catName}
+            </span>
+          ))}
+        </div>
 
         {product.subcategory && (
           <span className="pl-subcategory-badge">{product.subcategory}</span>
@@ -168,7 +181,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
 
   const CATEGORIES = useMemo(() => {
     const fromProps = categories.map((c) => (typeof c === "string" ? c : c?.name || c?.title)).filter(Boolean);
-    const fromProducts = products.map((p) => p.category).filter(Boolean);
+    const fromProducts = products.flatMap((p) => p.categoriesList || [p.category]).filter(Boolean);
     const unique = Array.from(new Set([...fromProps, ...fromProducts]));
     return ["All", ...unique];
   }, [categories, products]);
@@ -177,7 +190,9 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
   const STOCKS = ["All", "In Stock", "Low Stock", "Out of Stock"];
 
   const SUBCATEGORIES = useMemo(() => {
-    const relevantProducts = selectedCategory === "All" ? products : products.filter((p) => p.category === selectedCategory);
+    const relevantProducts = selectedCategory === "All"
+      ? products
+      : products.filter((p) => p.category === selectedCategory || (Array.isArray(p.categoriesList) && p.categoriesList.includes(selectedCategory)));
     const subs = relevantProducts.map((p) => p.subcategory).filter(Boolean);
     return ["All", ...Array.from(new Set(subs))];
   }, [products, selectedCategory]);
@@ -201,7 +216,10 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
         p.name?.toLowerCase().includes(q) ||
         p.sku?.toLowerCase().includes(q);
 
-      const matchCategory = selectedCategory === "All" || p.category === selectedCategory;
+      const matchCategory =
+        selectedCategory === "All" ||
+        p.category === selectedCategory ||
+        (Array.isArray(p.categoriesList) && p.categoriesList.includes(selectedCategory));
       const matchSubcategory = selectedSubcategory === "All" || p.subcategory === selectedSubcategory;
       const matchStatus = selectedStatus === "All" || p.status === selectedStatus;
       const matchStock = selectedStock === "All" ||
@@ -593,9 +611,20 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
                         </div>
                       </td>
                       <td className="pl-category-col">
-                        <span className="pl-category-badge" style={getCategoryStyle(product.category)}>
-                          {product.category}
-                        </span>
+                        <div className="pl-categories-wrap">
+                          {(product.categoriesList && product.categoriesList.length > 0
+                            ? product.categoriesList
+                            : [product.category]
+                          ).filter(Boolean).map((catName, idx) => (
+                            <span
+                              key={catName + idx}
+                              className="pl-category-badge"
+                              style={getCategoryStyle(catName)}
+                            >
+                              {catName}
+                            </span>
+                          ))}
+                        </div>
                       </td>
                       <td className="pl-category-col">
                         {product.subcategory ? (

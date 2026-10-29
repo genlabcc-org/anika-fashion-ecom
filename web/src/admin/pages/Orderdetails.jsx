@@ -12,6 +12,7 @@ import { isSyncableOrder, isExternalCourierOrder } from "../utils/trackingSync";
 import Toast from "../../components/Toast";
 import ThermalInvoice from "../components/ThermalInvoice";
 import ManualShippingCard from "../components/ManualShippingCard";
+import { whatsappService } from "../../services/whatsappService";
 import "./Orderdetails.css";
 
 const STATUS_CONFIG = {
@@ -297,7 +298,7 @@ const OrderDetails = ({ order, onBack }) => {
     if (!item.product_id) return;
     const { data: product, error } = await supabase
       .from("products")
-      .select("product_id, name, description, price, compare_price, image_url, images, sizes, stock, sku, categories(name)")
+      .select("product_id, name, description, price, compare_price, image_url, images, sizes, stock, sku, categories!category_id(name)")
       .eq("product_id", item.product_id)
       .single();
     if (error || !product) return;
@@ -598,13 +599,32 @@ const OrderDetails = ({ order, onBack }) => {
       const res = await icarryService.updateCourierStatus(o.id, updates);
       if (res && res.error) throw new Error(res.error);
 
+      // Send WhatsApp notification for manual orders when courier & tracking are saved
+      let waNotice = "";
+      try {
+        const waRes = await whatsappService.sendManualOrderShippingNotification({
+          order: { ...o, ...updates },
+          address,
+          courierName,
+          trackingId: awb,
+          trackingUrl,
+        });
+        if (waRes?.success) {
+          waNotice = " • WhatsApp notification sent!";
+        } else if (waRes?.error) {
+          console.warn("[Orderdetails] WhatsApp notification warning:", waRes.error);
+        }
+      } catch (waErr) {
+        console.warn("[Orderdetails] WhatsApp notification error:", waErr);
+      }
+
       setCurrentOrder((prev) => (prev ? { ...prev, ...updates } : prev));
       if (typeof updateOrderInList === "function") updateOrderInList(o.id, updates);
       setShowCourierModal(false);
       showToast(
         isOrderInRefundStatus
-          ? `Order updated to manual fulfillment (${courierName})!`
-          : `Order updated to manual fulfillment (${courierName}) and marked as ${statusVal}!`,
+          ? `Order updated to manual fulfillment (${courierName})!${waNotice}`
+          : `Order updated to manual fulfillment (${courierName}) and marked as ${statusVal}!${waNotice}`,
         "success"
       );
       await fetchFreshOrder();
@@ -1244,6 +1264,7 @@ const OrderDetails = ({ order, onBack }) => {
         {o.fulfillment_type === 'manual' ? (
           <ManualShippingCard
             order={o}
+            address={address}
             onOrderUpdated={(updates) => {
               setCurrentOrder((prev) => ({ ...(prev || {}), ...updates }));
               if (typeof updateOrderInList === "function") {

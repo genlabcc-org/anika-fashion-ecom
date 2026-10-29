@@ -43,7 +43,7 @@ const DangerZone = () => {
       setExporting("products");
       const { data: products, error } = await supabase
         .from("products")
-        .select("*, categories(name), subcategories(name), product_variants(*)")
+        .select("*, categories!category_id(name), subcategories(name), product_variants(*)")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
