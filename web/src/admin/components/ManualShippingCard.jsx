@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { orderService } from "../../services/orderService";
+import { TbBarcode, TbScan } from "react-icons/tb";
+import { FiCamera } from "react-icons/fi";
+import BarcodeScannerModal from "./BarcodeScannerModal";
+import useHardwareBarcodeScanner from "../hooks/useHardwareBarcodeScanner";
 import "./ManualShippingCard.css";
 
 const formatDateTime = (dateStr) => {
@@ -26,7 +30,17 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
   const [manualAwb, setManualAwb] = useState(order?.manual_awb || "");
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [savingAction, setSavingAction] = useState(null); // 'pack' | 'ship' | 'edit' | 'deliver' | null
+  const isSaving = Boolean(savingAction);
   const [awbError, setAwbError] = useState("");
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scanSuccessFlash, setScanSuccessFlash] = useState(false);
+  const [lastScannedCode, setLastScannedCode] = useState("");
+  const [lastScanSource, setLastScanSource] = useState("");
+
+  const isMobile = typeof window !== "undefined" && (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (window.innerWidth <= 768 && navigator.maxTouchPoints > 0)
+  );
 
   // Sync state when order prop changes
   useEffect(() => {
@@ -54,6 +68,45 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
     setManualAwb(stripped);
     if (awbError) setAwbError("");
   };
+
+  // Common barcode scan handler (works for both Camera and PC Barcode Gun)
+  const handleScannedBarcode = (scannedCode, source = "scanner") => {
+    const clean = (scannedCode || "").replace(/[\s\r\n]+/g, "").trim();
+    if (!clean) return;
+
+    if (!isPacked) {
+      if (typeof showToast === "function") {
+        showToast("Please mark the order as packed first to enter tracking.", "warning");
+      }
+      return;
+    }
+
+    // Auto-enter edit mode if tracking was already saved
+    if (hasSavedTracking && !isEditingTracking) {
+      setIsEditingTracking(true);
+    }
+
+    setManualAwb(clean);
+    setAwbError("");
+    setLastScannedCode(clean);
+    setLastScanSource(source);
+    setScanSuccessFlash(true);
+
+    setTimeout(() => {
+      setScanSuccessFlash(false);
+    }, 3500);
+
+    if (typeof showToast === "function") {
+      showToast(`Scanned Tracking ID: ${clean}`, "success");
+    }
+  };
+
+  // Listen globally on PC for USB / Bluetooth hardware barcode scanner gun
+  useHardwareBarcodeScanner({
+    onScan: (code) => handleScannedBarcode(code, "hardware"),
+    enabled: isPacked && !isSaving,
+    playSound: false,
+  });
 
   const validateAwb = (val) => {
     const clean = (val || "").replace(/\s+/g, "").trim();
@@ -254,8 +307,6 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
       setSavingAction(null);
     }
   };
-
-  const isSaving = Boolean(savingAction);
 
   return (
     <div className="msc" id="admin-manual-shipping-card">
@@ -474,21 +525,37 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    id="msc-edit-tracking-btn"
-                    className="msc__btn msc__btn--edit"
-                    onClick={() => {
-                      setIsEditingTracking(true);
-                      setManualAwb(order.manual_awb || "");
-                      setManualCourierName(order.manual_courier_name || "Franch Express");
-                      setAwbError("");
-                    }}
-                    disabled={isSaving || isCancelled || isRefunded}
-                    title="Edit tracking ID (preserves shipped timestamp)"
-                  >
-                    Edit
-                  </button>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      id="msc-scan-tracking-btn"
+                      className="msc__btn msc__btn--scan-edit"
+                      onClick={() => {
+                        setIsEditingTracking(true);
+                        setIsScannerOpen(true);
+                      }}
+                      disabled={isSaving || isCancelled || isRefunded}
+                      title="Scan new barcode to update tracking ID"
+                    >
+                      <TbScan size={14} />
+                      <span>Scan Barcode</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="msc-edit-tracking-btn"
+                      className="msc__btn msc__btn--edit"
+                      onClick={() => {
+                        setIsEditingTracking(true);
+                        setManualAwb(order.manual_awb || "");
+                        setManualCourierName(order.manual_courier_name || "Franch Express");
+                        setAwbError("");
+                      }}
+                      disabled={isSaving || isCancelled || isRefunded}
+                      title="Edit tracking ID (preserves shipped timestamp)"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -517,26 +584,74 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
                   </div>
 
                   <div className="msc__form-group">
-                    <label className="msc__label" htmlFor="msc-awb-input">
-                      Tracking ID / AWB Number <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    <input
-                      id="msc-awb-input"
-                      type="text"
-                      className={`msc__input ${awbError ? "msc__input--error" : ""}`}
-                      value={manualAwb}
-                      onChange={handleAwbChange}
-                      disabled={!isPacked || isSaving}
-                      placeholder="e.g. 48066065272"
-                      maxLength={30}
-                      autoComplete="off"
-                    />
+                    <div className="msc__label-with-scanner">
+                      <label className="msc__label" htmlFor="msc-awb-input">
+                        Tracking ID / AWB Number <span style={{ color: "#dc2626" }}>*</span>
+                      </label>
+                      <button
+                        type="button"
+                        id="msc-scan-open-btn"
+                        className="msc__scan-trigger-btn"
+                        onClick={() => setIsScannerOpen(true)}
+                        disabled={!isPacked || isSaving}
+                        title={isMobile ? "Scan barcode using phone camera" : "Scan barcode with camera or PC barcode gun"}
+                      >
+                        {isMobile ? <FiCamera size={13} /> : <TbBarcode size={14} />}
+                        <span>{isMobile ? "Scan with Camera" : "Scan Barcode"}</span>
+                      </button>
+                    </div>
+
+                    <div className="msc__input-scanner-wrap">
+                      <input
+                        id="msc-awb-input"
+                        type="text"
+                        className={`msc__input ${awbError ? "msc__input--error" : ""} ${scanSuccessFlash ? "msc__input--scanned" : ""}`}
+                        value={manualAwb}
+                        onChange={handleAwbChange}
+                        disabled={!isPacked || isSaving}
+                        placeholder={isMobile ? "Enter or tap scan button" : "e.g. 48066065272 (or scan with barcode gun)"}
+                        maxLength={30}
+                        autoComplete="off"
+                      />
+                      <button
+                        type="button"
+                        id="msc-input-quick-scan"
+                        className="msc__input-icon-btn"
+                        onClick={() => setIsScannerOpen(true)}
+                        disabled={!isPacked || isSaving}
+                        title={isMobile ? "Scan barcode with camera" : "Scan barcode (Camera or PC Gun)"}
+                        aria-label="Scan barcode"
+                      >
+                        <TbScan size={16} />
+                      </button>
+                    </div>
+
+                    {scanSuccessFlash && (
+                      <div className="msc__scan-success-badge">
+                        ✓ Scanned: <strong>{lastScannedCode}</strong>{" "}
+                        <span style={{ fontSize: "11px", opacity: 0.9 }}>
+                          {lastScanSource === "hardware" ? "(PC Barcode Gun)" : "(Camera Scanner)"}
+                        </span>
+                      </div>
+                    )}
+
                     {awbError ? (
                       <span className="msc__error-text">{awbError}</span>
                     ) : (
-                      <span className="msc__hint">
-                        6–30 characters (letters, numbers, hyphens). Spaces stripped automatically.
-                      </span>
+                      <div className="msc__scanner-hint-row">
+                        <span className="msc__hint">
+                          6–30 characters. Spaces stripped automatically.
+                        </span>
+                        {!isMobile && (
+                          <span
+                            className="msc__hw-ready-pill"
+                            title="Hardware barcode scanner gun active. Pull trigger on parcel barcode to auto-fill."
+                          >
+                            <span className="msc__hw-ready-dot" />
+                            PC Scanner Gun Ready
+                          </span>
+                        )}
+                      </div>
                     )}
                     {manualAwb.trim().length >= 4 && (
                       <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
@@ -677,6 +792,14 @@ export default function ManualShippingCard({ order, onOrderUpdated, showToast })
           </div>
         </div>
       </div>
+
+      {/* Barcode Scanner Modal (Camera & PC Scanner Gun) */}
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScan={handleScannedBarcode}
+        title="Tracking Barcode Scanner"
+      />
     </div>
   );
 }
