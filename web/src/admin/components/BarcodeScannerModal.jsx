@@ -388,17 +388,10 @@ function BarcodeScannerModalContent({
                   <TbBarcode size={44} />
                   <div className="bsm-pulse-ring" />
                 </div>
-                <h4>Dedicated Barcode Scanner Active</h4>
-                <p className="bsm-gun-tip">
-                  Pull the trigger on your USB or Bluetooth barcode scanner gun
-                  aimed at the parcel label. The scanned code will be
-                  automatically entered into the Tracking ID field.
-                </p>
+                <h4> Barcode Scanner</h4>
+               
 
-                <div className="bsm-status-indicator">
-                  <span className="bsm-status-dot" />
-                  <span>Listening for barcode scanner keystrokes...</span>
-                </div>
+                
 
                 <div className="bsm-test-box">
                   <label htmlFor="bsm-test-input">Test / Direct Input Focus:</label>
@@ -410,10 +403,6 @@ function BarcodeScannerModalContent({
                     autoFocus
                     onKeyDown={handleManualDedicatedInput}
                   />
-                  <span className="bsm-test-hint">
-                    Scanner guns transmit input instantly and press Enter
-                    automatically.
-                  </span>
                 </div>
               </div>
             </div>
