@@ -9,9 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1125.0",
     "@fontsource/cinzel": "^5.2.8",
-    "@fontsource/cormorant-garamond": "^5.2.11",
     "@fontsource/inter": "^5.2.8",
     "@supabase/supabase-js": "^2.106.2",
     "browser-image-compression": "^2.0.2",

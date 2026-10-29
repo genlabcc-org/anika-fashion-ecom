@@ -10,7 +10,10 @@ node_modules
 
 # production
 build/
-dist/ 
+dist/
+**/dist/
+.vite/
+**/.vite/
 
 # misc
 .DS_Store

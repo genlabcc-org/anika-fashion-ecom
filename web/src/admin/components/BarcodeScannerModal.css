@@ -411,46 +411,10 @@
 }
 
 .bsm-gun-card h4 {
-  margin: 0 0 6px 0;
+  margin: 0 0 14px 0;
   font-size: 16px;
   font-weight: 700;
   color: #0f172a;
-}
-
-.bsm-gun-tip {
-  margin: 0 0 14px 0;
-  font-size: 12.5px;
-  color: #64748b;
-  max-width: 360px;
-  line-height: 1.4;
-}
-
-.bsm-status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  color: #065f46;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: 20px;
-  margin-bottom: 16px;
-}
-
-.bsm-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-  animation: bsmDotBlink 1.4s ease-in-out infinite;
-}
-
-@keyframes bsmDotBlink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
 }
 
 .bsm-test-box {
@@ -487,11 +451,6 @@
 .bsm-test-input:focus {
   border-color: #8b0030;
   box-shadow: 0 0 0 2px rgba(139, 0, 48, 0.15);
-}
-
-.bsm-test-hint {
-  font-size: 11px;
-  color: #64748b;
 }
 
 /* Success Card */

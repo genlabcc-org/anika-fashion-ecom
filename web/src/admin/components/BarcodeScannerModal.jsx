@@ -259,8 +259,8 @@ function BarcodeScannerModalContent({
               <h3 className="bsm-title">{title}</h3>
               <p className="bsm-subtitle">
                 {activeTab === "camera"
-                  ? "Point camera at courier AWB barcode or QR code"
-                  : "Ready for USB / Bluetooth handheld barcode scanner gun"}
+                  ? "Point camera at barcode or QR code"
+                  : "Scan with barcode scanner"}
               </p>
             </div>
           </div>
@@ -388,18 +388,15 @@ function BarcodeScannerModalContent({
                   <TbBarcode size={44} />
                   <div className="bsm-pulse-ring" />
                 </div>
-                <h4> Barcode Scanner</h4>
-               
-
-                
+                <h4>Barcode Scanner</h4>
 
                 <div className="bsm-test-box">
-                  <label htmlFor="bsm-test-input">Test / Direct Input Focus:</label>
+                  <label htmlFor="bsm-test-input">Direct Input Focus:</label>
                   <input
                     id="bsm-test-input"
                     type="text"
                     className="bsm-test-input"
-                    placeholder="Scan barcode here or press Enter to accept..."
+                    placeholder="Scan barcode here or press Enter..."
                     autoFocus
                     onKeyDown={handleManualDedicatedInput}
                   />
@@ -412,7 +409,7 @@ function BarcodeScannerModalContent({
         {/* Footer */}
         <div className="bsm-footer">
           <span className="bsm-footer-text">
-            Supports Code 128, Code 39, EAN, UPC, QR & 2D Courier Barcodes
+            Supports 1D & 2D Barcodes & QR
           </span>
           <button type="button" className="bsm-btn-cancel" onClick={onClose}>
             Cancel
