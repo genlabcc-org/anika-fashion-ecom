@@ -13,6 +13,7 @@ import Toast from "../../components/Toast";
 import ThermalInvoice from "../components/ThermalInvoice";
 import ManualShippingCard from "../components/ManualShippingCard";
 import BarcodeScannerModal from "../components/BarcodeScannerModal";
+import { whatsappService } from "../../services/whatsappService";
 import { TbScan } from "react-icons/tb";
 import "./Orderdetails.css";
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { orderService } from "../../services/orderService";
+import { whatsappService } from "../../services/whatsappService";
 import { TbBarcode, TbScan } from "react-icons/tb";
 import { FiCamera } from "react-icons/fi";
 import BarcodeScannerModal from "./BarcodeScannerModal";
@@ -32,6 +33,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
   const [savingAction, setSavingAction] = useState(null); // 'pack' | 'ship' | 'edit' | 'deliver' | null
   const isSaving = Boolean(savingAction);
   const [awbError, setAwbError] = useState("");
+  const [sendingWa, setSendingWa] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scanSuccessFlash, setScanSuccessFlash] = useState(false);
   const [lastScannedCode, setLastScannedCode] = useState("");
