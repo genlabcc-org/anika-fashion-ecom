@@ -88,6 +88,8 @@ export default function ProductSection({ onProductClick }) {
     </section>
   );
 
+  if (visible.length === 0) return null;
+
   return (
     <section className="product-section">
       <div className="product-left">

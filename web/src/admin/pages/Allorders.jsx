@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase";
 import Toast from "../../components/Toast";
 import ExportOrdersModal from "../components/ExportOrdersModal";
 import { useAdmin } from "../../hooks/useAdmin";
+import { getTodayISTStr, getPresetDates } from "../../utils/exportUtils";
 import "./Allorders.css";
 
 const STATUS_STYLE = {
@@ -34,7 +35,41 @@ const CATEGORIES = ["All Category", "Necklaces", "Earrings", "Rings", "Bracelets
 const STATUSES = ["All Status", "To Pack / Needs Action", "Paid", "Order Placed", "Confirmed", "Shipped", "Delivered", "Refunded", "Partially Refunded", "Refund Failed", "Cancelled", "Returned"];
 const PER_PAGE = 8;
 
+const DATE_PRESETS = [
+  { key: "all_time", label: "All Time" },
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "last_7_days", label: "Last 7 Days" },
+  { key: "last_30_days", label: "Last 30 Days" },
+  { key: "this_month", label: "This Month" },
+  { key: "custom", label: "Custom Range" },
+];
+
+const calculatePresetDates = (preset) => {
+  const todayStr = getTodayISTStr();
+  const [y, m, d] = todayStr.split("-").map(Number);
+
+  if (preset === "today") {
+    return { from: todayStr, to: todayStr };
+  }
+  if (preset === "yesterday") {
+    const target = new Date(Date.UTC(y, m - 1, d - 1));
+    const yStr = target.toISOString().split("T")[0];
+    return { from: yStr, to: yStr };
+  }
+  return getPresetDates(preset);
+};
+
 /* ── Icons ── */
+const CalendarIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
 const ChevronDownIcon = () => (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="6 9 12 15 18 9" />
@@ -165,6 +200,9 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const [paymentFilter, setPaymentFilter] = useState("All Payment");
   const [readFilter, setReadFilter] = useState("all"); // "all" | "unread"
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [datePreset, setDatePreset] = useState("all_time");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -257,7 +295,25 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       return true;
     })();
 
-    return matchCategory && matchStatus && matchPayment && matchSearch && matchRead;
+    const matchDate = (() => {
+      if (!startDate && !endDate) return true;
+      const rawDate = o.order_date || o.created_at || o.date;
+      if (!rawDate) return false;
+      const orderTime = new Date(rawDate).getTime();
+      if (isNaN(orderTime)) return false;
+
+      if (startDate) {
+        const start = new Date(`${startDate}T00:00:00+05:30`).getTime();
+        if (orderTime < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(`${endDate}T23:59:59.999+05:30`).getTime();
+        if (orderTime > end) return false;
+      }
+      return true;
+    })();
+
+    return matchCategory && matchStatus && matchPayment && matchSearch && matchRead && matchDate;
   });
 
   const handleFindMissingPayments = async () => {
@@ -376,7 +432,14 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const inTransit = count('Shipped');
   const problems = count('Cancelled') + count('Returned');
 
-  const hasActiveFilters = category !== "All Category" || status !== "All Status" || paymentFilter !== "All Payment" || readFilter !== "all" || search !== "";
+  const hasActiveDateFilter = datePreset !== "all_time" || !!startDate || !!endDate;
+  const hasActiveFilters =
+    category !== "All Category" ||
+    status !== "All Status" ||
+    paymentFilter !== "All Payment" ||
+    readFilter !== "all" ||
+    search !== "" ||
+    hasActiveDateFilter;
 
   const handleResetFilters = () => {
     setCategory("All Category");
@@ -384,6 +447,47 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     setPaymentFilter("All Payment");
     setReadFilter("all");
     setSearch("");
+    setDatePreset("all_time");
+    setStartDate("");
+    setEndDate("");
+    setPage(1);
+  };
+
+  const handleResetDateFilter = () => {
+    setDatePreset("all_time");
+    setStartDate("");
+    setEndDate("");
+    setPage(1);
+  };
+
+  const handlePresetSelect = (presetKey) => {
+    setDatePreset(presetKey);
+    setPage(1);
+
+    if (presetKey === "all_time") {
+      setStartDate("");
+      setEndDate("");
+      return;
+    }
+
+    if (presetKey === "custom") {
+      return;
+    }
+
+    const { from, to } = calculatePresetDates(presetKey);
+    setStartDate(from || "");
+    setEndDate(to || "");
+  };
+
+  const handleStartDateChange = (e) => {
+    setStartDate(e.target.value);
+    setDatePreset("custom");
+    setPage(1);
+  };
+
+  const handleEndDateChange = (e) => {
+    setEndDate(e.target.value);
+    setDatePreset("custom");
     setPage(1);
   };
 
@@ -803,7 +907,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           {/* Total Orders + Revenue */}
           <div className="ao__kpi-card ao__kpi-card--orders">
             <div className="ao__kpi-top">
-              <span className="ao__kpi-icon">📦</span>
               <span className="ao__kpi-label">Total Orders</span>
             </div>
             <div className={`ao__kpi-value${loading ? ' ao__kpi-value--loading' : ''}`}>
@@ -825,7 +928,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             title="Click to view all unfulfilled orders needing action"
           >
             <div className="ao__kpi-top">
-              <span className="ao__kpi-icon">⏳</span>
               <span className="ao__kpi-label">To Pack / Needs Action</span>
             </div>
             <div className={`ao__kpi-value${loading ? ' ao__kpi-value--loading' : ''}`}>
@@ -848,7 +950,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           {/* In Transit */}
           <div className="ao__kpi-card ao__kpi-card--transit">
             <div className="ao__kpi-top">
-              <span className="ao__kpi-icon">🚚</span>
               <span className="ao__kpi-label">In Transit</span>
             </div>
             <div className={`ao__kpi-value${loading ? ' ao__kpi-value--loading' : ''}`}>
@@ -869,7 +970,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           {/* Payment split */}
           <div className="ao__kpi-card ao__kpi-card--payment">
             <div className="ao__kpi-top">
-              <span className="ao__kpi-icon">💳</span>
               <span className="ao__kpi-label">Payment Split</span>
             </div>
             <div className={`ao__kpi-value${loading ? ' ao__kpi-value--loading' : ''}`}>
@@ -964,12 +1064,16 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
         <FilterDropdown value={paymentFilter} options={PAYMENT_OPTIONS} onChange={(v) => { setPaymentFilter(v); setPage(1); }} />
 
         <button
-          className={`ao__filter-btn${filterPanelOpen || hasActiveFilters ? ' ao__filter-btn--active' : ''}`}
+          className={`ao__filter-btn${filterPanelOpen || hasActiveDateFilter ? ' ao__filter-btn--active' : ''}`}
           onClick={() => setFilterPanelOpen(o => !o)}
-          style={hasActiveFilters ? { background: '#f5f3ff', color: '#4f46e5', borderColor: '#c7d2fe' } : {}}
+          style={hasActiveDateFilter ? { background: '#f5f3ff', color: '#4f46e5', borderColor: '#c7d2fe' } : {}}
         >
-          <FilterIcon />
-          <span>Filter{hasActiveFilters ? ` (Active)` : ''}</span>
+          <CalendarIcon />
+          <span>
+            {hasActiveDateFilter
+              ? `Date: ${DATE_PRESETS.find(p => p.key === datePreset)?.label || 'Custom'}`
+              : 'Date Filter'}
+          </span>
           <ChevronDownIcon />
         </button>
 
@@ -990,36 +1094,110 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
         </div>
       </div>
 
-      {/* Expanded Filter Panel */}
+      {/* Expanded Filter Panel (Datewise Filter) */}
       {filterPanelOpen && (
         <div className="ao__filter-panel" style={{
           display: 'flex',
           flexWrap: 'wrap',
-          gap: '12px',
+          gap: '16px',
           alignItems: 'center',
           background: '#fff',
-          padding: '12px 16px',
-          borderRadius: '8px',
+          padding: '14px 18px',
+          borderRadius: '10px',
           border: '1px solid #e5e7eb',
           marginBottom: '16px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          boxShadow: '0 2px 10px rgba(0,0,0,0.04)'
         }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '600', color: '#666' }}>Category</span>
-            <FilterDropdown value={category} options={categoryOptions} onChange={(v) => { setCategory(v); setPage(1); }} />
+          {/* Preset Buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Date Presets
+            </span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {DATE_PRESETS.map((p) => {
+                const isSelected = datePreset === p.key;
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => handlePresetSelect(p.key)}
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: isSelected ? '1px solid #111' : '1px solid #e5e7eb',
+                      background: isSelected ? '#111' : '#f9fafb',
+                      color: isSelected ? '#fff' : '#374151',
+                      fontWeight: isSelected ? '600' : '500',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '600', color: '#666' }}>Status</span>
-            <FilterDropdown value={status} options={STATUSES} onChange={(v) => { setStatus(v); setPage(1); }} />
+
+          {/* Date Picker Inputs */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280' }}>
+                From Date
+              </label>
+              <input
+                type="date"
+                value={startDate}
+                max={endDate || undefined}
+                onChange={handleStartDateChange}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '12.5px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  background: '#fff',
+                  color: '#111',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: '#6b7280' }}>
+                To Date
+              </label>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={handleEndDateChange}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '12.5px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  background: '#fff',
+                  color: '#111',
+                  outline: 'none',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '600', color: '#666' }}>Payment Method</span>
-            <FilterDropdown value={paymentFilter} options={PAYMENT_OPTIONS} onChange={(v) => { setPaymentFilter(v); setPage(1); }} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', marginLeft: 'auto', gap: '8px', paddingTop: '16px' }}>
-            {hasActiveFilters && (
+
+          {/* Result Info & Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto', gap: '10px', flexWrap: 'wrap', paddingTop: '10px' }}>
+            {hasActiveDateFilter && (
+              <span style={{ fontSize: '12px', color: '#4b5563', background: '#f3f4f6', padding: '4px 10px', borderRadius: '20px' }}>
+                {filtered.length} order{filtered.length === 1 ? '' : 's'} found
+              </span>
+            )}
+            {hasActiveDateFilter && (
               <button
-                onClick={handleResetFilters}
+                type="button"
+                onClick={handleResetDateFilter}
                 style={{
                   padding: '6px 12px',
                   fontSize: '12.5px',
@@ -1031,13 +1209,14 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                   fontWeight: '500'
                 }}
               >
-                Reset All Filters
+                Clear Date
               </button>
             )}
             <button
+              type="button"
               onClick={() => setFilterPanelOpen(false)}
               style={{
-                padding: '6px 12px',
+                padding: '6px 14px',
                 fontSize: '12.5px',
                 background: '#111',
                 color: '#fff',
@@ -1047,7 +1226,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                 fontWeight: '500'
               }}
             >
-              Close Panel
+              Close
             </button>
           </div>
         </div>

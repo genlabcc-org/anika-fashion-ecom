@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { productService } from "../../services/productService";
+import { useStore } from "../../hooks/useStore";
 import back from "../../assets/admin/back.png";
 import "./addcategory.css";
 
@@ -8,6 +9,18 @@ const EMPTY_FORM = {
   slug: "",
   sort_order: "",
   description: "",
+};
+
+const resolveIsActive = (data) => {
+  if (!data) return true;
+  if (typeof data.is_active === "boolean") return data.is_active;
+  if (data.is_active !== undefined && data.is_active !== null) {
+    return String(data.is_active) === "true" || data.is_active === 1;
+  }
+  if (data.status) {
+    return data.status.toLowerCase() === "active";
+  }
+  return true;
 };
 
 // ── Image Upload ──────────────────────────────────────────────
@@ -72,7 +85,7 @@ export default function AddCategory({ onBack, onPublish, onSaveDraft, initialDat
   const [imageUrl, setImageUrl] = useState(initialData?.image_url || null);
   const [rawFile, setRawFile] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [isActive, setIsActive] = useState(initialData?.is_active ?? true);
+  const [isActive, setIsActive] = useState(() => resolveIsActive(initialData));
   const [materialOptions, setMaterialOptions] = useState([]);
   const [stoneOptions, setStoneOptions] = useState([]);
   const [materialInput, setMaterialInput] = useState("");
@@ -90,7 +103,7 @@ export default function AddCategory({ onBack, onPublish, onSaveDraft, initialDat
       });
       setImageUrl(initialData.image_url || null);
       setRawFile(null);
-      setIsActive(initialData.is_active ?? true);
+      setIsActive(resolveIsActive(initialData));
       setMaterialOptions([]);
       setStoneOptions([]);
       setMaterialInput("");
@@ -179,7 +192,7 @@ export default function AddCategory({ onBack, onPublish, onSaveDraft, initialDat
   const [toastMessage, setToastMessage] = useState("");
 
   // ── Save Category ───────────────────────────────────────────
-  const saveCategory = async (status) => {
+  const saveCategory = async (targetStatus) => {
     setSaving(true);
     const { url: uploadedUrl, error: uploadError } = await uploadImage();
     if (uploadError) {
@@ -188,24 +201,50 @@ export default function AddCategory({ onBack, onPublish, onSaveDraft, initialDat
       return { error: uploadError };
     }
 
+    const effectiveIsActive = targetStatus === "draft" ? false : Boolean(isActive);
+
     const categoryData = {
-      name: form.name,
-      slug: form.slug,
-      sort_order: parseInt(form.sort_order) || 0,
-      description: form.description,
+      name: form.name.trim(),
+      slug: form.slug.trim(),
+      sort_order: parseInt(form.sort_order, 10) || 0,
+      description: form.description?.trim() || "",
       image_url: uploadedUrl,
-      is_active: isActive,
+      is_active: effectiveIsActive,
     };
 
     try {
       if (isEditing) {
-        const data = await productService.updateCategory(initialData.category_id, categoryData);
+        const catId = initialData?.category_id || initialData?.id;
+        if (!catId) {
+          throw new Error("Category ID is missing. Cannot update category.");
+        }
+        const data = await productService.updateCategory(catId, categoryData);
+        if (!data || data.length === 0) {
+          throw new Error("Category update returned no data. Check category ID.");
+        }
+        const updated = data[0];
+        try {
+          useStore.getState().updateCategoryInStore?.(updated);
+          useStore.getState().fetchCategories?.({ force: true });
+        } catch (e) {
+          console.warn("Failed to sync store categories:", e);
+        }
         setSaving(false);
-        return { data: data[0], error: null };
+        return { data: updated, error: null };
       } else {
         const data = await productService.insertCategory(categoryData);
+        if (!data || data.length === 0) {
+          throw new Error("Category insert returned no data.");
+        }
+        const created = data[0];
+        try {
+          useStore.getState().updateCategoryInStore?.(created);
+          useStore.getState().fetchCategories?.({ force: true });
+        } catch (e) {
+          console.warn("Failed to sync store categories:", e);
+        }
         setSaving(false);
-        return { data: data[0], error: null };
+        return { data: created, error: null };
       }
     } catch (error) {
       setSaving(false);

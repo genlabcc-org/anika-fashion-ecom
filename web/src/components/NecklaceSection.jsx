@@ -100,6 +100,8 @@ export default function NecklaceSection({ onProductClick }) {
     </div>
   );
 
+  if (products.length === 0) return null;
+
   return (
     <div className="product-section-wrapper">
       <div className="showcase-header">

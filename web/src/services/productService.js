@@ -273,12 +273,18 @@ export const productService = {
    * @returns {Promise<any>}
    */
   async updateCategory(categoryId, categoryData) {
+    if (!categoryId) {
+      throw new Error('Category ID is required to update category.');
+    }
     const { data, error } = await supabase
       .from('categories')
       .update(categoryData)
       .eq('category_id', categoryId)
       .select();
     if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error(`Failed to update category #${categoryId}: Category not found or update blocked.`);
+    }
     return data;
   },
 

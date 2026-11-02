@@ -1,28 +1,48 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { productService } from "../services/productService";
+import { useStore } from "../hooks/useStore";
 import { SkeletonCategories } from "./ui/Skeleton";
 import "./CategorySection.css";
 
+const isCategoryActive = (cat) => {
+  if (!cat) return false;
+  return cat.is_active !== false && String(cat.is_active) !== "false" && cat.is_active !== 0;
+};
+
 export default function CategorySection({ onCategoryClick, title = "Category", subtitle = "" }) {
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const storeCategories = useStore((state) => state.categories);
+  const fetchCategories = useStore((state) => state.fetchCategories);
+  const [fallbackCategories, setFallbackCategories] = useState([]);
+  const [loading, setLoading] = useState(!storeCategories || storeCategories.length === 0);
 
   useEffect(() => {
+    let isMounted = true;
     const loadCategories = async () => {
       try {
-        const data = await productService.getCategories();
-        setCategories(data.filter((cat) => cat.is_active));
+        const data = await fetchCategories();
+        if (isMounted && (!data || data.length === 0)) {
+          const directData = await productService.getCategories();
+          if (isMounted) setFallbackCategories(directData || []);
+        }
       } catch (err) {
         console.error("Failed to load categories:", err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     loadCategories();
-  }, []);
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchCategories]);
 
-  if (loading) {
+  const rawList = storeCategories && storeCategories.length > 0 ? storeCategories : fallbackCategories;
+  const categories = useMemo(() => {
+    return (rawList || []).filter(isCategoryActive);
+  }, [rawList]);
+
+  if (loading && (!rawList || rawList.length === 0)) {
     return (
       <section className="category-section">
         <div className="category-header">
@@ -36,6 +56,10 @@ export default function CategorySection({ onCategoryClick, title = "Category", s
     );
   }
 
+  if (categories.length === 0) {
+    return null;
+  }
+
   return (
     <section className="category-section">
       <div className="category-header">
@@ -45,7 +69,7 @@ export default function CategorySection({ onCategoryClick, title = "Category", s
       <div className="category-wrapper">
         {categories.map((cat) => (
           <div
-            key={cat.category_id}
+            key={cat.category_id || cat.id}
             className="category-item"
             onClick={() => onCategoryClick && onCategoryClick(cat.name)}
           >

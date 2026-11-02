@@ -197,8 +197,9 @@ export const useStore = create((set, get) => ({
   },
 
   // Caching Categories
-  fetchCategories: async () => {
-    if (get().categories.length > 0) return get().categories;
+  fetchCategories: async (options = {}) => {
+    const force = options?.force === true;
+    if (!force && get().categories.length > 0) return get().categories;
     set({ loadingCategories: true });
     try {
       const data = await productService.getCategories();
@@ -209,6 +210,24 @@ export const useStore = create((set, get) => ({
       set({ loadingCategories: false });
       return [];
     }
+  },
+
+  invalidateCategoriesCache: () => set({ categories: [] }),
+
+  updateCategoryInStore: (updatedCat) => {
+    if (!updatedCat) return;
+    const targetId = updatedCat.category_id || updatedCat.id;
+    set((state) => {
+      const exists = state.categories.some((c) => (c.category_id || c.id) === targetId);
+      if (exists) {
+        return {
+          categories: state.categories.map((c) =>
+            (c.category_id || c.id) === targetId ? { ...c, ...updatedCat } : c
+          ),
+        };
+      }
+      return { categories: [updatedCat, ...state.categories] };
+    });
   },
 
   // Caching Products by Category

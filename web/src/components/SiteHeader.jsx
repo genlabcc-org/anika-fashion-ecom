@@ -26,6 +26,11 @@ const chunkArray = (arr, size) => {
 
 
 
+const isCategoryActive = (cat) => {
+  if (!cat) return false;
+  return cat.is_active !== false && String(cat.is_active) !== "false" && cat.is_active !== 0;
+};
+
 // Retrieves real subcategories for a category from the store categories array,
 // and prepends "All [Category]" so users can view all main category products.
 const getSubcategories = (link, categories = []) => {
@@ -35,7 +40,12 @@ const getSubcategories = (link, categories = []) => {
     (c) => c.name?.toLowerCase() === link.toLowerCase()
   );
 
+  if (!matched || !isCategoryActive(matched)) {
+    return [];
+  }
+
   const realSubs = (matched?.subcategories || [])
+    .filter((s) => s.is_active !== false && String(s.is_active) !== "false" && s.is_active !== 0)
     .map((s) => (typeof s === "string" ? s : s.name))
     .filter(Boolean);
 
@@ -307,12 +317,33 @@ export default function SiteHeader({ activeLink = "Home", onLinkClick }) {
 
   // All available navigation category links
   const allNavLinks = useMemo(() => {
-    const customNames = (categories || [])
-      .map(c => c.name)
-      .filter(Boolean)
-      .filter(name => !DEFAULT_LINKS.some(d => d.toLowerCase() === name.toLowerCase()));
+    const hasLoadedCategories = Array.isArray(categories) && categories.length > 0;
 
-    return ["Home", ...DEFAULT_LINKS, ...customNames];
+    // Filter default links: if the category exists in categories, respect its is_active state
+    const activeDefaultLinks = DEFAULT_LINKS.filter((defaultName) => {
+      if (!hasLoadedCategories) return true;
+      const matched = categories.find(
+        (c) => (c.name || "").trim().toLowerCase() === defaultName.toLowerCase()
+      );
+      if (matched) {
+        return isCategoryActive(matched);
+      }
+      return true;
+    });
+
+    // Custom categories created by admin that are active
+    const customNames = (categories || [])
+      .filter(isCategoryActive)
+      .map((c) => c.name)
+      .filter(Boolean)
+      .filter(
+        (name) =>
+          !DEFAULT_LINKS.some(
+            (d) => d.toLowerCase() === name.trim().toLowerCase()
+          )
+      );
+
+    return ["Home", ...activeDefaultLinks, ...customNames];
   }, [categories]);
 
   // Top navbar shows fixed maximum of 8 categories

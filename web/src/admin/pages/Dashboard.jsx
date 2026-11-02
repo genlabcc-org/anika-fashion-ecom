@@ -1018,6 +1018,11 @@ const Dashboard = () => {
     if (row) {
       try {
         await productService.deleteCategory(id);
+        try {
+          useStore.getState().fetchCategories?.({ force: true });
+        } catch (e) {
+          console.warn("Failed to sync store categories on delete:", e);
+        }
         setCategories((p) => p.filter((x) => x.id !== id));
       } catch (error) {
         console.error("Error deleting category:", error);
@@ -1032,12 +1037,20 @@ const Dashboard = () => {
 
   const normalizeCategoryRow = (data) => ({
     ...data,
-    id: data.category_id ?? data.id,
-    categoryImage: data.image_url || null,
-    status: data.is_active ? "Active" : "Draft",
+    id: data?.category_id ?? data?.id,
+    categoryImage: data?.image_url || null,
+    status: (data?.is_active === true || data?.is_active === "true" || data?.is_active === 1) ? "Active" : "Draft",
   });
 
   const handlePublishCategory = (data) => {
+    if (data) {
+      try {
+        useStore.getState().updateCategoryInStore?.(data);
+        useStore.getState().fetchCategories?.({ force: true });
+      } catch (e) {
+        console.warn("Failed to sync store categories on publish:", e);
+      }
+    }
     const normalized = normalizeCategoryRow(data);
     setCategories((p) =>
       editingCategory
@@ -1049,6 +1062,14 @@ const Dashboard = () => {
   };
 
   const handleSaveDraftCategory = (data) => {
+    if (data) {
+      try {
+        useStore.getState().updateCategoryInStore?.(data);
+        useStore.getState().fetchCategories?.({ force: true });
+      } catch (e) {
+        console.warn("Failed to sync store categories on draft:", e);
+      }
+    }
     const normalized = normalizeCategoryRow(data);
     setCategories((p) =>
       editingCategory
