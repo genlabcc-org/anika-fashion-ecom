@@ -1,6 +1,5 @@
 // supabase/functions/_shared/finalizeOrder.ts
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
-import { bookShipmentForOrder } from "./bookShipment.ts";
 
 export interface FinalizeOrderInput {
   razorpay_order_id: string;
@@ -66,13 +65,12 @@ async function triggerOrderEmail(orderId: string): Promise<void> {
  * 3. Inserts public.orders with UNIQUE constraint on razorpay_order_id.
  *    - Uses exact status ("Paid") and payment ("Razorpay") from the previous flow.
  *    - On 23505 conflict, fetches existing order and returns immediately with alreadyExisted: true.
- *    - All side effects (items, stock deduction, iCarry, email, cart clearing) are SKIPPED for the non-winning call.
+ *    - All side effects (items, stock deduction, email, cart clearing) are SKIPPED for the non-winning call.
  * 4. Inserts public.order_items. If it fails, persists admin_notes 'ORDER ITEMS MISSING'.
  * 5. Triggers admin order notification email (awaited).
  * 6. Decrements stock via deduct_order_stock RPC idempotently using atomic stock_deducted flag.
  * 7. Clears user's purchased items from public.cart_items (matching .eq("size", it.size || "").eq("color", it.color || ""); skips Buy Now).
- * 8. Automatically books shipment via iCarry (failures and exceptions persist delivery_status 'Booking Failed' + shipment_error).
- * 9. Updates pending_orders.status = 'completed'.
+ * 8. Updates pending_orders.status = 'completed'.
  */
 export async function finalizeOrder(input: FinalizeOrderInput): Promise<FinalizeOrderResult> {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, supabaseAdmin } = input;
@@ -164,13 +162,15 @@ export async function finalizeOrder(input: FinalizeOrderInput): Promise<Finalize
       razorpay_payment_id: razorpay_payment_id || null,
       razorpay_signature: razorpay_signature || null,
       stock_deducted: false,
+      fulfillment_type: "manual",
+      delivery_status: "Pending",
     } as any)
     .select()
     .single();
 
   if (insertError) {
     // If concurrent insert occurred (error 23505), fetch and return the winning order immediately.
-    // Skip all side effects (items, stock deduction, iCarry, email, cart clearing).
+    // Skip all side effects (items, stock deduction, email, cart clearing).
     if (
       insertError.code === "23505" ||
       insertError.message?.toLowerCase().includes("unique") ||
@@ -303,42 +303,7 @@ export async function finalizeOrder(input: FinalizeOrderInput): Promise<Finalize
     console.warn(`[finalize_order] Failed to clear cart items for user ${pending.user_id}:`, cartErr);
   }
 
-  // 8. Book shipment with iCarry (persist failure and shipment_error to DB on failure or exception)
-  try {
-    const bookingResult = await bookShipmentForOrder(supabaseAdmin, order.id);
-    if (bookingResult.ok) {
-      order.waybill = bookingResult.waybill;
-      order.shipment_id = bookingResult.shipment_id;
-      order.courier_name = bookingResult.courier_name;
-      order.tracking_url = bookingResult.tracking_url;
-      order.delivery_status = "Booked";
-    } else {
-      console.warn(`[finalize_order] iCarry booking failed for order ${order.id}:`, bookingResult.error);
-      order.delivery_status = "Booking Failed";
-      order.shipment_error = bookingResult.error;
-      await supabaseAdmin
-        .from("orders")
-        .update({
-          delivery_status: "Booking Failed",
-          shipment_error: bookingResult.error,
-        } as any)
-        .eq("id", order.id);
-    }
-  } catch (bookingErr) {
-    const errMessage = bookingErr instanceof Error ? bookingErr.message : String(bookingErr);
-    console.error(`[finalize_order] Unexpected error during auto-booking for order ${order.id}:`, bookingErr);
-    order.delivery_status = "Booking Failed";
-    order.shipment_error = errMessage;
-    await supabaseAdmin
-      .from("orders")
-      .update({
-        delivery_status: "Booking Failed",
-        shipment_error: errMessage,
-      } as any)
-      .eq("id", order.id);
-  }
-
-  // 9. Mark pending_orders as completed
+  // 8. Mark pending_orders as completed
   try {
     await supabaseAdmin
       .from("pending_orders")

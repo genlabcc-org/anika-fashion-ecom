@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { orderService } from "../services/orderService";
-import { icarryService } from "../services/icarryService";
 import { useStore } from "../hooks/useStore";
 import Navbar from "../components/SiteHeader";
 import Footer from "../components/SiteFooter";
@@ -23,7 +22,6 @@ export default function OrderTracking() {
     location.state?.order?.shipping_address || location.state?.order?.address || null
   );
   const [addressLoading, setAddressLoading] = useState(false);
-  const [refreshingLiveStatus, setRefreshingLiveStatus] = useState(false);
 
   useEffect(() => {
     if (!orderId) return;
@@ -75,32 +73,6 @@ export default function OrderTracking() {
               }
             } catch (err) {
               console.error("Error fetching address for order:", err);
-            }
-          }
-
-          // Auto-sync live status from iCarry if waybill/shipment_id is present and not an external courier
-          const isExternalCourier = /st courier|manual|dtdc|local|porter/i.test(data?.courier_name || "");
-          if (data && (data.waybill || data.shipment_id) && !isExternalCourier) {
-            const s = (data.status || "").toLowerCase();
-            const d = (data.delivery_status || "").toLowerCase();
-            const isTerminal =
-              ["delivered", "cancelled", "canceled", "refund completed", "refunded"].some((t) => s.includes(t)) &&
-              ["delivered", "cancelled", "canceled"].some((t) => d.includes(t));
-            if (!isTerminal) {
-              icarryService
-                .track(orderId)
-                .then((res) => {
-                  if (res?.updates && Object.keys(res.updates).length > 0) {
-                    setOrder((prev) => ({
-                      ...prev,
-                      status: res.updates.status || prev?.status,
-                      delivery_status: res.updates.delivery_status || prev?.delivery_status,
-                    }));
-                  }
-                })
-                .catch((err) => {
-                  console.warn("[OrderTracking] Background live status sync error:", err);
-                });
             }
           }
         }
@@ -236,7 +208,7 @@ export default function OrderTracking() {
     })
     : null;
 
-  const deliveryCarrier = order?.delivery_provider || order?.deliveryProvider || "Delhivery Express";
+  const deliveryCarrier = order?.manual_courier_name || order?.courier_name || order?.delivery_provider || "";
 
   const paymentMethodStr = (
     order?.payment ||
@@ -358,9 +330,10 @@ export default function OrderTracking() {
     // Active order progression
     const isPlacedDone = true;
 
+    const activeAwb = order?.manual_awb || order?.waybill || "";
     const isConfirmedDone = [
       "confirmed", "processing", "packed", "shipped", "delivered", "returned", "rto"
-    ].includes(s) || !!order?.waybill || [
+    ].includes(s) || !!activeAwb || [
       "booked", "pending pickup", "pickup scheduled", "manifested", "picked up", "shipped", "in transit", "out for delivery", "delivered", "rto", "returned"
     ].some(x => d.includes(x));
 
@@ -374,7 +347,7 @@ export default function OrderTracking() {
     const isNdr = d.startsWith("ndr");
     const isDeliveredDone = ["delivered", "returned", "rto"].includes(s) || d.includes("delivered") || d.includes("returned") || d.includes("rto");
 
-    const carrierName = order?.courier_name || order?.courierName || deliveryCarrier || "iCarry";
+    const carrierName = order?.manual_courier_name || order?.courier_name || order?.courierName || deliveryCarrier || "";
 
     const isPickupCancelled = d.includes("pickup cancel");
 
@@ -389,7 +362,7 @@ export default function OrderTracking() {
         key: "confirmed",
         title: "Order Confirmed",
         desc: isConfirmedDone
-          ? (order?.waybill ? `Order verified & manifest assigned (AWB: ${order.waybill})` : "Order confirmed & verified by seller")
+          ? (activeAwb ? `Order verified & manifest assigned (AWB: ${activeAwb})` : "Order confirmed & verified by seller")
           : "Seller is verifying your order",
         isDone: isConfirmedDone,
       },
@@ -397,11 +370,11 @@ export default function OrderTracking() {
         key: "shipped",
         title: "Shipped",
         desc: isShippedDone
-          ? `Dispatched via ${carrierName}${order?.waybill ? ` · AWB: ${order.waybill}` : ""}`
+          ? `Dispatched${carrierName ? ` via ${carrierName}` : ""}${activeAwb ? ` · AWB: ${activeAwb}` : ""}`
           : (isPickupCancelled
             ? "Preparing your order"
-            : (order?.waybill || d === "booked" || d === "pending pickup"
-              ? `Packed & awaiting courier pickup by ${carrierName}`
+            : (activeAwb || d === "booked" || d === "pending pickup"
+              ? `Packed & awaiting courier pickup${carrierName ? ` by ${carrierName}` : ""}`
               : "")),
         isDone: isShippedDone,
       },
@@ -515,12 +488,11 @@ export default function OrderTracking() {
                     </div>
                   )}
 
-                  {/* Shipment Tracking Info (shown if waybill or manual courier present) */}
-                  {(order.waybill || order.manual_awb || order.fulfillment_type === 'manual') && (() => {
-                    const isManual = order.fulfillment_type === 'manual';
-                    const activeCourier = isManual ? (order.manual_courier_name || order.courier_name || "External Courier") : (order.courier_name || order.delivery_provider || "iCarry");
-                    const activeAwb = isManual ? (order.manual_awb || order.waybill) : order.waybill;
-                    let activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : order.tracking_url;
+                  {/* Shipment Tracking Info (shown if AWB or courier present) */}
+                  {(order.manual_awb || order.waybill || order.manual_courier_name || order.courier_name) && (() => {
+                    const activeCourier = order.manual_courier_name || order.courier_name || order.delivery_provider || "";
+                    const activeAwb = order.manual_awb || order.waybill || "";
+                    let activeTrackingUrl = order.manual_tracking_url || order.tracking_url;
 
                     // Auto-generate 17TRACK link if tracking URL is missing or generic
                     if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com')) {
@@ -555,17 +527,19 @@ export default function OrderTracking() {
                         }}
                       >
                         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                          <div style={{ fontSize: "13.5px", color: textColor }}>
-                            <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Courier: </span>
-                            <strong>{activeCourier}</strong>
-                          </div>
+                          {activeCourier && (
+                            <div style={{ fontSize: "13.5px", color: textColor }}>
+                              <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Courier: </span>
+                              <strong>{activeCourier}</strong>
+                            </div>
+                          )}
                           {activeAwb && (
                             <div style={{ fontSize: "13.5px", color: textColor }}>
-                              <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>{isManual ? "Tracking ID: " : "Waybill (AWB): "}</span>
+                              <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Waybill (AWB): </span>
                               <strong style={{ letterSpacing: "0.5px" }}>{activeAwb}</strong>
                             </div>
                           )}
-                          {!isManual && (
+                          {statusStr && (
                             <div style={{ fontSize: "13.5px", color: textColor }}>
                               <span style={{ color: isDeliveryCancelled ? "#b91c1c" : isNDR ? "#b45309" : "#64748b" }}>Delivery Status: </span>
                               <strong style={{ color: statusColor }}>{displayStatus}</strong>
@@ -573,45 +547,6 @@ export default function OrderTracking() {
                           )}
                         </div>
                         <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                          {!isManual && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (!orderId || refreshingLiveStatus) return;
-                                try {
-                                  setRefreshingLiveStatus(true);
-                                  const res = await icarryService.track(orderId);
-                                  if (res?.updates && Object.keys(res.updates).length > 0) {
-                                    setOrder((prev) => ({
-                                      ...prev,
-                                      status: res.updates.status || prev?.status,
-                                      delivery_status: res.updates.delivery_status || prev?.delivery_status,
-                                    }));
-                                  }
-                                } catch (e) {
-                                  console.warn("Live status refresh error:", e);
-                                } finally {
-                                  setRefreshingLiveStatus(false);
-                                }
-                              }}
-                              disabled={refreshingLiveStatus}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "5px",
-                                padding: "8px 14px",
-                                fontSize: "12.5px",
-                                fontWeight: "600",
-                                borderRadius: "6px",
-                                border: "1px solid #cbd5e1",
-                                backgroundColor: "#ffffff",
-                                color: "#334155",
-                                cursor: refreshingLiveStatus ? "not-allowed" : "pointer",
-                              }}
-                            >
-                              {refreshingLiveStatus ? "Syncing..." : "Refresh"}
-                            </button>
-                          )}
                           {activeTrackingUrl && (
                             <a
                               href={activeTrackingUrl}

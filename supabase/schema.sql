@@ -272,7 +272,7 @@ CREATE INDEX IF NOT EXISTS addresses_user_id_idx ON public.addresses (user_id);
 
 
 -- =============================================================================
--- 8. ORDERS TABLE (INCLUDES ICARRY SHIPPING & RAZORPAY)
+-- 8. ORDERS TABLE (SHIPPING & RAZORPAY)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS public.orders (
   -- Core order fields
@@ -293,11 +293,15 @@ CREATE TABLE IF NOT EXISTS public.orders (
   razorpay_payment_id     text,
   razorpay_signature      text,
 
-  -- Shipping & Delivery (iCarry Integration)
+  -- Shipping & Delivery
   address_id              bigint REFERENCES public.addresses(address_id) ON DELETE SET NULL,
-  delivery_provider       text DEFAULT 'iCarry',
+  fulfillment_type        text DEFAULT 'manual',
+  manual_courier_name     text,
+  manual_awb              text,
+  manual_tracking_url     text,
+  delivery_provider       text,
   waybill                 text,                          -- Air Waybill (AWB) number
-  shipment_id             text,                          -- iCarry shipment ID
+  shipment_id             text,                          -- Legacy shipment ID
   delivery_status         text DEFAULT 'Pending',
   estimated_delivery_date timestamptz,
   courier_name            text,

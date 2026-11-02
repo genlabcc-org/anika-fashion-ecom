@@ -96,7 +96,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
         margin: 0,
         background: "transparent",
         lineColor: "#000000",
-        valid: () => {},
+        valid: () => { },
       });
     } catch (err) {
       console.warn("Could not generate barcode for value:", barcodeValue, err);

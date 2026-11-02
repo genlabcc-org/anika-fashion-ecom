@@ -6,8 +6,6 @@ import { cartService } from '../services/cartService';
 import { wishlistService } from '../services/wishlistService';
 import { authService } from '../services/authService';
 import { orderService } from '../services/orderService';
-import { icarryService } from '../services/icarryService';
-import { isSyncableOrder } from '../admin/utils/trackingSync';
 import { clean } from '../utils/customerName';
 
 /** Strip currency symbols & commas so */
@@ -29,7 +27,7 @@ const inflightPd = new Map();
 const loadPdCache = () => {
   try {
     localStorage.removeItem(PD_CACHE_KEY);
-  } catch {}
+  } catch { }
   return {};
 };
 
@@ -408,7 +406,7 @@ export const useStore = create((set, get) => ({
     return fetchPromise;
   },
 
-  validateProductImageCache: () => {},
+  validateProductImageCache: () => { },
 
   // Caching Orders
   fetchOrders: async (userId, { force = false } = {}) => {
@@ -570,65 +568,6 @@ export const useStore = create((set, get) => ({
         console.error('Error in admin order listener:', err);
       }
     });
-  },
-
-  syncAllTracking: async (ordersList, { onProgress } = {}) => {
-    const list = Array.isArray(ordersList) ? ordersList : (get().orders || []);
-    const syncable = list.filter(isSyncableOrder);
-    const skipped = list.length - syncable.length;
-
-    if (syncable.length === 0) {
-      if (typeof onProgress === 'function') onProgress(0, 0);
-      return { total: 0, updated: 0, unchanged: 0, failed: 0, skipped };
-    }
-
-    let updated = 0;
-    let unchanged = 0;
-    let failed = 0;
-    let done = 0;
-    const total = syncable.length;
-
-    const CONCURRENCY = 3;
-    let nextIndex = 0;
-
-    const worker = async () => {
-      while (nextIndex < syncable.length) {
-        const order = syncable[nextIndex++];
-        try {
-          const res = await icarryService.track(order.id);
-          if (res && res.error) {
-            failed++;
-          } else if (res?.updates && Object.keys(res.updates).length > 0) {
-            get().updateOrderInList(order.id, res.updates);
-            updated++;
-          } else {
-            unchanged++;
-          }
-        } catch (err) {
-          console.error(`[syncAllTracking] Error syncing order ${order.id}:`, err);
-          failed++;
-        } finally {
-          done++;
-          if (typeof onProgress === 'function') {
-            try {
-              onProgress(done, total);
-            } catch (_) { }
-          }
-        }
-      }
-    };
-
-    const workerCount = Math.min(CONCURRENCY, syncable.length);
-    const workers = Array.from({ length: workerCount }, () => worker());
-    await Promise.all(workers);
-
-    return {
-      total,
-      updated,
-      unchanged,
-      failed,
-      skipped,
-    };
   },
 
   // --- Selected Product Actions ---
@@ -998,7 +937,7 @@ export const useStore = create((set, get) => ({
       if (sessionStorage.getItem(cacheKey) === currentHash) {
         return; // Profile already synced in this session
       }
-    } catch {}
+    } catch { }
 
     const profilePayload = {
       id: user.id,
@@ -1019,7 +958,7 @@ export const useStore = create((set, get) => ({
     } else {
       try {
         sessionStorage.setItem(cacheKey, currentHash);
-      } catch {}
+      } catch { }
     }
   },
 }));

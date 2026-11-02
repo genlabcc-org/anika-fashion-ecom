@@ -378,7 +378,7 @@
 /* ── Mid 2-col grid ──────────────────────────────── */
 .od__mid-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 2fr;
   gap: 14px;
   margin-bottom: 16px;
 }

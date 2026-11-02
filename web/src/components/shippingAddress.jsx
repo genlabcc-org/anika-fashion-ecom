@@ -5,7 +5,6 @@ import { orderService } from "../services/orderService";
 import { emailService } from "../services/emailService";
 import { useStore } from "../hooks/useStore";
 import { supabase } from "../lib/supabase";
-import { icarryService } from "../services/icarryService";
 import { shippingService, normState } from "../services/shippingService";
 import "./shippingAddress.css";
 import Navbar from "./SiteHeader";
@@ -51,8 +50,8 @@ const indianStates = [
   "Chandigarh", "Ladakh", "Andaman & Nicobar Islands", "Lakshadweep",
 ];
 
-// Fallback pincode validation regex helper
-const isValidPincodeRegex = (pin) => /^\d{6}$/.test(String(pin || '').trim());
+// Pincode validation regex helper (valid 6-digit Indian PIN)
+const isValidPincodeRegex = (pin) => /^[1-9][0-9]{5}$/.test(String(pin || '').trim());
 
 const emptyForm = {
   firstName: "",
@@ -98,8 +97,7 @@ export default function ShippingAddress() {
   const [appliedDiscount, setAppliedDiscount] = useState(null);
 
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [pincodeServiceable, setPincodeServiceable] = useState(null); // null: untested/fallback, true: serviceable, false: unserviceable
-  const [pincodeChecking, setPincodeChecking] = useState(false);
+
   const [rates, setRates] = useState([]);
   const [ratesLoaded, setRatesLoaded] = useState(false);
   const [pinState, setPinState] = useState(null);
@@ -175,8 +173,6 @@ export default function ShippingAddress() {
     if (!form.flat.trim()) e.flat = "Address is required";
     if (!form.pinCode.trim() || !isValidPincodeRegex(form.pinCode)) {
       e.pinCode = "Valid 6-digit PIN required";
-    } else if (pincodeServiceable === false) {
-      e.pinCode = "Pincode not serviceable for delivery";
     } else if (pinStateError) {
       e.pinCode = pinStateError;
     }
@@ -228,74 +224,7 @@ export default function ShippingAddress() {
     }
   };
 
-  // Debounced iCarry pincode serviceability check
-  useEffect(() => {
-    const pin = (form.pinCode || "").trim();
-    if (!isValidPincodeRegex(pin)) {
-      setPincodeServiceable(null);
-      setPincodeChecking(false);
-      return;
-    }
 
-    let active = true;
-    setPincodeChecking(true);
-
-    const timer = setTimeout(async () => {
-      try {
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Pincode check timed out")), 5000)
-        );
-        const res = await Promise.race([
-          icarryService.checkPincode(pin),
-          timeoutPromise
-        ]);
-
-        if (!active) return;
-
-        // Response shape: { success: 1, msg: [{ prepaid, cod, pickup }] }
-        // success: 0 or empty msg means not serviceable.
-        // Treat 'U' (unknown) as serviceable, don't block on it.
-        if (res && res.success === 1 && Array.isArray(res.msg) && res.msg.length > 0) {
-          const hasService = res.msg.some(
-            (m) => m.prepaid === 'Y' || m.prepaid === 'U' || !m.prepaid
-          );
-          if (hasService) {
-            setPincodeServiceable(true);
-            setErrors((prev) => ({ ...prev, pinCode: undefined }));
-          } else {
-            setPincodeServiceable(false);
-            setErrors((prev) => ({
-              ...prev,
-              pinCode: "Pincode not serviceable for delivery",
-            }));
-          }
-        } else if (res && (res.success === 0 || (Array.isArray(res.msg) && res.msg.length === 0))) {
-          setPincodeServiceable(false);
-          setErrors((prev) => ({
-            ...prev,
-            pinCode: "Pincode not serviceable for delivery",
-          }));
-        } else {
-          // Fall back to regex (fail open)
-          setPincodeServiceable(isValidPincodeRegex(pin));
-        }
-      } catch (err) {
-        console.warn("iCarry pincode check failed or timed out, failing open to regex:", err);
-        if (active) {
-          setPincodeServiceable(isValidPincodeRegex(pin));
-        }
-      } finally {
-        if (active) {
-          setPincodeChecking(false);
-        }
-      }
-    }, 400);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [form.pinCode]);
 
   // Load shipping rates once
   useEffect(() => {
@@ -368,7 +297,7 @@ export default function ShippingAddress() {
     : 0;
 
   const isAddressServiceable =
-    isValidPincodeRegex(form.pinCode) && pincodeServiceable !== false && !pinStateError;
+    isValidPincodeRegex(form.pinCode) && !pinStateError;
   const shippingFee = isAddressServiceable
     ? shippingService.calcFee(rates, form.state, subtotal - discountAmount)
     : 0;
@@ -394,11 +323,6 @@ export default function ShippingAddress() {
       return;
     }
 
-    if (pincodeChecking) {
-      submittingRef.current = false;
-      showToast("Verifying delivery pincode, please wait a moment...", "warning");
-      return;
-    }
 
     // 1. Validate form fields
     const eErrors = validate();
@@ -666,7 +590,7 @@ export default function ShippingAddress() {
         // Clear history state so Back button cannot revive checkout
         try {
           window.history.replaceState({}, document.title);
-        } catch {}
+        } catch { }
 
         setTimeout(() => {
           navigate("/profile/orders", { replace: true });
@@ -764,7 +688,7 @@ export default function ShippingAddress() {
                     showToast("Payment successful! Order placed.", "success");
                     try {
                       window.history.replaceState({}, document.title);
-                    } catch {}
+                    } catch { }
                     navigate("/profile/orders", { replace: true, state: { justPaid: true } });
                     return true;
                   }
@@ -777,7 +701,7 @@ export default function ShippingAddress() {
               showToast("Payment confirmed! Please check your orders page.", "info");
               try {
                 window.history.replaceState({}, document.title);
-              } catch {}
+              } catch { }
               navigate("/profile/orders", { replace: true, state: { justPaid: true } });
               return false;
             };
@@ -823,7 +747,7 @@ export default function ShippingAddress() {
 
               try {
                 window.history.replaceState({}, document.title);
-              } catch {}
+              } catch { }
               navigate("/profile/orders", { replace: true, state: { justPaid: true } });
             } catch (err) {
               console.warn("[shippingAddress] Unexpected error in payment handler:", err);
@@ -891,326 +815,322 @@ export default function ShippingAddress() {
               <form onSubmit={handleCheckoutSubmit} className="checkout-form">
                 <fieldset disabled={isOrderCompleted} style={{ border: 'none', padding: 0, margin: 0 }}>
 
-                {/* Contact Section */}
-                <div className="checkout-section">
-                  <div className="checkout-section-header">
-                    <h2 className="checkout-section-title">Contact</h2>
-                    {!userId && (
-                      <a href="/account/login" className="checkout-signin-link">Sign in</a>
+                  {/* Contact Section */}
+                  <div className="checkout-section">
+                    <div className="checkout-section-header">
+                      <h2 className="checkout-section-title">Contact</h2>
+                      {!userId && (
+                        <a href="/account/login" className="checkout-signin-link">Sign in</a>
+                      )}
+                    </div>
+
+                    <div className="checkout-field-wrap">
+                      <input
+                        type="email"
+                        name="email"
+                        placeholder="Email"
+                        value={form.email}
+                        onChange={handleChange}
+                        className={`checkout-input ${errors.email ? "error" : ""}`}
+                        required
+                      />
+                      {errors.email && <span className="checkout-err-msg">{errors.email}</span>}
+                    </div>
+
+                    <label className="checkout-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={emailNews}
+                        onChange={(e) => setEmailNews(e.target.checked)}
+                        className="checkout-checkbox"
+                      />
+                      <span>Email me with news and offers</span>
+                    </label>
+                  </div>
+
+                  {/* Delivery Section */}
+                  <div className="checkout-section">
+                    <h2 className="checkout-section-title">Delivery</h2>
+
+                    {/* Saved Address Dropdown (If logged in and has addresses) */}
+                    {addresses.length > 0 && (
+                      <div className="checkout-field-wrap">
+                        <select
+                          className="checkout-input checkout-select"
+                          value={selectedId || "new"}
+                          onChange={handleAddressSelectChange}
+                        >
+                          <option value="new">Use a new address...</option>
+                          {addresses.map((addr) => (
+                            <option key={addr.address_id} value={addr.address_id}>
+                              {addr.full_name} - {addr.address_line1}, {addr.city}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     )}
-                  </div>
 
-                  <div className="checkout-field-wrap">
-                    <input
-                      type="email"
-                      name="email"
-                      placeholder="Email"
-                      value={form.email}
-                      onChange={handleChange}
-                      className={`checkout-input ${errors.email ? "error" : ""}`}
-                      required
-                    />
-                    {errors.email && <span className="checkout-err-msg">{errors.email}</span>}
-                  </div>
-
-                  <label className="checkout-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={emailNews}
-                      onChange={(e) => setEmailNews(e.target.checked)}
-                      className="checkout-checkbox"
-                    />
-                    <span>Email me with news and offers</span>
-                  </label>
-                </div>
-
-                {/* Delivery Section */}
-                <div className="checkout-section">
-                  <h2 className="checkout-section-title">Delivery</h2>
-
-                  {/* Saved Address Dropdown (If logged in and has addresses) */}
-                  {addresses.length > 0 && (
                     <div className="checkout-field-wrap">
                       <select
+                        name="country"
                         className="checkout-input checkout-select"
-                        value={selectedId || "new"}
-                        onChange={handleAddressSelectChange}
+                        disabled
+                        value="India"
                       >
-                        <option value="new">Use a new address...</option>
-                        {addresses.map((addr) => (
-                          <option key={addr.address_id} value={addr.address_id}>
-                            {addr.full_name} - {addr.address_line1}, {addr.city}
-                          </option>
-                        ))}
+                        <option>India</option>
                       </select>
                     </div>
-                  )}
 
-                  <div className="checkout-field-wrap">
-                    <select
-                      name="country"
-                      className="checkout-input checkout-select"
-                      disabled
-                      value="India"
-                    >
-                      <option>India</option>
-                    </select>
-                  </div>
-
-                  <div className="checkout-fields-row">
-                    <div className="checkout-field-wrap flex-1">
-                      <input
-                        type="text"
-                        name="firstName"
-                        placeholder="First name"
-                        value={form.firstName}
-                        onChange={handleChange}
-                        className={`checkout-input ${errors.firstName ? "error" : ""}`}
-                      />
-                      {errors.firstName && <span className="checkout-err-msg">{errors.firstName}</span>}
+                    <div className="checkout-fields-row">
+                      <div className="checkout-field-wrap flex-1">
+                        <input
+                          type="text"
+                          name="firstName"
+                          placeholder="First name"
+                          value={form.firstName}
+                          onChange={handleChange}
+                          className={`checkout-input ${errors.firstName ? "error" : ""}`}
+                        />
+                        {errors.firstName && <span className="checkout-err-msg">{errors.firstName}</span>}
+                      </div>
+                      <div className="checkout-field-wrap flex-1">
+                        <input
+                          type="text"
+                          name="lastName"
+                          placeholder="Last name"
+                          value={form.lastName}
+                          onChange={handleChange}
+                          className={`checkout-input ${errors.lastName ? "error" : ""}`}
+                        />
+                        {errors.lastName && <span className="checkout-err-msg">{errors.lastName}</span>}
+                      </div>
                     </div>
-                    <div className="checkout-field-wrap flex-1">
+
+                    <div className="checkout-field-wrap">
                       <input
                         type="text"
-                        name="lastName"
-                        placeholder="Last name"
-                        value={form.lastName}
+                        name="flat"
+                        placeholder="Address"
+                        value={form.flat}
                         onChange={handleChange}
-                        className={`checkout-input ${errors.lastName ? "error" : ""}`}
+                        className={`checkout-input ${errors.flat ? "error" : ""}`}
                       />
-                      {errors.lastName && <span className="checkout-err-msg">{errors.lastName}</span>}
+                      {errors.flat && <span className="checkout-err-msg">{errors.flat}</span>}
                     </div>
-                  </div>
 
-                  <div className="checkout-field-wrap">
-                    <input
-                      type="text"
-                      name="flat"
-                      placeholder="Address"
-                      value={form.flat}
-                      onChange={handleChange}
-                      className={`checkout-input ${errors.flat ? "error" : ""}`}
-                    />
-                    {errors.flat && <span className="checkout-err-msg">{errors.flat}</span>}
-                  </div>
-
-                  <div className="checkout-field-wrap">
-                    <input
-                      type="text"
-                      name="area"
-                      placeholder="Apartment, suite, etc. (optional)"
-                      value={form.area}
-                      onChange={handleChange}
-                      className="checkout-input"
-                    />
-                  </div>
-
-                  <div className="checkout-fields-row tertiary">
-                    <div className="checkout-field-wrap city-field">
+                    <div className="checkout-field-wrap">
                       <input
                         type="text"
-                        name="city"
-                        placeholder="City"
-                        value={form.city}
+                        name="area"
+                        placeholder="Apartment, suite, etc. (optional)"
+                        value={form.area}
                         onChange={handleChange}
                         className="checkout-input"
                       />
                     </div>
-                    <div className="checkout-field-wrap state-field">
-                      <select
-                        name="state"
-                        value={form.state}
-                        onChange={handleChange}
-                        className="checkout-input checkout-select"
-                      >
-                        {indianStates.map((s) => <option key={s}>{s}</option>)}
-                      </select>
-                    </div>
-                    <div className="checkout-field-wrap pin-field">
-                      <input
-                        type="text"
-                        name="pinCode"
-                        placeholder="PIN code"
-                        value={form.pinCode}
-                        onChange={handleChange}
-                        maxLength={6}
-                        className={`checkout-input ${errors.pinCode || pinStateError ? "error" : ""}`}
-                      />
-                      {pincodeChecking && (
-                        <span style={{ fontSize: '11px', color: '#666', marginTop: '2px', display: 'block' }}>
-                          Checking serviceability...
-                        </span>
-                      )}
-                      {(errors.pinCode || pinStateError) && (
-                        <span className="checkout-err-msg">{errors.pinCode || pinStateError}</span>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="checkout-field-wrap">
-                    <input
-                      type="tel"
-                      name="mobile"
-                      placeholder="Phone"
-                      value={form.mobile}
-                      onChange={handleChange}
-                      className={`checkout-input ${errors.mobile ? "error" : ""}`}
-                    />
-                    {errors.mobile && <span className="checkout-err-msg">{errors.mobile}</span>}
-                  </div>
-
-                  <label className="checkout-checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={form.isDefault}
-                      name="isDefault"
-                      onChange={handleChange}
-                      className="checkout-checkbox"
-                    />
-                    <span>Save this information for next time</span>
-                  </label>
-                </div>
-
-                {/* Shipping Method Section */}
-                <div className="checkout-section">
-                  <h2 className="checkout-section-title">Shipping method</h2>
-                  <div className="checkout-shipping-box">
-                    {isAddressServiceable ? (
-                      <div className="checkout-shipping-rate">
-                        <span className="rate-name">Standard Shipping</span>
-                        <span className="rate-price">{shippingFee > 0 ? `₹${shippingFee.toFixed(2)}` : "FREE"}</span>
+                    <div className="checkout-fields-row tertiary">
+                      <div className="checkout-field-wrap city-field">
+                        <input
+                          type="text"
+                          name="city"
+                          placeholder="City"
+                          value={form.city}
+                          onChange={handleChange}
+                          className="checkout-input"
+                        />
                       </div>
-                    ) : (
-                      <span className="checkout-shipping-hint">Enter your shipping address to view available shipping methods.</span>
-                    )}
-                  </div>
-                </div>
+                      <div className="checkout-field-wrap state-field">
+                        <select
+                          name="state"
+                          value={form.state}
+                          onChange={handleChange}
+                          className="checkout-input checkout-select"
+                        >
+                          {indianStates.map((s) => <option key={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div className="checkout-field-wrap pin-field">
+                        <input
+                          type="text"
+                          name="pinCode"
+                          placeholder="PIN code"
+                          value={form.pinCode}
+                          onChange={handleChange}
+                          maxLength={6}
+                          className={`checkout-input ${errors.pinCode || pinStateError ? "error" : ""}`}
+                        />
 
-                {/* Payment Section */}
-                <div className="checkout-section">
-                  <h2 className="checkout-section-title">Payment</h2>
-                  <p className="checkout-section-subtitle">All transactions are secure and encrypted.</p>
-
-                  <div className="checkout-accordion-group">
-                    {/* Online Payment (Razorpay) */}
-                    <div className={`checkout-accordion-item ${paymentMethod === 'RAZORPAY' ? 'active' : ''}`}>
-                      <label className="checkout-accordion-header" onClick={() => setPaymentMethod('RAZORPAY')}>
-                        <div className="checkout-radio-wrap">
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            checked={paymentMethod === 'RAZORPAY'}
-                            onChange={() => setPaymentMethod('RAZORPAY')}
-                            className="checkout-radio"
-                          />
-                          <span className="payment-method-name">Razorpay Secure (UPI, Cards, Int'l Cards, Wallets)</span>
-                        </div>
-                        <div className="payment-card-logos">
-                          <img src={UpiIcon} alt="UPI" className="payment-card-logo-img upi-logo" />
-                          <img src={VisaIcon} alt="Visa" className="payment-card-logo-img visa-logo" />
-                          <img src={MastercardIcon} alt="Mastercard" className="payment-card-logo-img mc-logo" />
-                          <PaymentMorePopup />
-                        </div>
-                      </label>
-
-                      {paymentMethod === 'RAZORPAY' && (
-                        <div className="checkout-accordion-body">
-                          <div className="payment-redirect-box">
-                            <svg className="redirect-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5">
-                              <rect x="2" y="5" width="20" height="14" rx="2" />
-                              <line x1="2" y1="10" x2="22" y2="10" />
-                            </svg>
-                            <p>You'll be redirected to Razorpay Secure (UPI, Cards, Int'l Cards, Wallets) to complete your purchase.</p>
-                          </div>
-                        </div>
-                      )}
+                        {(errors.pinCode || pinStateError) && (
+                          <span className="checkout-err-msg">{errors.pinCode || pinStateError}</span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Cash on Delivery (COD) */}
-                    <div className={`checkout-accordion-item checkout-accordion-item--cod ${paymentMethod === 'COD' ? 'active' : ''}`}>
-                      <label
-                        className={`checkout-accordion-header ${!isCODAvailable ? 'checkout-option-disabled' : ''}`}
-                        onClick={() => isCODAvailable && setPaymentMethod('COD')}
-                      >
-                        <div className="checkout-radio-wrap">
-                          <input
-                            type="radio"
-                            name="paymentMethod"
-                            checked={paymentMethod === 'COD'}
-                            onChange={() => isCODAvailable && setPaymentMethod('COD')}
-                            disabled={!isCODAvailable}
-                            className="checkout-radio"
-                          />
-                          <span className="payment-method-name">Cash on Delivery (COD)</span>
+                    <div className="checkout-field-wrap">
+                      <input
+                        type="tel"
+                        name="mobile"
+                        placeholder="Phone"
+                        value={form.mobile}
+                        onChange={handleChange}
+                        className={`checkout-input ${errors.mobile ? "error" : ""}`}
+                      />
+                      {errors.mobile && <span className="checkout-err-msg">{errors.mobile}</span>}
+                    </div>
+
+                    <label className="checkout-checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={form.isDefault}
+                        name="isDefault"
+                        onChange={handleChange}
+                        className="checkout-checkbox"
+                      />
+                      <span>Save this information for next time</span>
+                    </label>
+                  </div>
+
+                  {/* Shipping Method Section */}
+                  <div className="checkout-section">
+                    <h2 className="checkout-section-title">Shipping method</h2>
+                    <div className="checkout-shipping-box">
+                      {isAddressServiceable ? (
+                        <div className="checkout-shipping-rate">
+                          <span className="rate-name">Standard Shipping</span>
+                          <span className="rate-price">{shippingFee > 0 ? `₹${shippingFee.toFixed(2)}` : "FREE"}</span>
                         </div>
-                      </label>
-                      {!isCODAvailable && (
-                        <span className="checkout-option-sticker">Currently Not Available</span>
-                      )}
-                      {paymentMethod === 'COD' && (
-                        <div className="checkout-accordion-body">
-                          <p>Pay with cash upon delivery.</p>
-                        </div>
+                      ) : (
+                        <span className="checkout-shipping-hint">Enter your shipping address to view available shipping methods.</span>
                       )}
                     </div>
                   </div>
-                </div>
 
-                {/* Billing Address Section */}
-                <div className="checkout-section">
-                  <h2 className="checkout-section-title">Billing address</h2>
+                  {/* Payment Section */}
+                  <div className="checkout-section">
+                    <h2 className="checkout-section-title">Payment</h2>
+                    <p className="checkout-section-subtitle">All transactions are secure and encrypted.</p>
 
-                  <div className="checkout-accordion-group">
-                    <div className={`checkout-accordion-item ${billingSame ? 'active' : ''}`}>
-                      <label className="checkout-accordion-header" onClick={() => setBillingSame(true)}>
-                        <div className="checkout-radio-wrap">
-                          <input
-                            type="radio"
-                            name="billingAddress"
-                            checked={billingSame}
-                            onChange={() => setBillingSame(true)}
-                            className="checkout-radio"
-                          />
-                          <span className="payment-method-name">Same as shipping address</span>
-                        </div>
-                      </label>
-                    </div>
-
-                    <div className={`checkout-accordion-item ${!billingSame ? 'active' : ''}`}>
-                      <label className="checkout-accordion-header" onClick={() => setBillingSame(false)}>
-                        <div className="checkout-radio-wrap">
-                          <input
-                            type="radio"
-                            name="billingAddress"
-                            checked={!billingSame}
-                            onChange={() => setBillingSame(false)}
-                            className="checkout-radio"
-                          />
-                          <span className="payment-method-name">Use a different billing address</span>
-                        </div>
-                      </label>
-
-                      {!billingSame && (
-                        <div className="checkout-accordion-body">
-                          <div className="checkout-fields-row">
-                            <input type="text" placeholder="First name" className="checkout-input flex-1" />
-                            <input type="text" placeholder="Last name" className="checkout-input flex-1" />
+                    <div className="checkout-accordion-group">
+                      {/* Online Payment (Razorpay) */}
+                      <div className={`checkout-accordion-item ${paymentMethod === 'RAZORPAY' ? 'active' : ''}`}>
+                        <label className="checkout-accordion-header" onClick={() => setPaymentMethod('RAZORPAY')}>
+                          <div className="checkout-radio-wrap">
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              checked={paymentMethod === 'RAZORPAY'}
+                              onChange={() => setPaymentMethod('RAZORPAY')}
+                              className="checkout-radio"
+                            />
+                            <span className="payment-method-name">Razorpay Secure (UPI, Cards, Int'l Cards, Wallets)</span>
                           </div>
-                          <input type="text" placeholder="Address" className="checkout-input" />
-                          <input type="text" placeholder="Apartment, suite, etc. (optional)" className="checkout-input" />
-                          <div className="checkout-fields-row tertiary">
-                            <input type="text" placeholder="City" className="checkout-input city-field" />
-                            <select className="checkout-input checkout-select state-field">
-                              {indianStates.map((s) => <option key={s}>{s}</option>)}
-                            </select>
-                            <input type="text" placeholder="PIN code" className="checkout-input pin-field" />
+                          <div className="payment-card-logos">
+                            <img src={UpiIcon} alt="UPI" className="payment-card-logo-img upi-logo" />
+                            <img src={VisaIcon} alt="Visa" className="payment-card-logo-img visa-logo" />
+                            <img src={MastercardIcon} alt="Mastercard" className="payment-card-logo-img mc-logo" />
+                            <PaymentMorePopup />
                           </div>
-                          <input type="tel" placeholder="Phone" className="checkout-input" />
-                        </div>
-                      )}
+                        </label>
+
+                        {paymentMethod === 'RAZORPAY' && (
+                          <div className="checkout-accordion-body">
+                            <div className="payment-redirect-box">
+                              <svg className="redirect-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5">
+                                <rect x="2" y="5" width="20" height="14" rx="2" />
+                                <line x1="2" y1="10" x2="22" y2="10" />
+                              </svg>
+                              <p>You'll be redirected to Razorpay Secure (UPI, Cards, Int'l Cards, Wallets) to complete your purchase.</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Cash on Delivery (COD) */}
+                      <div className={`checkout-accordion-item checkout-accordion-item--cod ${paymentMethod === 'COD' ? 'active' : ''}`}>
+                        <label
+                          className={`checkout-accordion-header ${!isCODAvailable ? 'checkout-option-disabled' : ''}`}
+                          onClick={() => isCODAvailable && setPaymentMethod('COD')}
+                        >
+                          <div className="checkout-radio-wrap">
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              checked={paymentMethod === 'COD'}
+                              onChange={() => isCODAvailable && setPaymentMethod('COD')}
+                              disabled={!isCODAvailable}
+                              className="checkout-radio"
+                            />
+                            <span className="payment-method-name">Cash on Delivery (COD)</span>
+                          </div>
+                        </label>
+                        {!isCODAvailable && (
+                          <span className="checkout-option-sticker">Currently Not Available</span>
+                        )}
+                        {paymentMethod === 'COD' && (
+                          <div className="checkout-accordion-body">
+                            <p>Pay with cash upon delivery.</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  {/* Billing Address Section */}
+                  <div className="checkout-section">
+                    <h2 className="checkout-section-title">Billing address</h2>
+
+                    <div className="checkout-accordion-group">
+                      <div className={`checkout-accordion-item ${billingSame ? 'active' : ''}`}>
+                        <label className="checkout-accordion-header" onClick={() => setBillingSame(true)}>
+                          <div className="checkout-radio-wrap">
+                            <input
+                              type="radio"
+                              name="billingAddress"
+                              checked={billingSame}
+                              onChange={() => setBillingSame(true)}
+                              className="checkout-radio"
+                            />
+                            <span className="payment-method-name">Same as shipping address</span>
+                          </div>
+                        </label>
+                      </div>
+
+                      <div className={`checkout-accordion-item ${!billingSame ? 'active' : ''}`}>
+                        <label className="checkout-accordion-header" onClick={() => setBillingSame(false)}>
+                          <div className="checkout-radio-wrap">
+                            <input
+                              type="radio"
+                              name="billingAddress"
+                              checked={!billingSame}
+                              onChange={() => setBillingSame(false)}
+                              className="checkout-radio"
+                            />
+                            <span className="payment-method-name">Use a different billing address</span>
+                          </div>
+                        </label>
+
+                        {!billingSame && (
+                          <div className="checkout-accordion-body">
+                            <div className="checkout-fields-row">
+                              <input type="text" placeholder="First name" className="checkout-input flex-1" />
+                              <input type="text" placeholder="Last name" className="checkout-input flex-1" />
+                            </div>
+                            <input type="text" placeholder="Address" className="checkout-input" />
+                            <input type="text" placeholder="Apartment, suite, etc. (optional)" className="checkout-input" />
+                            <div className="checkout-fields-row tertiary">
+                              <input type="text" placeholder="City" className="checkout-input city-field" />
+                              <select className="checkout-input checkout-select state-field">
+                                {indianStates.map((s) => <option key={s}>{s}</option>)}
+                              </select>
+                              <input type="text" placeholder="PIN code" className="checkout-input pin-field" />
+                            </div>
+                            <input type="tel" placeholder="Phone" className="checkout-input" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
                 </fieldset>
 
@@ -1239,8 +1159,8 @@ export default function ShippingAddress() {
                     {isOrderCompleted
                       ? "Confirming your order..."
                       : isProcessingPayment
-                      ? "Processing..."
-                      : (paymentMethod === "COD" ? "Place order" : "Pay now")}
+                        ? "Processing..."
+                        : (paymentMethod === "COD" ? "Place order" : "Pay now")}
                   </button>
                 </div>
 

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useStore } from "../../hooks/useStore";
 import { orderService } from "../../services/orderService";
 import { isRevenueOrder, formatCustomerOrderCount, getOrderCustomerKey, isCountableCustomerOrder } from "../../utils/orderUtils";
-import { isSyncableOrder } from "../utils/trackingSync";
 import { supabase } from "../../lib/supabase";
 import Toast from "../../components/Toast";
 import ExportOrdersModal from "../components/ExportOrdersModal";
@@ -175,10 +174,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const markOrdersRead = useStore((state) => state.markOrdersRead);
   const fetchNewOrdersCount = useStore((state) => state.fetchNewOrdersCount);
   const newOrdersCount = useStore((state) => state.newOrdersCount);
-  const syncAllTracking = useStore((state) => state.syncAllTracking);
-
-  const [syncingAll, setSyncingAll] = useState(false);
-  const [syncProgress, setSyncProgress] = useState(null);
 
   const [reconciling, setReconciling] = useState(false);
   const [showReconcileModal, setShowReconcileModal] = useState(false);
@@ -264,43 +259,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
     return matchCategory && matchStatus && matchPayment && matchSearch && matchRead;
   });
-
-  const syncableOrders = useMemo(() => {
-    return filtered.filter(isSyncableOrder);
-  }, [filtered]);
-  const syncableCount = syncableOrders.length;
-
-  const handleSyncAll = async () => {
-    if (syncingAll) return;
-    if (syncableOrders.length === 0) {
-      showToast("No shipments to sync.", "info");
-      return;
-    }
-
-    setSyncingAll(true);
-    setSyncProgress({ done: 0, total: syncableOrders.length });
-    try {
-      const summary = await syncAllTracking(syncableOrders, {
-        onProgress: (done, total) => {
-          setSyncProgress({ done, total });
-        },
-      });
-
-      if (summary.total === 0) {
-        showToast("No shipments to sync.", "info");
-      } else {
-        showToast(
-          `Synced ${summary.total} orders: ${summary.updated} updated, ${summary.failed} failed.`,
-          summary.failed > 0 && summary.updated === 0 ? "error" : "success"
-        );
-      }
-    } catch (err) {
-      showToast("Bulk tracking sync failed: " + (err.message || err), "error");
-    } finally {
-      setSyncingAll(false);
-      setSyncProgress(null);
-    }
-  };
 
   const handleFindMissingPayments = async () => {
     if (reconciling) return;
@@ -820,21 +778,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           >
             {/* <span className={`ao__sync-icon${reconciling ? " ao__sync-icon--spin" : ""}`}>🔍</span> */}
             <span>{reconciling ? "Checking Razorpay..." : "Find missing paid orders"}</span>
-          </button>
-
-          <button
-            type="button"
-            className="ao__sync-btn"
-            onClick={handleSyncAll}
-            disabled={syncingAll || loading}
-            title={syncableCount > 0 ? `Sync tracking for ${syncableCount} shipment(s)` : "No shipments to sync"}
-          >
-            {/* <span className={`ao__sync-icon${syncingAll ? " ao__sync-icon--spin" : ""}`}>🔄</span> */}
-            <span>
-              {syncingAll
-                ? (syncProgress ? `Syncing ${syncProgress.done}/${syncProgress.total}...` : "Syncing...")
-                : `Sync All Shipments${syncableCount > 0 ? ` (${syncableCount})` : ""}`}
-            </span>
           </button>
 
           {isAdmin && (

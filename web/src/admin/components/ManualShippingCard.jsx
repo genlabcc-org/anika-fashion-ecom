@@ -26,9 +26,9 @@ const formatDateTime = (dateStr) => {
 
 export default function ManualShippingCard({ order, address, onOrderUpdated, showToast }) {
   const [manualCourierName, setManualCourierName] = useState(
-    order?.manual_courier_name || "Franch Express"
+    order?.manual_courier_name || order?.courier_name || "Franch Express"
   );
-  const [manualAwb, setManualAwb] = useState(order?.manual_awb || "");
+  const [manualAwb, setManualAwb] = useState(order?.manual_awb || order?.waybill || "");
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [savingAction, setSavingAction] = useState(null); // 'pack' | 'ship' | 'edit' | 'deliver' | null
   const isSaving = Boolean(savingAction);
@@ -46,13 +46,9 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
 
   // Sync state when order prop changes
   useEffect(() => {
-    if (order?.manual_courier_name !== undefined) {
-      setManualCourierName(order.manual_courier_name || "Franch Express");
-    }
-    if (order?.manual_awb !== undefined) {
-      setManualAwb(order.manual_awb || "");
-    }
-  }, [order?.manual_courier_name, order?.manual_awb]);
+    setManualCourierName(order?.manual_courier_name || order?.courier_name || "Franch Express");
+    setManualAwb(order?.manual_awb || order?.waybill || "");
+  }, [order?.manual_courier_name, order?.courier_name, order?.manual_awb, order?.waybill]);
 
   const normStatus = (order?.status || "").toLowerCase();
   const isPaid = normStatus === "paid";
@@ -61,7 +57,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
   const isCancelled = ["cancelled", "canceled"].includes(normStatus);
   const isRefunded = ["refunded", "refund completed"].includes(normStatus);
   const isPacked = Boolean(order?.is_packed);
-  const hasSavedTracking = Boolean(order?.manual_awb);
+  const hasSavedTracking = Boolean(order?.manual_awb || order?.waybill);
 
   // Barcode / Scanner input handler: strip spaces immediately
   const handleAwbChange = (e) => {
@@ -583,13 +579,13 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                 <div className="msc__readonly-box">
                   <div>
                     <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "4px" }}>
-                      Carrier: <strong>{order.manual_courier_name || "Franch Express"}</strong>
+                      Carrier: <strong>{order.manual_courier_name || order.courier_name || "Franch Express"}</strong>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                      <span className="msc__tracking-pill" id="msc-readonly-awb">{order.manual_awb}</span>
-                      {(order?.manual_tracking_url || order?.tracking_url || order?.manual_awb) && (
+                      <span className="msc__tracking-pill" id="msc-readonly-awb">{order.manual_awb || order.waybill}</span>
+                      {(order?.manual_tracking_url || order?.tracking_url || order?.manual_awb || order?.waybill) && (
                         <a
-                          href={order.manual_tracking_url || order.tracking_url || `https://t.17track.net/en#nums=${encodeURIComponent(order.manual_awb)}`}
+                          href={order.manual_tracking_url || order.tracking_url || `https://t.17track.net/en#nums=${encodeURIComponent(order.manual_awb || order.waybill)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{ fontSize: "12px", color: "#8b0030", textDecoration: "underline" }}
@@ -647,8 +643,8 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                       className="msc__btn msc__btn--edit"
                       onClick={() => {
                         setIsEditingTracking(true);
-                        setManualAwb(order.manual_awb || "");
-                        setManualCourierName(order.manual_courier_name || "Franch Express");
+                        setManualAwb(order.manual_awb || order.waybill || "");
+                        setManualCourierName(order.manual_courier_name || order.courier_name || "Franch Express");
                         setAwbError("");
                       }}
                       disabled={isSaving || isCancelled || isRefunded}
@@ -801,8 +797,8 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                       className="msc__btn msc__btn--secondary"
                       onClick={() => {
                         setIsEditingTracking(false);
-                        setManualAwb(order.manual_awb || "");
-                        setManualCourierName(order.manual_courier_name || "Franch Express");
+                        setManualAwb(order.manual_awb || order.waybill || "");
+                        setManualCourierName(order.manual_courier_name || order.courier_name || "Franch Express");
                         setAwbError("");
                       }}
                       disabled={isSaving}

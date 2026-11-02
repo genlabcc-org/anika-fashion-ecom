@@ -89,12 +89,12 @@ const DangerZone = () => {
         const cleanDesc = (p.description || "").replace(/[\r\n]+/g, " ").trim();
         const dateAdded = p.created_at
           ? new Date(p.created_at).toLocaleString("en-IN", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit"
-            })
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+          })
           : "";
 
         return [
@@ -169,12 +169,12 @@ const DangerZone = () => {
 
         const placedDate = o.order_date
           ? new Date(o.order_date).toLocaleString("en-IN", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit"
-            })
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+          })
           : "";
 
         return [
@@ -231,10 +231,10 @@ const DangerZone = () => {
       const rows = customers.map((c) => {
         const joinedDate = c.created_at
           ? new Date(c.created_at).toLocaleString("en-IN", {
-              day: "numeric",
-              month: "short",
-              year: "numeric"
-            })
+            day: "numeric",
+            month: "short",
+            year: "numeric"
+          })
           : "";
 
         return [

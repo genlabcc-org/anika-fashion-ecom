@@ -311,6 +311,10 @@ export default function AnikaOrders() {
       delivery_status: item.delivery_status,
       trackingUrl: item.tracking_url,
       tracking_url: item.tracking_url,
+      fulfillment_type: item.fulfillment_type,
+      manual_courier_name: item.manual_courier_name,
+      manual_awb: item.manual_awb,
+      manual_tracking_url: item.manual_tracking_url,
       estimatedDeliveryDate: item.estimated_delivery_date
         ? new Date(item.estimated_delivery_date).toLocaleDateString("en-IN", {
           day: "numeric",
@@ -572,20 +576,18 @@ export default function AnikaOrders() {
                     </div>
                   </div>
 
-                  {/* Shipment Tracking Info (shown if waybill or manual courier present) */}
-                  {(order.waybill || order.manual_awb || order.fulfillment_type === 'manual') && (() => {
-                    const isManual = order.fulfillment_type === 'manual';
-                    const activeCourier = isManual ? (order.manual_courier_name || order.courier_name || 'Manual') : (order.courier_name || order.courierName || order.deliveryProvider || 'iCarry');
-                    const activeAwb = isManual ? (order.manual_awb || order.waybill) : order.waybill;
-                    let activeTrackingUrl = isManual ? (order.manual_tracking_url || order.tracking_url) : (order.tracking_url || order.trackingUrl);
+                  {/* Shipment Tracking Info (shown if AWB or courier present) */}
+                  {(order.manual_awb || order.waybill || order.manual_courier_name || order.courier_name) && (() => {
+                    const activeCourier = order.manual_courier_name || order.courier_name || order.courierName || order.deliveryProvider || "";
+                    const activeAwb = order.manual_awb || order.waybill || "";
+                    let activeTrackingUrl = order.manual_tracking_url || order.tracking_url || order.trackingUrl;
 
                     // Auto-generate 17TRACK link if tracking URL is missing or generic
                     if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com')) {
                       activeTrackingUrl = `https://t.17track.net/en#nums=${encodeURIComponent(activeAwb)}`;
                     }
 
-                    // If manual fulfillment has no AWB or tracking info yet, don't render an empty strip
-                    if (isManual && !activeAwb && !activeTrackingUrl) {
+                    if (!activeAwb && !activeTrackingUrl && !activeCourier) {
                       return null;
                     }
 
@@ -621,16 +623,16 @@ export default function AnikaOrders() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', color: textColor }}>
-                          <span><strong>Courier:</strong> {activeCourier}</span>
+                          {activeCourier && <span><strong>Courier:</strong> {activeCourier}</span>}
                           {activeAwb && (
                             <>
-                              <span style={{ color: boxBorder }}>·</span>
-                              <span><strong>{isManual ? 'Tracking ID:' : 'AWB:'}</strong> {activeAwb}</span>
+                              {activeCourier && <span style={{ color: boxBorder }}>·</span>}
+                              <span><strong>AWB:</strong> {activeAwb}</span>
                             </>
                           )}
-                          {!isManual && (
+                          {statusStr && (
                             <>
-                              <span style={{ color: boxBorder }}>·</span>
+                              {(activeCourier || activeAwb) && <span style={{ color: boxBorder }}>·</span>}
                               <span>
                                 <strong>Status:</strong>{' '}
                                 <span style={{

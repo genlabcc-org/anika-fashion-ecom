@@ -33,8 +33,10 @@ export interface Order {
   razorpay_payment_id?: string | null;
   razorpay_signature?: string | null;
   delivery_provider?: string | null;
-  waybill?: string | null;
-  shipment_id?: string | null;
+  fulfillment_type?: string | null;
+  manual_courier_name?: string | null;
+  manual_awb?: string | null;
+  manual_tracking_url?: string | null;
   delivery_status?: string | null;
   estimated_delivery_date?: string | null;
   courier_name?: string | null;
