@@ -265,7 +265,11 @@ jobs:
           supabase secrets set --project-ref "$supabase_ref" --env-file .env.deploy
           
           echo "Deploying razorpay function..."
-          supabase functions deploy razorpay --project-ref "$supabase_ref"
+          supabase functions deploy razorpay --no-verify-jwt --project-ref "$supabase_ref"
+          echo "Deploying razorpay-webhook function..."
+          supabase functions deploy razorpay-webhook --no-verify-jwt --project-ref "$supabase_ref"
+          echo "Deploying initiate-refund function..."
+          supabase functions deploy initiate-refund --no-verify-jwt --project-ref "$supabase_ref"
           echo "Deploying icarry function..."
           supabase functions deploy icarry --no-verify-jwt --project-ref "$supabase_ref"
           echo "Deploying icarry-webhook function..."
@@ -274,6 +278,8 @@ jobs:
           supabase functions deploy icarry-sync --no-verify-jwt --project-ref "$supabase_ref"
           echo "Deploying send-order-email function..."
           supabase functions deploy send-order-email --no-verify-jwt --project-ref "$supabase_ref"
+          echo "Deploying whatsapp-webhook function..."
+          supabase functions deploy whatsapp-webhook --no-verify-jwt --project-ref "$supabase_ref"
 
   # deploy_storefront:
   #   name: Deploy Storefront Portal

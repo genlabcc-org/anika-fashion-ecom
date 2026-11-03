@@ -460,3 +460,21 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/send-order-email/index.ts"
 
+[functions.razorpay-webhook]
+enabled = true
+verify_jwt = false
+import_map = "./functions/razorpay-webhook/deno.json"
+entrypoint = "./functions/razorpay-webhook/index.ts"
+
+[functions.initiate-refund]
+enabled = true
+verify_jwt = false
+import_map = "./functions/initiate-refund/deno.json"
+entrypoint = "./functions/initiate-refund/index.ts"
+
+[functions.whatsapp-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/whatsapp-webhook/index.ts"
+
+
