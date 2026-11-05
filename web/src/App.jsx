@@ -29,12 +29,15 @@ import Dashboard from "./admin/pages/Dashboard";
 import { getNavPath } from "./services/categoryRoute";
 
 
-// Scrolls to top on every route change
+// Scrolls to top and tracks PageView on every route change
 function ScrollToTop() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [pathname]);
+    if (typeof window.fbq === 'function') {
+      window.fbq('track', 'PageView');
+    }
+  }, [pathname, search]);
   return null;
 }
 

@@ -12,6 +12,7 @@ import { getNavPath } from "../services/categoryRoute";
 import './ProductDetails.css';
 import SiteHeader from './SiteHeader';
 import Toast from './Toast';
+import SEO from './SEO';
 import { useStore } from '../hooks/useStore';
 import SizeChart from '../assets/Size_bangle.png';
 import LengthChart from '../assets/Anklet_length.jpeg'
@@ -752,6 +753,7 @@ export default function ProductPage({ onBack }) {
   if (pageLoading) {
     return (
       <div className="pp-root">
+        <SEO title="Loading Product..." canonical={`/product/${urlProductId || ''}`} />
         <SiteHeader activeLink="" onLinkClick={handleHeaderLinkClick} />
         <div style={{ maxWidth: '1200px', margin: '40px auto', padding: '0 20px' }}>
           <LoadingSkeleton height="600px" />
@@ -766,6 +768,7 @@ export default function ProductPage({ onBack }) {
   if (notFound || (!pageLoading && urlProductId && !selectedProduct)) {
     return (
       <div className="pp-root">
+        <SEO title="Product Not Found" noindex={true} />
         <SiteHeader activeLink="" onLinkClick={handleHeaderLinkClick} />
         <div style={{ maxWidth: '600px', margin: '80px auto', textAlign: 'center', padding: '40px 20px' }}>
           <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '12px', color: '#1a1a1a' }}>Product not found</h2>
@@ -795,8 +798,38 @@ export default function ProductPage({ onBack }) {
     );
   }
 
+  const categoryNavPath = getNavPath(cat, categories);
+  const cleanDescription = (selectedProduct?.description || '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim() || `${displayName} - Handcrafted luxury ${cat.toLowerCase()} jewellery from ANIKA.`;
+  const seoBreadcrumbs = [
+    { name: 'Home', path: '/' },
+    { name: cat, path: categoryNavPath },
+    { name: displayName, path: `/product/${urlProductId || selectedProduct?.productId || selectedProduct?.id}` },
+  ];
+  const seoProduct = {
+    name: displayName,
+    id: urlProductId || selectedProduct?.productId || selectedProduct?.id,
+    sku: displaySku || urlProductId,
+    price: payPrice,
+    currency: 'INR',
+    inStock: !isOutOfStock,
+    description: cleanDescription,
+    category: cat,
+    images: Array.isArray(productImages) && productImages.length > 0 ? productImages : [displayImage],
+  };
+
   return (
     <div className="pp-root">
+      <SEO
+        title={`${displayName} - ${cat}`}
+        description={cleanDescription}
+        canonical={`/product/${urlProductId || selectedProduct?.productId || selectedProduct?.id}`}
+        ogImage={displayImage}
+        product={seoProduct}
+        breadcrumbs={seoBreadcrumbs}
+      />
 
       {/* ── HEADER ── */}
       <SiteHeader activeLink="" onLinkClick={handleHeaderLinkClick} />

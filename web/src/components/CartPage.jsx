@@ -7,6 +7,7 @@ import WishlistPage from "./wishlistPage";
 import { useStore } from "../hooks/useStore";
 import { getOriginalImageUrl } from '../utils/imageUtils';
 import { getNavPath } from "../services/categoryRoute";
+import SEO from "./SEO";
 
 export default function CartPage() {
   const categories = useStore((state) => state.categories);
@@ -109,6 +110,7 @@ export default function CartPage() {
 
   return (
     <>
+      <SEO title="Shopping Cart" noindex={true} />
       <Navbar activeLink="" onLinkClick={handleNavClick} />
       <div className="cart-page-wrapper">
 

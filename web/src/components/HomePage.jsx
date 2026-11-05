@@ -4,6 +4,7 @@ import AnikaHome from './AnikaHome';
 import './HomePage.css';
 import { useStore } from '../hooks/useStore';
 import { getNavPath } from "../services/categoryRoute";
+import SEO from './SEO';
 
 const ProductSection = lazy(() => import('./ProductSection'));
 const NecklaceSection = lazy(() => import('./NecklaceSection'));
@@ -39,6 +40,12 @@ export default function HomePage() {
 
   return (
     <div className="homepage">
+      <SEO
+        title="Handcrafted Luxury Jewellery & Bridal Accessories"
+        description="Discover handcrafted luxury fashion jewellery draped in elegance. Shop designer rings, earrings, necklaces, bangles, anklets, and bridal collections online at ANIKA."
+        canonical="/"
+        breadcrumbs={[{ name: "Home", path: "/" }]}
+      />
       <AnikaHome />
 
       <Suspense fallback={<SectionLoader />}>

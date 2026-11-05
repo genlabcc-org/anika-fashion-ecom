@@ -6,6 +6,7 @@ import "./JewelryLogin.css"
 import Toast from "../components/Toast";
 import loginImg from "../assets/sign/welcome.png";
 import anikalogo from "../assets/offers/logo.svg";
+import SEO from "../components/SEO";
 
 export default function JewelryLogin() {
   const [email, setEmail] = useState("");
@@ -47,6 +48,7 @@ export default function JewelryLogin() {
 
   return (
     <div className="jewelry-page">
+      <SEO title="Account Login" noindex={true} />
       <div className="jewelry-left">
         <img
           src={loginImg}

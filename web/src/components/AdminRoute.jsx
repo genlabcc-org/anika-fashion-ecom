@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { authService } from "../services/authService";
+import SEO from "./SEO";
 
 export default function AdminRoute({ children }) {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -47,5 +48,10 @@ export default function AdminRoute({ children }) {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return (
+    <>
+      <SEO title="Admin Portal" noindex={true} />
+      {children}
+    </>
+  );
 }

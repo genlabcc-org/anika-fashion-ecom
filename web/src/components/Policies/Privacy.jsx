@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Policy.css';
 import SiteHeader from '../SiteHeader';
+import SEO from '../SEO';
 
 const SiteFooter = lazy(() => import('../SiteFooter'));
 
@@ -22,6 +23,15 @@ export default function Privacy() {
 
   return (
     <div className="policy-root">
+      <SEO
+        title="Privacy Policy"
+        description="Read the Privacy Policy for ANIKA Jewellery. Learn how we handle, store, and protect your personal information."
+        canonical="/privacy"
+        breadcrumbs={[
+          { name: 'Home', path: '/' },
+          { name: 'Privacy Policy', path: '/privacy' },
+        ]}
+      />
       <SiteHeader activeLink="" onLinkClick={handleHeaderLinkClick} />
 
       <section className="policy-section">

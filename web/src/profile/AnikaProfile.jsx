@@ -8,6 +8,7 @@ import { clean } from "../utils/customerName";
 import "./AnikaProfile.css";
 import Navbar from "../components/SiteHeader";
 import Footer from "../components/SiteFooter";
+import SEO from "../components/SEO";
 
 export default function AnikaProfile() {
   const [activeTab, setActiveTab] = useState("Profile");
@@ -193,6 +194,7 @@ export default function AnikaProfile() {
 
   return (
     <>
+      <SEO title="My Profile" noindex={true} />
       <Navbar onLinkClick={handleNavClick} />
       <div className="anika-root">
         <main className="anika-main">

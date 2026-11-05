@@ -6,6 +6,7 @@ import SiteFooter from "./SiteFooter";
 import { useStore } from "../hooks/useStore";
 import { getOriginalImageUrl } from '../utils/imageUtils';
 import { getNavPath } from "../services/categoryRoute";
+import SEO from "./SEO";
 
 export default function WishlistPage({ onBack }) {
   const navigate = useNavigate();
@@ -97,6 +98,7 @@ export default function WishlistPage({ onBack }) {
 
   return (
     <div className="wishlist-page-wrapper">
+      <SEO title="My Wishlist" noindex={true} />
 
       {/* ── HEADER ──────────────────────────────────────────── */}
       <SiteHeader

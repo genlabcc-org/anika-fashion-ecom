@@ -7,10 +7,18 @@
     <meta name="theme-color" content="#6d303c" />
     <meta
       name="description"
-      content="ANIKA - Handcrafted luxury jewellery for every occasion."
+      content="ANIKA - Handcrafted luxury jewellery for every occasion. Discover designer necklaces, rings, earrings, bangles, and bridal collections online."
     />
+    <meta
+      name="keywords"
+      content="handcrafted jewellery, luxury fashion jewellery, bridal jewellery, necklaces, bangles, rings, earrings, anklets, Indian jewellery online"
+    />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://www.anikafashion.in/" />
     
     <!-- Social Meta Tags -->
+    <meta property="og:site_name" content="ANIKA Jewellery" />
+    <meta property="og:locale" content="en_IN" />
     <meta property="og:title" content="ANIKA - Handcrafted Luxury Jewellery" />
     <meta property="og:description" content="Discover handcrafted fashion jewellery for every occasion. Draped in elegance." />
     <meta property="og:url" content="https://www.anikafashion.in/" />
@@ -24,6 +32,66 @@
     <meta name="twitter:title" content="ANIKA - Handcrafted Luxury Jewellery" />
     <meta name="twitter:description" content="Discover handcrafted fashion jewellery for every occasion." />
     <meta name="twitter:image" content="https://www.anikafashion.in/meta-tag.png" />
+
+    <!-- Organization & WebSite Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": ["JewelryStore", "Organization"],
+          "@id": "https://www.anikafashion.in/#organization",
+          "name": "ANIKA Jewellery",
+          "url": "https://www.anikafashion.in/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://www.anikafashion.in/meta-tag.png",
+            "width": 1200,
+            "height": 630
+          },
+          "image": "https://www.anikafashion.in/meta-tag.png",
+          "description": "ANIKA offers handcrafted luxury fashion jewellery draped in elegance for every occasion. Shop earrings, rings, necklaces, bangles, and bridal collections.",
+          "telephone": "+91 9363131636",
+          "address": {
+            "@type": "PostalAddress",
+            "streetAddress": "121A, Kottar-Parvathipuram Rd, Chetti Kulam, Simon Nagar",
+            "addressLocality": "Nagercoil",
+            "addressRegion": "Tamil Nadu",
+            "postalCode": "629001",
+            "addressCountry": "IN"
+          },
+          "openingHoursSpecification": [
+            {
+              "@type": "OpeningHoursSpecification",
+              "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+              "opens": "09:30",
+              "closes": "18:30"
+            }
+          ],
+          "sameAs": [
+            "https://www.instagram.com/anikafashionstore.jewellery/",
+            "https://www.facebook.com/people/anikafashionstore/100090910872220/?ref=1",
+            "https://wa.me/919363631636"
+          ],
+          "priceRange": "₹₹"
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://www.anikafashion.in/#website",
+          "url": "https://www.anikafashion.in/",
+          "name": "ANIKA Jewellery",
+          "publisher": {
+            "@id": "https://www.anikafashion.in/#organization"
+          },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://www.anikafashion.in/category/all?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        }
+      ]
+    }
+    </script>
 
     <link rel="apple-touch-icon" href="/meta-tag.png" />
     <link rel="manifest" href="/manifest.json" />
@@ -39,8 +107,26 @@
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&family=Noto+Serif:ital,wght@0,300..900;1,300..900&family=Yeseva+One&display=swap" rel="stylesheet">
 
     <title>ANIKA | Handcrafted Jewellery</title>
+
+    <!-- Meta Pixel Code -->
+    <script>
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1334595118693642');
+      fbq('track', 'PageView');
+    </script>
+    <!-- End Meta Pixel Code -->
   </head>
   <body>
+    <noscript><img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=1334595118693642&ev=PageView&noscript=1"
+    /></noscript>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
     <script type="module" src="/src/index.jsx"></script>

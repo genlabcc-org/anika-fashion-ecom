@@ -4,6 +4,7 @@ import { authService } from "../services/authService";
 import "./OtpVerify.css";
 import otpImg from "../assets/sign/welcome.png";
 import Toast from "../components/Toast"
+import SEO from "../components/SEO";
 
 export default function OtpVerify() {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -88,6 +89,7 @@ export default function OtpVerify() {
 
   return (
     <div className="otp-page">
+      <SEO title="Verify OTP" noindex={true} />
 
       <div className="otp-left">
         <img src={otpImg} alt="OTP Image" />

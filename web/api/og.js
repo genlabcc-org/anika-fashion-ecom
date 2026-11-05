@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Match ONLY real link-preview bots; exclude in-app browsers
-const CRAWLER_REGEX = /facebookexternalhit|Facebot|meta-externalagent|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Pinterest|Discordbot/i;
+const CRAWLER_REGEX = /facebookexternalhit|Facebot|meta-externalagent|WhatsApp|Twitterbot|TelegramBot|LinkedInBot|Slackbot|Pinterest|Discordbot|Googlebot|bingbot|DuckDuckBot|YandexBot/i;
 
 // In-app browsers: Instagram, Facebook in-app (FBAN/FBAV), Line, etc.
 const IN_APP_BROWSER_REGEX = /Instagram|FBAN|FBAV|Line\//i;
@@ -100,6 +100,7 @@ export default async function handler(req, res) {
   let title = defaultTitle;
   let description = defaultDesc;
   let imageUrl = defaultImage;
+  let numericPrice = 0;
 
   const supabaseUrl = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
   const supabaseKey = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
@@ -126,6 +127,7 @@ export default async function handler(req, res) {
           const prices = variants.map(v => Number(v.price)).filter(Boolean);
 
           const sellingPrice = hasVariants && prices.length > 0 ? Math.min(...prices) : Number(data.price) || 0;
+          numericPrice = sellingPrice;
           const priceStr = sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '';
 
           const rawImage = variants.find(v => v.images?.length > 0)?.images?.[0] || data.image_url || data.images?.[0];
@@ -160,6 +162,30 @@ export default async function handler(req, res) {
 
   const previewRedirectUrl = `/product/${productId ? encodeURIComponent(productId) : ''}?from=preview`;
 
+  const schemaJson = JSON.stringify({
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    "name": title.replace(' | ANIKA', ''),
+    "image": [imageUrl],
+    "description": description,
+    "sku": productId || undefined,
+    "brand": {
+      "@type": "Brand",
+      "name": "ANIKA"
+    },
+    "offers": {
+      "@type": "Offer",
+      "url": canonicalUrl,
+      "priceCurrency": "INR",
+      "price": numericPrice || undefined,
+      "availability": "https://schema.org/InStock",
+      "seller": {
+        "@type": "Organization",
+        "name": "ANIKA Jewellery"
+      }
+    }
+  });
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -179,6 +205,7 @@ export default async function handler(req, res) {
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}" />
   <meta property="og:type" content="product" />
   <meta property="og:site_name" content="Anika Jewellery" />
+  ${numericPrice ? `<meta property="product:price:amount" content="${numericPrice}" />\n  <meta property="product:price:currency" content="INR" />` : ''}
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
@@ -187,6 +214,9 @@ export default async function handler(req, res) {
   <meta name="twitter:image" content="${escapeHtml(imageUrl)}" />
 
   <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />
+
+  <!-- JSON-LD Structured Data for Search Engine Crawlers -->
+  <script type="application/ld+json">${schemaJson}</script>
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>

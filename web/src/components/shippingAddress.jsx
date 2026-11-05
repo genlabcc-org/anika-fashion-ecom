@@ -17,6 +17,7 @@ import MastercardIcon from "../assets/mastercard.svg";
 import PaymentMorePopup from "./PaymentMorePopup";
 import { getOriginalImageUrl } from '../utils/imageUtils';
 import { getNavPath } from "../services/categoryRoute";
+import SEO from "./SEO";
 import { clean, resolveCustomerName, resolveCustomerPhone } from '../utils/customerName';
 
 // Helper to dynamically load the Razorpay script
@@ -792,6 +793,7 @@ export default function ShippingAddress() {
 
   return (
     <>
+      <SEO title="Checkout & Shipping" noindex={true} />
       <Navbar onLinkClick={handleNavClick} />
       <div className="checkout-page-container">
 

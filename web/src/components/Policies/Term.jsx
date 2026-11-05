@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Policy.css';
 import SiteHeader from '../SiteHeader';
+import SEO from '../SEO';
 
 const SiteFooter = lazy(() => import('../SiteFooter'));
 
@@ -22,6 +23,15 @@ export default function Terms() {
 
   return (
     <div className="policy-root">
+      <SEO
+        title="Terms of Service"
+        description="Read the Terms and Conditions for ANIKA Jewellery. Learn about our service terms, customer policies, and purchasing guidelines."
+        canonical="/terms"
+        breadcrumbs={[
+          { name: 'Home', path: '/' },
+          { name: 'Terms of Service', path: '/terms' },
+        ]}
+      />
       <SiteHeader activeLink="" onLinkClick={handleHeaderLinkClick} />
 
       <section className="policy-section">

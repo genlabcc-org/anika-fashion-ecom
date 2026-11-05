@@ -6,6 +6,7 @@ import "./JewelrySignup.css";
 import Toast from "../components/Toast";
 import signupImg from "../assets/sign/welcome.png";
 import anikalogo from "../assets/offers/logo.svg";
+import SEO from "../components/SEO";
 
 export default function JewelrySignup() {
   const [email, setEmail] = useState("");
@@ -56,6 +57,7 @@ export default function JewelrySignup() {
 
   return (
     <div className="jewelry-page">
+      <SEO title="Create Account" noindex={true} />
       <div className="jewelry-left">
         <img src={signupImg} alt="sign up Image" />
       </div>

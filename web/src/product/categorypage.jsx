@@ -6,6 +6,7 @@ import SiteFooter from "../components/SiteFooter";
 import Toast from "../components/Toast";
 import { SkeletonProductCard } from "../components/ui/Skeleton";
 import { productService } from "../services/productService";
+import SEO from "../components/SEO";
 import "./categorypage.css";
 
 import { getNavPath } from "../services/categoryRoute";
@@ -280,8 +281,40 @@ export default function CategoryPage({ category }) {
     navigate(`/product/${product.productId || product.id}`);
   };
 
+  const navCategoryPath = getNavPath(category, allCategories);
+  const seoTitle = subcategoryParam
+    ? `${subcategoryParam} - ${category} Collection`
+    : `${category} Collection`;
+  const seoDescription = `Explore our handcrafted ${category.toLowerCase()}${
+    subcategoryParam ? ' in ' + subcategoryParam : ''
+  } collection at ANIKA. Premium finish, bridal & festive designs with fast delivery across India.`;
+  const seoBreadcrumbs = [
+    { name: 'Home', path: '/' },
+    { name: category, path: navCategoryPath },
+    ...(subcategoryParam ? [{ name: subcategoryParam, path: `${navCategoryPath}?sub=${encodeURIComponent(subcategoryParam)}` }] : []),
+  ];
+  const itemListSchema = Array.isArray(products) && products.length > 0 ? {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: `${category} Collection - ANIKA Jewellery`,
+    itemListElement: products.slice(0, 12).map((p, idx) => ({
+      '@type': 'ListItem',
+      position: idx + 1,
+      url: `https://www.anikafashion.in/product/${p.productId || p.id}`,
+      name: p.name,
+    })),
+  } : null;
+
   return (
     <div className="categorypage-root">
+      <SEO
+        title={seoTitle}
+        description={seoDescription}
+        keywords={[category.toLowerCase(), `${category.toLowerCase()} jewellery`, 'handcrafted jewellery', 'luxury fashion jewellery', 'anika jewellery']}
+        canonical={navCategoryPath}
+        breadcrumbs={seoBreadcrumbs}
+        schema={itemListSchema}
+      />
       <SiteHeader activeLink={category} onLinkClick={handleNavClick} />
 
       <div className="search-bar-container">
