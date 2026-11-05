@@ -150,7 +150,7 @@ const Invoices = ({ orders = [], loading = false }) => {
   const handleTogglePrintedStatus = async (order) => {
     if (!order || !order.id) return;
     const newStatus = !order.invoice_printed;
-    const orderShortId = String(order.id).slice(-8).toUpperCase();
+    const orderShortId = String(order.id).slice(-6).toUpperCase();
     try {
       await orderService.updateInvoicePrintedStatus(order.id, newStatus);
       setLocalOrders((prev) =>
@@ -280,7 +280,7 @@ const Invoices = ({ orders = [], loading = false }) => {
           // If auto-print is enabled and this order is not marked as printed yet
           if (autoPrint && !enrichedOrder.invoice_printed) {
             playOrderChime();
-            const orderShortId = String(enrichedOrder.id).slice(-8).toUpperCase();
+            const orderShortId = String(enrichedOrder.id).slice(-6).toUpperCase();
             showToast(`🔔 New Order #${orderShortId} generated! Printing invoice...`, "info");
 
             setTimeout(() => {
@@ -369,7 +369,7 @@ const Invoices = ({ orders = [], loading = false }) => {
         {filtered.map((order) => {
           const statusCfg = STATUS_COLORS[order.status] || STATUS_COLORS.Pending;
           const orderShortId = order.id
-            ? "#" + String(order.id).slice(-8).toUpperCase()
+            ? "#" + String(order.id).slice(-6).toUpperCase()
             : "#UNKNOWN";
           const orderDate = order.order_date
             ? new Date(order.order_date).toLocaleDateString("en-IN", {
@@ -658,7 +658,7 @@ const Invoices = ({ orders = [], loading = false }) => {
           filtered.map((order) => {
             const statusCfg = STATUS_COLORS[order.status] || STATUS_COLORS.Pending;
             const orderShortId = order.id
-              ? "#" + String(order.id).slice(-8).toUpperCase()
+              ? "#" + String(order.id).slice(-6).toUpperCase()
               : "#UNKNOWN";
             const orderDate = order.order_date
               ? new Date(order.order_date).toLocaleDateString("en-IN", {
@@ -790,7 +790,7 @@ const Invoices = ({ orders = [], loading = false }) => {
               <div>
                 <h3 className="inv__modal-title">Invoice Preview (4" × 6")</h3>
                 <p className="inv__modal-subtitle">
-                  Order #{String(previewOrder.id).slice(-8).toUpperCase()} · 100 × 150 mm
+                  Order #{String(previewOrder.id).slice(-6).toUpperCase()} · 100 × 150 mm
                 </p>
               </div>
               <button

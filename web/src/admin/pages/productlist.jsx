@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./productlist.css";
 import searchEmpty from "../../assets/admin/search.png";
 import editIcon from "../../assets/admin/Edit.png";
@@ -144,12 +144,40 @@ const MobileProductCard = ({ product, onEdit, onDelete, selectedRows, toggleSele
   );
 };
 
-const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = [], categories = [], loading = false, onBack }) => {
+const INITIAL_VISIBLE = 10;
+const LOAD_MORE_COUNT = 20;
+
+const SpinnerIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aaa" strokeWidth="2.5" strokeLinecap="round" style={{ verticalAlign: "middle", marginRight: "6px" }}>
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83">
+      <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" />
+    </path>
+  </svg>
+);
+
+const ProductList = ({
+  onAddProduct,
+  onEditProduct,
+  onDeleteProduct,
+  products = [],
+  allProducts = [],
+  searchedProducts = [],
+  searchingProducts = false,
+  onSearchDb,
+  categories = [],
+  loading = false,
+  loadingMoreProducts = false,
+  hasMoreProducts = false,
+  totalProductsCount = 0,
+  onLoadMore,
+  onBack,
+}) => {
   const [selectedRows, setSelectedRows] = useState([]);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const itemsPerPage = 8;
+  const loadMoreRef = useRef(null);
+  const isLoadingBatchRef = useRef(false);
 
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedStatus, setSelectedStatus] = useState("All");
@@ -169,6 +197,18 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [expandedRows, setExpandedRows] = useState([]);
 
+  const statsSource = allProducts.length > 0 ? allProducts : products;
+
+  const isFilteredView =
+    searchQuery.trim() !== "" ||
+    selectedCategory !== "All" ||
+    selectedSubcategory !== "All" ||
+    selectedStatus !== "All" ||
+    selectedStock !== "All" ||
+    priceFrom !== "" ||
+    priceTo !== "" ||
+    selectedSort !== "default";
+
   const SORTS = [
     { label: "Default Sort", value: "default" },
     { label: "Price: Low to High", value: "price-asc" },
@@ -181,21 +221,21 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
 
   const CATEGORIES = useMemo(() => {
     const fromProps = categories.map((c) => (typeof c === "string" ? c : c?.name || c?.title)).filter(Boolean);
-    const fromProducts = products.flatMap((p) => p.categoriesList || [p.category]).filter(Boolean);
+    const fromProducts = statsSource.flatMap((p) => p.categoriesList || [p.category]).filter(Boolean);
     const unique = Array.from(new Set([...fromProps, ...fromProducts]));
     return ["All", ...unique];
-  }, [categories, products]);
+  }, [categories, statsSource]);
 
   const STATUSES = ["All", "Visible", "Draft"];
   const STOCKS = ["All", "In Stock", "Low Stock", "Out of Stock"];
 
   const SUBCATEGORIES = useMemo(() => {
     const relevantProducts = selectedCategory === "All"
-      ? products
-      : products.filter((p) => p.category === selectedCategory || (Array.isArray(p.categoriesList) && p.categoriesList.includes(selectedCategory)));
+      ? statsSource
+      : statsSource.filter((p) => p.category === selectedCategory || (Array.isArray(p.categoriesList) && p.categoriesList.includes(selectedCategory)));
     const subs = relevantProducts.map((p) => p.subcategory).filter(Boolean);
     return ["All", ...Array.from(new Set(subs))];
-  }, [products, selectedCategory]);
+  }, [statsSource, selectedCategory]);
 
   const toggleExpand = (id) => {
     setExpandedRows((prev) => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -203,14 +243,38 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
 
   // Detect mobile card breakpoint
   const [isMobileCard, setIsMobileCard] = useState(window.innerWidth <= 540);
-  React.useEffect(() => {
+  useEffect(() => {
     const handler = () => setIsMobileCard(window.innerWidth <= 540);
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, []);
 
+  useEffect(() => {
+    if (!onSearchDb) return;
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      onSearchDb("");
+      return;
+    }
+    const timer = setTimeout(() => {
+      onSearchDb(trimmed);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery, onSearchDb]);
+
+  const baseProducts = useMemo(() => {
+    if (!isFilteredView) return products;
+    const map = new Map();
+    statsSource.forEach((p) => map.set(p.id, p));
+    products.forEach((p) => map.set(p.id, p));
+    searchedProducts.forEach((p) => {
+      if (!map.has(p.id)) map.set(p.id, p);
+    });
+    return Array.from(map.values());
+  }, [products, statsSource, searchedProducts, isFilteredView]);
+
   const filteredProducts = useMemo(() => {
-    let result = products.filter((p) => {
+    let result = baseProducts.filter((p) => {
       const q = searchQuery.toLowerCase();
       const matchSearch = !searchQuery.trim() ||
         p.name?.toLowerCase().includes(q) ||
@@ -242,22 +306,62 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
     if (selectedSort === "stock-desc") result.sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
 
     return result;
-  }, [products, searchQuery, selectedCategory, selectedSubcategory, selectedStatus, selectedStock, priceFrom, priceTo, selectedSort]);
+  }, [baseProducts, searchQuery, selectedCategory, selectedSubcategory, selectedStatus, selectedStock, priceFrom, priceTo, selectedSort]);
 
   const totalItems = filteredProducts.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentProducts = filteredProducts.slice(startIndex, endIndex);
+  const currentProducts = filteredProducts.slice(0, visibleCount);
+  const hasMore = isFilteredView
+    ? visibleCount < totalItems
+    : visibleCount < totalItems || hasMoreProducts;
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE);
+  }, [searchQuery, selectedCategory, selectedSubcategory, selectedStatus, selectedStock, priceFrom, priceTo, selectedSort]);
+
+  useEffect(() => {
+    if (!loadingMoreProducts) {
+      isLoadingBatchRef.current = false;
+    }
+  }, [visibleCount, totalItems, loadingMoreProducts]);
+
+  useEffect(() => {
+    if (loading || loadingMoreProducts || searchingProducts || !hasMore) return;
+
+    const checkAndLoadMore = () => {
+      if (isLoadingBatchRef.current) return;
+      const node = loadMoreRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 160) {
+        isLoadingBatchRef.current = true;
+        setVisibleCount((prev) => prev + LOAD_MORE_COUNT);
+        if (!isFilteredView && hasMoreProducts && visibleCount + LOAD_MORE_COUNT > totalItems) {
+          onLoadMore?.(LOAD_MORE_COUNT);
+        }
+      }
+    };
+
+    window.addEventListener("scroll", checkAndLoadMore, { passive: true, capture: true });
+    window.addEventListener("wheel", checkAndLoadMore, { passive: true });
+    window.addEventListener("touchmove", checkAndLoadMore, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", checkAndLoadMore, { capture: true });
+      window.removeEventListener("wheel", checkAndLoadMore);
+      window.removeEventListener("touchmove", checkAndLoadMore);
+    };
+  }, [loading, loadingMoreProducts, searchingProducts, hasMore, isFilteredView, hasMoreProducts, visibleCount, totalItems, onLoadMore]);
 
   const handleSearchKeyDown = (e) => {
-    if (e.key === "Enter") { setSearchQuery(searchInput); setCurrentPage(1); setSelectedRows([]); }
-    if (e.key === "Escape") { setSearchInput(""); setSearchQuery(""); setCurrentPage(1); }
+    if (e.key === "Enter") { setSearchQuery(searchInput); setVisibleCount(INITIAL_VISIBLE); setSelectedRows([]); }
+    if (e.key === "Escape") { setSearchInput(""); setSearchQuery(""); setVisibleCount(INITIAL_VISIBLE); }
   };
 
   const handleSearchChange = (e) => {
-    setSearchInput(e.target.value);
-    if (e.target.value === "") { setSearchQuery(""); setCurrentPage(1); }
+    const val = e.target.value;
+    setSearchInput(val);
+    setSearchQuery(val);
+    setVisibleCount(INITIAL_VISIBLE);
   };
 
   const handleEdit = (product) => { if (onEditProduct) onEditProduct(product); };
@@ -267,11 +371,8 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
   };
 
   const confirmDelete = () => {
-    const id = pendingDeleteId
+    const id = pendingDeleteId;
     if (onDeleteProduct) onDeleteProduct(id);
-    const newTotal = filteredProducts.length - 1;
-    const newTotalPages = Math.max(1, Math.ceil(newTotal / itemsPerPage));
-    if (currentPage > newTotalPages) setCurrentPage(newTotalPages);
     setSelectedRows((prev) => prev.filter((rowId) => rowId !== id));
     setPendingDeleteId(null);
   };
@@ -290,25 +391,11 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
     currentProducts.length > 0 &&
     currentProducts.every((p) => selectedRows.includes(p.id));
 
-  const goToPage = (page) => {
-    if (page < 1 || page > totalPages) return;
-    setCurrentPage(page);
-    setSelectedRows([]);
-  };
-
-  const getPageNumbers = () => {
-    if (totalItems === 0) return [1, 2, 3];
-    const pages = new Set([1, totalPages, currentPage]);
-    if (currentPage - 1 >= 1) pages.add(currentPage - 1);
-    if (currentPage + 1 <= totalPages) pages.add(currentPage + 1);
-    return Array.from(pages).sort((a, b) => a - b);
-  };
-
-  const pageNumbers = getPageNumbers();
-
-  const showingText = totalItems === 0
+  const realTotalProducts = totalProductsCount || statsSource.length || totalItems;
+  const displayTotalCount = isFilteredView ? totalItems : realTotalProducts;
+  const showingText = currentProducts.length === 0
     ? "Showing 0 products"
-    : "Showing " + (startIndex + 1) + "-" + Math.min(endIndex, totalItems) + " of " + totalItems + " products";
+    : `Showing 1–${currentProducts.length} of ${displayTotalCount} products`;
 
   return (
     <div className="product-list">
@@ -317,7 +404,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
       <div className="pl-header">
         <div className="pl-title">
           <h1>All products</h1>
-          <span className="pl-count">{products.length} Items</span>
+          <span className="pl-count">{realTotalProducts} Items</span>
         </div>
         <button className="pl-add-btn" onClick={onAddProduct}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -342,7 +429,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
               <div className="pl-dropdown-menu">
                 {CATEGORIES.map(c => (
                   <div key={c} className={`pl-dropdown-item ${selectedCategory === c ? 'active' : ''}`}
-                    onClick={() => { setSelectedCategory(c); setCategoryOpen(false); setCurrentPage(1); setSelectedSubcategory("All"); }}>
+                    onClick={() => { setSelectedCategory(c); setCategoryOpen(false); setVisibleCount(INITIAL_VISIBLE); setSelectedSubcategory("All"); }}>
                     {c}
                   </div>
                 ))}
@@ -363,7 +450,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
               <div className="pl-dropdown-menu">
                 {SUBCATEGORIES.map(s => (
                   <div key={s} className={`pl-dropdown-item ${selectedSubcategory === s ? 'active' : ''}`}
-                    onClick={() => { setSelectedSubcategory(s); setSubcategoryOpen(false); setCurrentPage(1); }}>
+                    onClick={() => { setSelectedSubcategory(s); setSubcategoryOpen(false); setVisibleCount(INITIAL_VISIBLE); }}>
                     {s}
                   </div>
                 ))}
@@ -382,7 +469,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
               <div className="pl-dropdown-menu">
                 {STATUSES.map(s => (
                   <div key={s} className={`pl-dropdown-item ${selectedStatus === s ? 'active' : ''}`}
-                    onClick={() => { setSelectedStatus(s); setStatusOpen(false); setCurrentPage(1); }}>
+                    onClick={() => { setSelectedStatus(s); setStatusOpen(false); setVisibleCount(INITIAL_VISIBLE); }}>
                     {s}
                   </div>
                 ))}
@@ -410,7 +497,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
                         min="0"
                         placeholder="Min"
                         value={priceFrom}
-                        onChange={(e) => { setPriceFrom(e.target.value); setCurrentPage(1); }}
+                        onChange={(e) => { setPriceFrom(e.target.value); setVisibleCount(INITIAL_VISIBLE); }}
                         className="pl-price-input"
                       />
                     </div>
@@ -421,7 +508,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
                         min="0"
                         placeholder="Max"
                         value={priceTo}
-                        onChange={(e) => { setPriceTo(e.target.value); setCurrentPage(1); }}
+                        onChange={(e) => { setPriceTo(e.target.value); setVisibleCount(INITIAL_VISIBLE); }}
                         className="pl-price-input"
                       />
                     </div>
@@ -430,7 +517,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
                     <button
                       type="button"
                       className="pl-price-clear-btn"
-                      onClick={() => { setPriceFrom(""); setPriceTo(""); setCurrentPage(1); }}
+                      onClick={() => { setPriceFrom(""); setPriceTo(""); setVisibleCount(INITIAL_VISIBLE); }}
                     >
                       Clear Price
                     </button>
@@ -453,7 +540,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
               <div className="pl-dropdown-menu">
                 {SORTS.map(s => (
                   <div key={s.value} className={`pl-dropdown-item ${selectedSort === s.value ? 'active' : ''}`}
-                    onClick={() => { setSelectedSort(s.value); setSortOpen(false); setCurrentPage(1); }}>
+                    onClick={() => { setSelectedSort(s.value); setSortOpen(false); setVisibleCount(INITIAL_VISIBLE); }}>
                     {s.label}
                   </div>
                 ))}
@@ -479,7 +566,7 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
           {searchInput && (
             <button
               className="pl-search-clear"
-              onClick={() => { setSearchInput(""); setSearchQuery(""); setCurrentPage(1); }}
+              onClick={() => { setSearchInput(""); setSearchQuery(""); setVisibleCount(INITIAL_VISIBLE); }}
               aria-label="Clear search"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -723,42 +810,28 @@ const ProductList = ({ onAddProduct, onEditProduct, onDeleteProduct, products = 
         </div>
       )}
 
-      {/* Pagination */}
+      {/* Scroll Sentinel for Infinite Loading */}
+      <div ref={loadMoreRef} style={{ height: "1px", width: "100%" }} aria-hidden="true" />
+
+      {/* Footer */}
       <div className="pl-pagination">
-        <span className="pl-showing">{showingText}</span>
-        <div className="pl-page-controls">
-          <button
-            className="pl-page-btn"
-            onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage === 1}
-          >
-            Previous
-          </button>
-          {pageNumbers.map((page, idx) => {
-            const prev = pageNumbers[idx - 1];
-            return (
-              <React.Fragment key={page}>
-                {prev && page - prev > 1 && (
-                  <span className="pl-page-ellipsis">...</span>
-                )}
-                <button
-                  className={"pl-page-btn" + (currentPage === page ? " pl-page-btn--active" : "")}
-                  onClick={() => goToPage(page)}
-                  disabled={totalItems === 0}
-                >
-                  {page}
-                </button>
-              </React.Fragment>
-            );
-          })}
-          <button
-            className="pl-page-btn"
-            onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage === totalPages}
-          >
-            Next
-          </button>
-        </div>
+        <span className="pl-showing">
+          {loading ? (
+            <span><SpinnerIcon /> Loading products…</span>
+          ) : (
+            showingText
+          )}
+        </span>
+        {!loading && (searchingProducts || (!isFilteredView && loadingMoreProducts) || hasMore) && (
+          <span className="pl-showing" style={{ display: "inline-flex", alignItems: "center" }}>
+            <SpinnerIcon />
+            {searchingProducts
+              ? "Searching products…"
+              : loadingMoreProducts
+                ? "Loading 20 more products…"
+                : "Scroll to load more…"}
+          </span>
+        )}
       </div>
       {pendingDeleteId !== null && (
         <div className="pl-confirm-overlay" onClick={() => setPendingDeleteId(null)}>

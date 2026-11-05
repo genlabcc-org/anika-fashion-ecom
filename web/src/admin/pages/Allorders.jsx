@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabase";
 import Toast from "../../components/Toast";
 import ExportOrdersModal from "../components/ExportOrdersModal";
 import { useAdmin } from "../../hooks/useAdmin";
-import { getTodayISTStr, getPresetDates } from "../../utils/exportUtils";
+import { getTodayISTStr, getPresetDates, generateOrdersCsv, downloadCsvFile } from "../../utils/exportUtils";
 import "./Allorders.css";
 
 const STATUS_STYLE = {
@@ -33,7 +33,8 @@ const PAYMENT_STYLE = {
 
 const CATEGORIES = ["All Category", "Necklaces", "Earrings", "Rings", "Bracelets"];
 const STATUSES = ["All Status", "To Pack / Needs Action", "Paid", "Order Placed", "Confirmed", "Shipped", "Delivered", "Refunded", "Partially Refunded", "Refund Failed", "Cancelled", "Returned"];
-const PER_PAGE = 8;
+const INITIAL_VISIBLE = 10;
+const LOAD_MORE_COUNT = 20;
 
 const DATE_PRESETS = [
   { key: "all_time", label: "All Time" },
@@ -76,18 +77,6 @@ const ChevronDownIcon = () => (
   </svg>
 );
 
-const ChevronLeftIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="15 18 9 12 15 6" />
-  </svg>
-);
-
-const ChevronRightIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
-
 const FilterIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="4" y1="6" x2="20" y2="6" />
@@ -107,6 +96,14 @@ const EnvelopeOpenIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z" />
     <path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10" />
+  </svg>
+);
+
+const DownloadIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
   </svg>
 );
 
@@ -194,7 +191,21 @@ const FilterDropdown = ({ value, options, onChange }) => {
 };
 
 /* ── Main Component ── */
-const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDetail }) => {
+const AllOrders = ({
+  orders = [],
+  allOrders = [],
+  searchedOrders = [],
+  searchingOrders = false,
+  onSearchDb,
+  products = [],
+  loading,
+  loadingMoreOrders = false,
+  hasMoreOrders = false,
+  totalOrdersCount = 0,
+  onLoadMore,
+  error = null,
+  onViewDetail,
+}) => {
   const [category, setCategory] = useState("All Category");
   const [status, setStatus] = useState("All Status");
   const [paymentFilter, setPaymentFilter] = useState("All Payment");
@@ -206,8 +217,9 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [page, setPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const [activeTab, setActiveTab] = useState("all");
+  const loadMoreRef = useRef(null);
 
   const markOrdersRead = useStore((state) => state.markOrdersRead);
   const fetchNewOrdersCount = useStore((state) => state.fetchNewOrdersCount);
@@ -222,12 +234,23 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const storeIsAdmin = useStore((state) => state.isAdmin);
   const isAdmin = storeIsAdmin || adminHookStatus;
 
+  const statsSource = allOrders.length > 0 ? allOrders : orders;
+
+  const hasActiveDateFilter = datePreset !== "all_time" || !!startDate || !!endDate;
+  const hasActiveFilters =
+    category !== "All Category" ||
+    status !== "All Status" ||
+    paymentFilter !== "All Payment" ||
+    readFilter !== "all" ||
+    search.trim() !== "" ||
+    hasActiveDateFilter;
+
   const toPackCount = useMemo(() => {
-    return orders.filter((o) => {
+    return statsSource.filter((o) => {
       const s = (o.status || "").toLowerCase().trim();
       return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes(s);
     }).length;
-  }, [orders]);
+  }, [statsSource]);
 
   const [toast, setToast] = useState({ message: "", type: "" });
   const showToast = (message, type = "info") => {
@@ -248,10 +271,36 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
   const PAYMENT_OPTIONS = ["All Payment", "Paid", "COD"];
 
+  useEffect(() => {
+    if (!onSearchDb) return;
+    const trimmed = search.trim();
+    if (!trimmed) {
+      onSearchDb("");
+      return;
+    }
+    const timer = setTimeout(() => {
+      onSearchDb(trimmed);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search, onSearchDb]);
+
+  const baseOrders = useMemo(() => {
+    if (!hasActiveFilters && activeTab === "all") return orders;
+    const map = new Map();
+    statsSource.forEach((o) => map.set(o.id, o));
+    orders.forEach((o) => map.set(o.id, o));
+    searchedOrders.forEach((o) => {
+      if (!map.has(o.id)) map.set(o.id, o);
+    });
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.order_date || 0).getTime() - new Date(a.order_date || 0).getTime()
+    );
+  }, [orders, statsSource, searchedOrders, hasActiveFilters, activeTab]);
+
   /* ── Derived lists ── */
   const displayOrders = activeTab === "return"
-    ? orders.filter((o) => o.type?.toLowerCase() === "return")
-    : orders;
+    ? baseOrders.filter((o) => o.type?.toLowerCase() === "return")
+    : baseOrders;
 
   const filtered = displayOrders.filter((o) => {
     const matchCategory = (() => {
@@ -279,12 +328,17 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       return o.payment?.toUpperCase() === paymentFilter.toUpperCase();
     })();
 
+    const cleanSearch = search.trim().replace(/^#/, "").toLowerCase();
     const matchSearch =
-      !search ||
-      (o.id || "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.customer?.name || "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.customer?.email || "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.item_name || "").toLowerCase().includes(search.toLowerCase());
+      !cleanSearch ||
+      (o.id || "").toLowerCase().includes(cleanSearch) ||
+      (o.customer?.name || "").toLowerCase().includes(cleanSearch) ||
+      (o.customer?.email || "").toLowerCase().includes(cleanSearch) ||
+      (o.customer?.phone || "").toLowerCase().includes(cleanSearch) ||
+      (o.item_name || "").toLowerCase().includes(cleanSearch) ||
+      (o.waybill || "").toLowerCase().includes(cleanSearch) ||
+      (o.razorpay_order_id || "").toLowerCase().includes(cleanSearch) ||
+      (o.razorpay_payment_id || "").toLowerCase().includes(cleanSearch);
 
     const matchRead = (() => {
       if (readFilter === "unread") return o.admin_read === false;
@@ -351,39 +405,67 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  const isFilteredView = hasActiveFilters || activeTab !== "all";
+  const visibleOrders = filtered.slice(0, visibleCount);
+  const hasMore = isFilteredView
+    ? visibleCount < filtered.length
+    : visibleCount < filtered.length || hasMoreOrders;
+  const isLoadingBatchRef = useRef(false);
+
+  useEffect(() => {
+    if (!loadingMoreOrders) {
+      isLoadingBatchRef.current = false;
+    }
+  }, [visibleCount, filtered.length, loadingMoreOrders]);
+
+  useEffect(() => {
+    if (loading || loadingMoreOrders || searchingOrders || !hasMore) return;
+
+    const checkAndLoadMore = () => {
+      if (isLoadingBatchRef.current) return;
+      const node = loadMoreRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 160) {
+        isLoadingBatchRef.current = true;
+        setVisibleCount((prev) => prev + LOAD_MORE_COUNT);
+        if (!isFilteredView && hasMoreOrders && visibleCount + LOAD_MORE_COUNT > filtered.length) {
+          onLoadMore?.(LOAD_MORE_COUNT);
+        }
+      }
+    };
+
+    window.addEventListener("scroll", checkAndLoadMore, { passive: true, capture: true });
+    window.addEventListener("wheel", checkAndLoadMore, { passive: true });
+    window.addEventListener("touchmove", checkAndLoadMore, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", checkAndLoadMore, { capture: true });
+      window.removeEventListener("wheel", checkAndLoadMore);
+      window.removeEventListener("touchmove", checkAndLoadMore);
+    };
+  }, [loading, loadingMoreOrders, searchingOrders, hasMore, isFilteredView, hasMoreOrders, visibleCount, filtered.length, onLoadMore]);
 
   const count = (s) => {
     if (s.toLowerCase() === "return" || s.toLowerCase() === "returned") {
-      return orders.filter((o) => o.status?.toLowerCase() === "return" || o.status?.toLowerCase() === "returned").length;
+      return statsSource.filter((o) => o.status?.toLowerCase() === "return" || o.status?.toLowerCase() === "returned").length;
     }
-    return orders.filter((o) => o.status?.toLowerCase() === s.toLowerCase()).length;
+    return statsSource.filter((o) => o.status?.toLowerCase() === s.toLowerCase()).length;
   };
 
   /* ── Selection ── */
   const toggleRow = (id) =>
     setSelected((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
 
-  const allChecked = paginated.length > 0 && paginated.every((o) => selected.includes(o.id));
+  const allChecked = visibleOrders.length > 0 && visibleOrders.every((o) => selected.includes(o.id));
 
   const toggleAll = () =>
     setSelected(allChecked
-      ? selected.filter((id) => !paginated.find((o) => o.id === id))
-      : [...new Set([...selected, ...paginated.map((o) => o.id)])]);
-
-  /* ── Pagination numbers ── */
-  const pageNums = () => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    const p = safePage;
-    if (p <= 3) return [1, 2, 3, "…", totalPages];
-    if (p >= totalPages - 2) return [1, "…", totalPages - 2, totalPages - 1, totalPages];
-    return [1, "…", p, "…", totalPages];
-  };
+      ? selected.filter((id) => !visibleOrders.find((o) => o.id === id))
+      : [...new Set([...selected, ...visibleOrders.map((o) => o.id)])]);
 
   /* ── Stats helpers ── */
-  const revenue = orders
+  const revenue = statsSource
     .filter(isRevenueOrder)
     .reduce((s, o) => s + Number(o.total_price || 0), 0);
 
@@ -396,7 +478,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   /* ── Precomputed fallback order count map (single O(N) pass, no per-row filtering) ── */
   const fallbackCountMap = useMemo(() => {
     const map = new Map();
-    for (const o of orders) {
+    for (const o of statsSource) {
       if (!isCountableCustomerOrder(o)) continue;
       const key = getOrderCustomerKey(o);
       if (key) {
@@ -404,7 +486,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       }
     }
     return map;
-  }, [orders]);
+  }, [statsSource]);
 
   const getCustomerOrderCount = useCallback((order) => {
     if (typeof order?.customer?.orderCount === "number") {
@@ -414,15 +496,15 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     return key ? (fallbackCountMap.get(key) || 0) : 0;
   }, [fallbackCountMap]);
 
-  const fulfillmentRate = orders.length > 0
-    ? Math.round((count('Delivered') / orders.length) * 100)
+  const fulfillmentRate = statsSource.length > 0
+    ? Math.round((count('Delivered') / statsSource.length) * 100)
     : 0;
 
-  const codCount = orders.filter(o => o.payment?.toUpperCase() === 'COD').length;
-  const paidCount = orders.filter(o => o.payment?.toUpperCase() === 'PAID').length;
+  const codCount = statsSource.filter(o => o.payment?.toUpperCase() === 'COD').length;
+  const paidCount = statsSource.filter(o => o.payment?.toUpperCase() === 'PAID').length;
 
   // Unfulfilled orders that need packing/shipping (Pending, Confirmed, Order Placed, Paid, or Pickup Cancelled)
-  const actionNeeded = orders.filter(o => {
+  const actionNeeded = statsSource.filter(o => {
     const s = (o.status || '').toLowerCase().trim();
     if (['shipped', 'delivered', 'cancelled', 'canceled', 'returned', 'return', 'refund completed', 'refunded'].includes(s)) {
       return false;
@@ -431,15 +513,6 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   }).length;
   const inTransit = count('Shipped');
   const problems = count('Cancelled') + count('Returned');
-
-  const hasActiveDateFilter = datePreset !== "all_time" || !!startDate || !!endDate;
-  const hasActiveFilters =
-    category !== "All Category" ||
-    status !== "All Status" ||
-    paymentFilter !== "All Payment" ||
-    readFilter !== "all" ||
-    search !== "" ||
-    hasActiveDateFilter;
 
   const handleResetFilters = () => {
     setCategory("All Category");
@@ -450,19 +523,19 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     setDatePreset("all_time");
     setStartDate("");
     setEndDate("");
-    setPage(1);
+    setVisibleCount(INITIAL_VISIBLE);
   };
 
   const handleResetDateFilter = () => {
     setDatePreset("all_time");
     setStartDate("");
     setEndDate("");
-    setPage(1);
+    setVisibleCount(INITIAL_VISIBLE);
   };
 
   const handlePresetSelect = (presetKey) => {
     setDatePreset(presetKey);
-    setPage(1);
+    setVisibleCount(INITIAL_VISIBLE);
 
     if (presetKey === "all_time") {
       setStartDate("");
@@ -482,13 +555,13 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
   const handleStartDateChange = (e) => {
     setStartDate(e.target.value);
     setDatePreset("custom");
-    setPage(1);
+    setVisibleCount(INITIAL_VISIBLE);
   };
 
   const handleEndDateChange = (e) => {
     setEndDate(e.target.value);
     setDatePreset("custom");
-    setPage(1);
+    setVisibleCount(INITIAL_VISIBLE);
   };
 
   const handleBulkMarkRead = async (read) => {
@@ -512,6 +585,30 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     }
   };
 
+  const handleDownloadSelected = async () => {
+    if (selected.length === 0 || bulkLoading) return;
+    try {
+      setBulkLoading(true);
+      const rows = await orderService.exportOrdersData({ orderIds: selected });
+      if (!rows || rows.length === 0) {
+        showToast("No order data found for selected orders.", "warning");
+        return;
+      }
+      const csvContent = generateOrdersCsv(rows);
+      const filename = `anika-selected-orders-${getTodayISTStr()}.csv`;
+      downloadCsvFile(csvContent, filename);
+      showToast(
+        `Successfully downloaded ${rows.length} selected ${rows.length === 1 ? "order" : "orders"}!`,
+        "success"
+      );
+    } catch (err) {
+      console.error("Selected orders export error:", err);
+      showToast(err?.message || "Failed to download selected orders", "error");
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
   const handleToggleSingleRead = async (orderId, read) => {
     try {
       if (typeof markOrdersRead === "function") {
@@ -530,7 +627,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
 
   const renderBody = () => {
     if (loading) {
-      return Array.from({ length: PER_PAGE }).map((_, i) => <SkeletonRow key={i} />);
+      return Array.from({ length: INITIAL_VISIBLE }).map((_, i) => <SkeletonRow key={i} />);
     }
 
     if (error) {
@@ -569,7 +666,10 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       );
     }
 
-    if (paginated.length === 0) {
+    if (visibleOrders.length === 0) {
+      if (searchingOrders) {
+        return Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />);
+      }
       return (
         <tr>
           <td colSpan={8} className="ao__empty">
@@ -582,7 +682,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       );
     }
 
-    return paginated.map((order) => {
+    return visibleOrders.map((order) => {
       const ss = STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
       const ps = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
       const sel = selected.includes(order.id);
@@ -686,7 +786,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
     if (loading) {
       return (
         <div className="ao__cards-list">
-          {Array.from({ length: PER_PAGE }).map((_, i) => (
+          {Array.from({ length: INITIAL_VISIBLE }).map((_, i) => (
             <div key={i} className="ao__card ao__card--skeleton">
               <div className="ao__card-header">
                 <div className="ao__skeleton" style={{ width: 90, height: 16 }} />
@@ -734,7 +834,14 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
       );
     }
 
-    if (paginated.length === 0) {
+    if (visibleOrders.length === 0) {
+      if (searchingOrders) {
+        return (
+          <div className="ao__empty-state ao__empty-state--sm">
+            <span className="ao__loading-text"><SpinnerIcon /> Searching all orders…</span>
+          </div>
+        );
+      }
       return (
         <div className="ao__empty-state ao__empty-state--sm">
           <p className="ao__empty-title">No orders match your filters</p>
@@ -752,16 +859,16 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
               className="ao__checkbox"
               checked={allChecked}
               onChange={toggleAll}
-              disabled={loading || paginated.length === 0}
+              disabled={loading || visibleOrders.length === 0}
             />
-            <span>Select Page ({paginated.length})</span>
+            <span>Select Visible ({visibleOrders.length})</span>
           </label>
           {selected.length > 0 && (
             <span className="ao__mobile-selected-badge">{selected.length} selected</span>
           )}
         </div>
         <div className="ao__cards-list">
-          {paginated.map((order) => {
+          {visibleOrders.map((order) => {
             const ss = STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
             const ps = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
             const sel = selected.includes(order.id);
@@ -868,7 +975,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
         <div className="ao__page-title-block">
           <h1 className="ao__title">All Orders</h1>
           <p className="ao__subtitle">
-            {loading ? "Loading…" : `${filtered.length} Orders`}
+            {loading ? "Loading…" : `${hasActiveFilters ? filtered.length : (totalOrdersCount || filtered.length)} Orders`}
           </p>
         </div>
 
@@ -888,11 +995,13 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             <button
               type="button"
               className="ao__sync-btn ao__export-btn"
-              onClick={() => setShowExportModal(true)}
-              disabled={loading}
-              title="Download order data (CSV export)"
+              onClick={() => (selected.length > 0 ? handleDownloadSelected() : setShowExportModal(true))}
+              disabled={loading || bulkLoading}
+              title={selected.length > 0 ? `Download ${selected.length} selected order(s)` : "Download order data (CSV export)"}
             >
-              <span>Download Data</span>
+              <span>
+                {selected.length > 0 ? `Download Data (${selected.length})` : "Download Data"}
+              </span>
             </button>
           )}
         </div>
@@ -910,7 +1019,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
               <span className="ao__kpi-label">Total Orders</span>
             </div>
             <div className={`ao__kpi-value${loading ? ' ao__kpi-value--loading' : ''}`}>
-              {loading ? '—' : orders.length.toLocaleString()}
+              {loading ? '—' : (totalOrdersCount || orders.length).toLocaleString()}
             </div>
             <div className="ao__kpi-sub">
               Revenue: <strong>{loading ? '—' : fmtRevenue(revenue)}</strong>
@@ -924,7 +1033,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           <div
             className="ao__kpi-card ao__kpi-card--action"
             style={{ cursor: "pointer" }}
-            onClick={() => { setStatus("To Pack / Needs Action"); setPage(1); }}
+            onClick={() => { setStatus("To Pack / Needs Action"); setVisibleCount(INITIAL_VISIBLE); }}
             title="Click to view all unfulfilled orders needing action"
           >
             <div className="ao__kpi-top">
@@ -941,7 +1050,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             </div>
             <div className="ao__kpi-bar">
               <div className="ao__kpi-bar-fill" style={{
-                width: orders.length ? `${(actionNeeded / orders.length) * 100}%` : '0%',
+                width: statsSource.length ? `${(actionNeeded / statsSource.length) * 100}%` : '0%',
                 background: '#f59e0b'
               }} />
             </div>
@@ -1013,7 +1122,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                 }}
                 onClick={() => {
                   setStatus(isActive ? "All Status" : label);
-                  setPage(1);
+                  setVisibleCount(INITIAL_VISIBLE);
                 }}
                 title={`Filter by ${label}`}
               >
@@ -1037,14 +1146,14 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           <button
             type="button"
             className={`ao__read-tab${readFilter === "all" ? " ao__read-tab--active" : ""}`}
-            onClick={() => { setReadFilter("all"); setPage(1); }}
+            onClick={() => { setReadFilter("all"); setVisibleCount(INITIAL_VISIBLE); }}
           >
             All
           </button>
           <button
             type="button"
             className={`ao__read-tab${readFilter === "unread" ? " ao__read-tab--active" : ""}`}
-            onClick={() => { setReadFilter("unread"); setPage(1); }}
+            onClick={() => { setReadFilter("unread"); setVisibleCount(INITIAL_VISIBLE); }}
           >
             <span className="ao__unread-tab-dot" />
             Unread ({newOrdersCount})
@@ -1052,16 +1161,16 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
           <button
             type="button"
             className={`ao__read-tab${readFilter === "to_pack" ? " ao__read-tab--active" : ""}`}
-            onClick={() => { setReadFilter("to_pack"); setPage(1); }}
+            onClick={() => { setReadFilter("to_pack"); setVisibleCount(INITIAL_VISIBLE); }}
           >
             <span className="ao__topack-tab-dot" />
             To Pack ({toPackCount})
           </button>
         </div>
 
-        <FilterDropdown value={category} options={categoryOptions} onChange={(v) => { setCategory(v); setPage(1); }} />
-        <FilterDropdown value={status} options={STATUSES} onChange={(v) => { setStatus(v); setPage(1); }} />
-        <FilterDropdown value={paymentFilter} options={PAYMENT_OPTIONS} onChange={(v) => { setPaymentFilter(v); setPage(1); }} />
+        <FilterDropdown value={category} options={categoryOptions} onChange={(v) => { setCategory(v); setVisibleCount(INITIAL_VISIBLE); }} />
+        <FilterDropdown value={status} options={STATUSES} onChange={(v) => { setStatus(v); setVisibleCount(INITIAL_VISIBLE); }} />
+        <FilterDropdown value={paymentFilter} options={PAYMENT_OPTIONS} onChange={(v) => { setPaymentFilter(v); setVisibleCount(INITIAL_VISIBLE); }} />
 
         <button
           className={`ao__filter-btn${filterPanelOpen || hasActiveDateFilter ? ' ao__filter-btn--active' : ''}`}
@@ -1089,7 +1198,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             className="ao__search-input"
             placeholder="Search orders (ID, Customer, Item)"
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); setVisibleCount(INITIAL_VISIBLE); }}
           />
         </div>
       </div>
@@ -1254,6 +1363,17 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             <EnvelopeClosedIcon />
             <span>Mark as unread</span>
           </button>
+          {isAdmin && (
+            <button
+              type="button"
+              className="ao__bulk-btn"
+              onClick={handleDownloadSelected}
+              disabled={bulkLoading}
+            >
+              <DownloadIcon />
+              <span>Download Data</span>
+            </button>
+          )}
           <button
             type="button"
             className="ao__bulk-btn ao__bulk-btn--clear"
@@ -1275,7 +1395,7 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
                   className="ao__checkbox"
                   checked={allChecked}
                   onChange={toggleAll}
-                  disabled={loading || paginated.length === 0}
+                  disabled={loading || visibleOrders.length === 0}
                 />
               </th>
               <th>Order ID</th>
@@ -1296,6 +1416,9 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
         {renderMobileCards()}
       </div>
 
+      {/* ── Scroll Sentinel for Infinite Loading ── */}
+      <div ref={loadMoreRef} style={{ height: "1px", width: "100%" }} aria-hidden="true" />
+
       {/* ── Footer ── */}
       <div className="ao__footer">
         <span className="ao__showing">
@@ -1303,39 +1426,18 @@ const AllOrders = ({ orders = [], products = [], loading, error = null, onViewDe
             ? <span className="ao__loading-text"><SpinnerIcon /> Loading orders…</span>
             : filtered.length === 0
               ? "No orders to show"
-              : `Showing ${(safePage - 1) * PER_PAGE + 1}–${Math.min(safePage * PER_PAGE, filtered.length)} of ${filtered.length} orders`
+              : `Showing 1–${visibleOrders.length} of ${isFilteredView ? filtered.length : (totalOrdersCount || statsSource.length || filtered.length)} orders`
           }
         </span>
-        {!loading && filtered.length > 0 && (
-          <div className="ao__pagination">
-            <button
-              className="ao__pg-arrow"
-              disabled={safePage === 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeftIcon />
-            </button>
-            {pageNums().map((n, i) =>
-              n === "…" ? (
-                <span key={`e${i}`} className="ao__pg-ellipsis">…</span>
-              ) : (
-                <button
-                  key={n}
-                  className={`ao__pg-num${safePage === n ? " ao__pg-num--active" : ""}`}
-                  onClick={() => setPage(n)}
-                >
-                  {n}
-                </button>
-              )
-            )}
-            <button
-              className="ao__pg-arrow"
-              disabled={safePage === totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              <ChevronRightIcon />
-            </button>
-          </div>
+        {!loading && (searchingOrders || (!isFilteredView && loadingMoreOrders) || hasMore) && (
+          <span className="ao__loading-text">
+            <SpinnerIcon />{" "}
+            {searchingOrders
+              ? "Searching orders…"
+              : loadingMoreOrders
+                ? "Loading 20 more orders…"
+                : "Scroll to load more…"}
+          </span>
         )}
       </div>
 

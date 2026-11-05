@@ -1,11 +1,20 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Toast from "../../components/Toast";
 import ExportOrdersModal from "../components/ExportOrdersModal";
 import { useAdmin } from "../../hooks/useAdmin";
 import { useStore } from "../../hooks/useStore";
 import "./Allcustomers.css";
 
-const ROWS_PER_PAGE = 10;
+const INITIAL_VISIBLE = 10;
+const LOAD_MORE_COUNT = 20;
+
+const SpinnerIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ verticalAlign: "middle", marginRight: "6px" }}>
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83">
+      <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" />
+    </path>
+  </svg>
+);
 
 const ChevronDown = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -267,15 +276,29 @@ const AddCustomerModal = ({ onClose, onAdd }) => {
 };
 
 /* ── Main Component ────────────────────────────────────────────── */
-const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
+const AllCustomers = ({
+  customers = [],
+  allCustomers: allCustomersProp = [],
+  searchedCustomers = [],
+  searchingCustomers = false,
+  onSearchDb,
+  loading,
+  loadingMoreCustomers = false,
+  hasMoreCustomers = false,
+  totalCustomersCount = 0,
+  onLoadMore,
+  onViewDetail,
+}) => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [customerFilter, setCustomerFilter] = useState("All Customers");
   const [searchQuery, setSearchQuery] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const [showFilters, setShowFilters] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [localCustomers, setLocalCustomers] = useState([]);
+  const loadMoreRef = useRef(null);
+  const isLoadingBatchRef = useRef(false);
 
   const { isAdmin: adminHookStatus } = useAdmin();
   const storeIsAdmin = useStore((state) => state.isAdmin);
@@ -287,77 +310,161 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
     setTimeout(() => setToast({ message, type }), 10);
   };
 
+  // Full customer list for accurate KPI stats
+  const statsSource = useMemo(() => {
+    const base = allCustomersProp.length > 0 ? allCustomersProp : customers;
+    return [...base, ...localCustomers];
+  }, [allCustomersProp, customers, localCustomers]);
+
+  const hasActiveFilters =
+    searchQuery.trim() !== "" || customerFilter !== "All Customers";
+
+  useEffect(() => {
+    if (!onSearchDb) return;
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      onSearchDb("");
+      return;
+    }
+    const timer = setTimeout(() => {
+      onSearchDb(trimmed);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery, onSearchDb]);
+
   // Merge local added customers (if any) with database customers
-  const allCustomers = [...customers, ...localCustomers];
+  const baseCustomers = useMemo(() => {
+    if (!hasActiveFilters) {
+      return [...customers, ...localCustomers];
+    }
+    const map = new Map();
+    statsSource.forEach((c) => map.set(c.id, c));
+    customers.forEach((c) => map.set(c.id, c));
+    searchedCustomers.forEach((c) => {
+      if (!map.has(c.id)) map.set(c.id, c);
+    });
+    return Array.from(map.values());
+  }, [customers, localCustomers, statsSource, searchedCustomers, hasActiveFilters]);
 
   const handleAddCustomer = (newCustomer) => {
     setLocalCustomers((prev) => [...prev, newCustomer]);
   };
 
   /* Filtering */
-  const filtered = allCustomers.filter((c) => {
-    const matchSearch = !searchQuery ||
-      (c.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.email || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.phone || "").includes(searchQuery);
+  const filtered = useMemo(() => {
+    return baseCustomers.filter((c) => {
+      const q = searchQuery.trim().toLowerCase();
+      const matchSearch =
+        !q ||
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.email || "").toLowerCase().includes(q) ||
+        String(c.phone || "").toLowerCase().includes(q);
 
-    if (!matchSearch) return false;
+      if (!matchSearch) return false;
 
-    if (customerFilter === "New this month") {
-      const now = new Date();
-      if (c.created_at) {
-        const d = new Date(c.created_at);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      if (customerFilter === "New this month") {
+        const now = new Date();
+        if (c.created_at) {
+          const d = new Date(c.created_at);
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        return c.joined?.includes("2026");
       }
-      return c.joined?.includes("2026");
+
+      if (customerFilter === "Active Accounts") {
+        return (c.status || "Confirmed") === "Confirmed";
+      }
+
+      if (customerFilter === "Disabled Accounts") {
+        return c.status === "Disabled";
+      }
+
+      return true; // "All Customers"
+    });
+  }, [baseCustomers, searchQuery, customerFilter]);
+
+  const visibleCustomers = filtered.slice(0, visibleCount);
+  const hasMore = hasActiveFilters
+    ? visibleCount < filtered.length
+    : visibleCount < filtered.length || hasMoreCustomers;
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE);
+  }, [searchQuery, customerFilter]);
+
+  useEffect(() => {
+    if (!loadingMoreCustomers) {
+      isLoadingBatchRef.current = false;
     }
+  }, [visibleCount, filtered.length, loadingMoreCustomers]);
 
-    if (customerFilter === "Active Accounts") {
-      return (c.status || "Confirmed") === "Confirmed";
-    }
+  useEffect(() => {
+    if (loading || loadingMoreCustomers || searchingCustomers || !hasMore) return;
 
-    if (customerFilter === "Disabled Accounts") {
-      return c.status === "Disabled";
-    }
+    const checkAndLoadMore = () => {
+      if (isLoadingBatchRef.current) return;
+      const el = loadMoreRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 350) {
+        isLoadingBatchRef.current = true;
+        setVisibleCount((prev) => prev + LOAD_MORE_COUNT);
+        if (!hasActiveFilters && visibleCount + LOAD_MORE_COUNT >= customers.length && hasMoreCustomers && onLoadMore) {
+          onLoadMore(LOAD_MORE_COUNT);
+        }
+      }
+    };
 
-    return true; // "All Customers"
-  });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          checkAndLoadMore();
+        }
+      },
+      { root: null, rootMargin: "350px 0px", threshold: 0 }
+    );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
-  const safePage = Math.min(currentPage, totalPages);
-  const paginated = filtered.slice((safePage - 1) * ROWS_PER_PAGE, safePage * ROWS_PER_PAGE);
+    const currentTarget = loadMoreRef.current;
+    if (currentTarget) observer.observe(currentTarget);
+
+    const onScroll = () => checkAndLoadMore();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("scroll", onScroll, { passive: true, capture: true });
+
+    const timer = setTimeout(checkAndLoadMore, 120);
+
+    return () => {
+      clearTimeout(timer);
+      if (currentTarget) observer.unobserve(currentTarget);
+      observer.disconnect();
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("scroll", onScroll, { capture: true });
+    };
+  }, [loading, loadingMoreCustomers, searchingCustomers, hasMore, hasActiveFilters, visibleCount, customers.length, hasMoreCustomers, onLoadMore]);
 
   /* Select logic */
-  const allChecked = paginated.length > 0 && paginated.every((c) => selectedIds.includes(c.id));
+  const allChecked = visibleCustomers.length > 0 && visibleCustomers.every((c) => selectedIds.includes(c.id));
   const toggleAll = () => setSelectedIds(allChecked
-    ? selectedIds.filter((id) => !paginated.find((c) => c.id === id))
-    : [...new Set([...selectedIds, ...paginated.map((c) => c.id)])]);
+    ? selectedIds.filter((id) => !visibleCustomers.find((c) => c.id === id))
+    : [...new Set([...selectedIds, ...visibleCustomers.map((c) => c.id)])]);
   const toggleOne = (id) => setSelectedIds((prev) =>
     prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]);
 
-  /* Stats */
-  const totalCustomers = allCustomers.length;
+  /* Stats (always computed from full customer list) */
+  const totalCustomers = totalCustomersCount || statsSource.length;
   const now = new Date();
-  const newThisMonth = allCustomers.filter((c) => {
+  const newThisMonth = statsSource.filter((c) => {
     if (c.created_at) {
       const d = new Date(c.created_at);
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }
     return c.joined?.includes("2026");
   }).length;
-  const activeAccounts = allCustomers.filter((c) => (c.status || "Confirmed") === "Confirmed").length;
-  const disabledAccounts = allCustomers.filter((c) => c.status === "Disabled").length;
-  const avgOrderValue = totalCustomers > 0
-    ? Math.round(allCustomers.reduce((s, c) => s + (c.totalSpent || 0), 0) / totalCustomers)
+  const activeAccounts = statsSource.filter((c) => (c.status || "Confirmed") === "Confirmed").length;
+  const disabledAccounts = statsSource.filter((c) => c.status === "Disabled").length;
+  const avgOrderValue = statsSource.length > 0
+    ? Math.round(statsSource.reduce((s, c) => s + (c.totalSpent || 0), 0) / statsSource.length)
     : 0;
-
-  /* Pagination */
-  const getPageNumbers = () => {
-    if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    if (safePage <= 3) return [1, 2, 3, "...", totalPages];
-    if (safePage >= totalPages - 2) return [1, "...", totalPages - 2, totalPages - 1, totalPages];
-    return [1, "...", safePage, "...", totalPages];
-  };
 
   const getJoinedDate = (c) => {
     if (c.joined) return c.joined;
@@ -373,10 +480,10 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
 
   const renderTableBody = () => {
     if (loading) {
-      return Array.from({ length: ROWS_PER_PAGE }).map((_, i) => <SkeletonCustomerRow key={i} />);
+      return Array.from({ length: INITIAL_VISIBLE }).map((_, i) => <SkeletonCustomerRow key={i} />);
     }
 
-    if (allCustomers.length === 0) {
+    if (statsSource.length === 0 && customers.length === 0) {
       return (
         <tr>
           <td colSpan={8} className="ac__empty">
@@ -389,7 +496,18 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
       );
     }
 
-    if (paginated.length === 0) {
+    if (visibleCustomers.length === 0) {
+      if (searchingCustomers) {
+        return (
+          <tr>
+            <td colSpan={8} className="ac__empty">
+              <div className="ac__empty-state">
+                <p className="ac__empty-title"><SpinnerIcon /> Searching customers…</p>
+              </div>
+            </td>
+          </tr>
+        );
+      }
       return (
         <tr>
           <td colSpan={8} className="ac__empty">
@@ -402,7 +520,7 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
       );
     }
 
-    return paginated.map((customer) => (
+    return visibleCustomers.map((customer) => (
       <tr key={customer.id} className="ac__tr">
         <td className="ac__td ac__td--check">
           <input type="checkbox" className="ac__checkbox"
@@ -434,13 +552,15 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
     ));
   };
 
+  const displayTotal = hasActiveFilters ? filtered.length : (totalCustomersCount || statsSource.length || filtered.length);
+
   return (
     <div className="ac">
       {/* ── Header ── */}
       <div className="ac__header">
         <div className="ac__header-left">
           <h1 className="ac__title">All Customers</h1>
-          <span className="ac__subtitle">{loading ? "Loading…" : `${filtered.length} customers`}</span>
+          <span className="ac__subtitle">{loading ? "Loading…" : `${displayTotal} customers`}</span>
         </div>
         <div className="ac__header-actions">
           {isAdmin && (
@@ -495,7 +615,7 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
             className="ac__search-input"
             placeholder="Search name, email, contact..."
             value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(INITIAL_VISIBLE); }}
           />
         </div>
 
@@ -514,7 +634,7 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
         <div className={`ac__filters${showFilters ? " ac__filters--open" : ""}`}>
           <div className="ac__select-wrapper">
             <select className="ac__select" value={customerFilter}
-              onChange={(e) => { setCustomerFilter(e.target.value); setCurrentPage(1); }}>
+              onChange={(e) => { setCustomerFilter(e.target.value); setVisibleCount(INITIAL_VISIBLE); }}>
               <option>All Customers</option>
               <option>New this month</option>
               <option>Active Accounts</option>
@@ -526,7 +646,7 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
       </div>
 
       {/* ── Table (tablet +) ── */}
-      {(loading || allCustomers.length > 0) && (
+      {(loading || statsSource.length > 0 || customers.length > 0) && (
         <div className="ac__table-wrapper">
           <table className="ac__table">
             <thead>
@@ -551,12 +671,12 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
       )}
 
       {/* ── Mobile Cards ── */}
-      {allCustomers.length > 0 && (
+      {(loading || statsSource.length > 0 || customers.length > 0) && (
         <div className="ac__cards-wrapper">
           {loading ? (
-            Array.from({ length: ROWS_PER_PAGE }).map((_, i) => <CustomerCard key={i} loading={true} />)
+            Array.from({ length: INITIAL_VISIBLE }).map((_, i) => <CustomerCard key={i} loading={true} />)
           ) : (
-            paginated.map((customer) => (
+            visibleCustomers.map((customer) => (
               <CustomerCard
                 key={customer.id}
                 customer={customer}
@@ -569,28 +689,26 @@ const AllCustomers = ({ customers = [], loading, onViewDetail }) => {
         </div>
       )}
 
+      {/* ── Scroll Sentinel for Infinite Loading ── */}
+      <div ref={loadMoreRef} style={{ height: "1px", width: "100%" }} aria-hidden="true" />
+
       {/* ── Footer ── */}
-      {!loading && allCustomers.length > 0 && (
+      {!loading && (statsSource.length > 0 || customers.length > 0) && (
         <div className="ac__footer">
           <span className="ac__showing">
-            Showing {(safePage - 1) * ROWS_PER_PAGE + 1}–{Math.min(safePage * ROWS_PER_PAGE, filtered.length)} of {filtered.length}
+            Showing {filtered.length === 0 ? 0 : 1}–{visibleCustomers.length} of {displayTotal}
             <span className="ac__showing-full"> Customers</span>
           </span>
-          <div className="ac__pagination">
-            <button className="ac__page-btn ac__page-btn--arrow" disabled={safePage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}>‹</button>
-            {getPageNumbers().map((p, i) =>
-              p === "..." ? (
-                <span key={`e-${i}`} className="ac__page-ellipsis">…</span>
-              ) : (
-                <button key={p}
-                  className={`ac__page-btn${safePage === p ? " ac__page-btn--active" : ""}`}
-                  onClick={() => setCurrentPage(p)}>{p}</button>
-              )
-            )}
-            <button className="ac__page-btn ac__page-btn--arrow" disabled={safePage === totalPages}
-              onClick={() => setCurrentPage((p) => p + 1)}>›</button>
-          </div>
+          {(searchingCustomers || (!hasActiveFilters && loadingMoreCustomers) || hasMore) && (
+            <span className="ac__showing" style={{ display: "inline-flex", alignItems: "center" }}>
+              <SpinnerIcon />
+              {searchingCustomers
+                ? "Searching customers…"
+                : loadingMoreCustomers
+                  ? "Loading 20 more customers…"
+                  : "Scroll to load more…"}
+            </span>
+          )}
         </div>
       )}
 

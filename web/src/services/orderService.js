@@ -141,6 +141,148 @@ export const orderService = {
   },
 
   /**
+   * Retrieves a batch of orders for scroll-based loading in the admin view.
+   * @param {{ offset?: number, limit?: number }} options
+   * @returns {Promise<{ orders: any[], totalCount: number }>}
+   */
+  async getOrdersBatch({ offset = 0, limit = 10 } = {}) {
+    const from = Math.max(0, offset);
+    const to = from + limit - 1;
+    const { data, error, count } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact' })
+      .order('order_date', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    const ordersBatch = data || [];
+
+    if (ordersBatch.length > 0) {
+      try {
+        const orderIds = ordersBatch.map((o) => o.id);
+        const { data: allItems } = await supabase
+          .from('order_items')
+          .select('*')
+          .in('order_id', orderIds);
+
+        if (allItems && allItems.length > 0) {
+          const itemsByOrderId = {};
+          allItems.forEach((item) => {
+            if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];
+            itemsByOrderId[item.order_id].push(item);
+          });
+          ordersBatch.forEach((o) => {
+            if (itemsByOrderId[o.id]) {
+              o.order_items = itemsByOrderId[o.id];
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Error joining order_items in getOrdersBatch:', e);
+      }
+    }
+
+    return {
+      orders: ordersBatch,
+      totalCount: typeof count === 'number' ? count : ordersBatch.length,
+    };
+  },
+
+  /**
+   * Retrieves lightweight order rows (without order_items joins) for accurate
+   * global KPI stats, customer order counts, and full-dataset filtering/search.
+   * @returns {Promise<any[]>}
+   */
+  async getOrdersSummary() {
+    const PAGE_SIZE = 1000;
+    let allOrders = [];
+    let pageIndex = 0;
+    while (true) {
+      const from = pageIndex * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('order_date', { ascending: false })
+        .range(from, to);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allOrders.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      pageIndex++;
+    }
+    return allOrders;
+  },
+
+  /**
+   * Searches orders across the entire database by Order ID, item name, waybill,
+   * Razorpay IDs, or matching customer user_ids.
+   * @param {{ query: string, matchingUserIds?: string[] }} options
+   * @returns {Promise<any[]>}
+   */
+  async searchOrders({ query = '', matchingUserIds = [] } = {}) {
+    const raw = (query || '').trim().replace(/^#/, '');
+    const safeTerm = raw.replace(/[,()]/g, ' ').trim();
+    if (!safeTerm && (!matchingUserIds || matchingUserIds.length === 0)) {
+      return [];
+    }
+
+    const orClauses = [];
+    if (safeTerm) {
+      orClauses.push(`id.ilike.%${safeTerm}%`);
+      orClauses.push(`item_name.ilike.%${safeTerm}%`);
+      orClauses.push(`waybill.ilike.%${safeTerm}%`);
+      orClauses.push(`razorpay_order_id.ilike.%${safeTerm}%`);
+      orClauses.push(`razorpay_payment_id.ilike.%${safeTerm}%`);
+    }
+    if (Array.isArray(matchingUserIds) && matchingUserIds.length > 0) {
+      const validIds = matchingUserIds.slice(0, 100).filter(Boolean);
+      if (validIds.length > 0) {
+        orClauses.push(`user_id.in.(${validIds.join(',')})`);
+      }
+    }
+
+    if (orClauses.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .or(orClauses.join(','))
+      .order('order_date', { ascending: false })
+      .limit(200);
+
+    if (error) throw error;
+    const matchedOrders = data || [];
+
+    if (matchedOrders.length > 0) {
+      try {
+        const orderIds = matchedOrders.map((o) => o.id);
+        const { data: allItems } = await supabase
+          .from('order_items')
+          .select('*')
+          .in('order_id', orderIds);
+
+        if (allItems && allItems.length > 0) {
+          const itemsByOrderId = {};
+          allItems.forEach((item) => {
+            if (!itemsByOrderId[item.order_id]) itemsByOrderId[item.order_id] = [];
+            itemsByOrderId[item.order_id].push(item);
+          });
+          matchedOrders.forEach((o) => {
+            if (itemsByOrderId[o.id]) {
+              o.order_items = itemsByOrderId[o.id];
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Error joining order_items in searchOrders:', e);
+      }
+    }
+
+    return matchedOrders;
+  },
+
+  /**
    * Retrieves all orders in the system (admin view).
    * @returns {Promise<any[]>}
    */
@@ -242,6 +384,47 @@ export const orderService = {
       .single();
     if (error) throw error;
     return data;
+  },
+
+  /**
+   * Retrieves a paginated batch of customer profiles for incremental scroll loading.
+   * @param {{ offset?: number, limit?: number }} params
+   * @returns {Promise<{ customers: any[], totalCount: number }>}
+   */
+  async getCustomersBatch({ offset = 0, limit = 10 } = {}) {
+    const from = Math.max(0, Number(offset) || 0);
+    const to = from + Math.max(1, Number(limit) || 10) - 1;
+    const { data, error, count } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact' })
+      .order('updated_at', { ascending: false })
+      .range(from, to);
+    if (error) throw error;
+    return {
+      customers: data || [],
+      totalCount: count ?? (data ? data.length : 0),
+    };
+  },
+
+  /**
+   * Searches customer profiles across the entire database by name, email, or phone.
+   * @param {string} query
+   * @returns {Promise<any[]>}
+   */
+  async searchCustomers(query) {
+    const trimmed = (query || '').trim();
+    if (!trimmed) return [];
+    const safeTerm = trimmed.replace(/[%_(),]/g, '').trim();
+    if (!safeTerm) return [];
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .or(`name.ilike.%${safeTerm}%,email.ilike.%${safeTerm}%,phone.ilike.%${safeTerm}%`)
+      .order('updated_at', { ascending: false })
+      .limit(200);
+    if (error) throw error;
+    return data || [];
   },
 
   /**
@@ -543,9 +726,10 @@ export const orderService = {
    * @param {string} [params.to] - YYYY-MM-DD
    * @param {boolean} [params.includeRefunded=false]
    * @param {string} [params.status='all_paid']
+   * @param {string[]} [params.orderIds] - Optional explicit list of order IDs to export
    * @returns {Promise<Array<{ orderId: string, customerName: string, email: string, price: number, dateTime: string }>>}
    */
-  async exportOrdersData({ from, to, includeRefunded = false, status = 'all_paid' } = {}) {
+  async exportOrdersData({ from, to, includeRefunded = false, status = 'all_paid', orderIds = null } = {}) {
     // 1. Admin authentication & authorization check
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
@@ -562,45 +746,63 @@ export const orderService = {
       throw new Error("Forbidden: Admin access is required to export data.");
     }
 
-    // 2. Fetch all matching orders across pages (1000 rows max per request)
+    // 2. Fetch matching orders (either specific selected orderIds or date/status filter)
     // ONLY select columns that exist in public.orders: id, user_id, order_date, total_price, status, address_id
     const PAGE_SIZE = 1000;
     let allOrders = [];
-    let pageIndex = 0;
-    let hasMore = true;
 
-    while (hasMore) {
-      let query = supabase
-        .from('orders')
-        .select('id, user_id, order_date, total_price, status, address_id')
-        .order('order_date', { ascending: false })
-        .range(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE - 1);
-
-      if (from) {
-        query = query.gte('order_date', `${from}T00:00:00+05:30`);
-      }
-      if (to) {
-        query = query.lte('order_date', `${to}T23:59:59.999+05:30`);
-      }
-
-      if (status && status !== 'all_paid' && status !== 'All Status' && status !== 'All Orders') {
-        query = query.eq('status', status);
-      } else if (!includeRefunded) {
-        query = query.not('status', 'in', '("Cancelled","cancelled","Refunded","refunded","Refund Completed","Partially Refunded","Returned","returned","return","Return")');
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        allOrders.push(...data);
-        if (data.length < PAGE_SIZE) {
-          hasMore = false;
-        } else {
-          pageIndex++;
+    if (Array.isArray(orderIds) && orderIds.length > 0) {
+      const ID_CHUNK = 200;
+      for (let i = 0; i < orderIds.length; i += ID_CHUNK) {
+        const chunk = orderIds.slice(i, i + ID_CHUNK);
+        const { data, error } = await supabase
+          .from('orders')
+          .select('id, user_id, order_date, total_price, status, address_id, waybill, manual_awb')
+          .in('id', chunk)
+          .order('order_date', { ascending: false });
+        if (error) throw error;
+        if (data && data.length > 0) {
+          allOrders.push(...data);
         }
-      } else {
-        hasMore = false;
+      }
+      allOrders.sort((a, b) => new Date(b.order_date || 0).getTime() - new Date(a.order_date || 0).getTime());
+    } else {
+      let pageIndex = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('orders')
+          .select('id, user_id, order_date, total_price, status, address_id, waybill, manual_awb')
+          .order('order_date', { ascending: false })
+          .range(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE - 1);
+
+        if (from) {
+          query = query.gte('order_date', `${from}T00:00:00+05:30`);
+        }
+        if (to) {
+          query = query.lte('order_date', `${to}T23:59:59.999+05:30`);
+        }
+
+        if (status && status !== 'all_paid' && status !== 'All Status' && status !== 'All Orders') {
+          query = query.eq('status', status);
+        } else if (!includeRefunded) {
+          query = query.not('status', 'in', '("Cancelled","cancelled","Refunded","refunded","Refund Completed","Partially Refunded","Returned","returned","return","Return")');
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          allOrders.push(...data);
+          if (data.length < PAGE_SIZE) {
+            hasMore = false;
+          } else {
+            pageIndex++;
+          }
+        } else {
+          hasMore = false;
+        }
       }
     }
 
@@ -669,6 +871,9 @@ export const orderService = {
       // Price: orders.total_price as plain number so Excel can sum it
       const price = isNaN(Number(order.total_price)) ? 0 : Number(order.total_price);
 
+      // Tracking Number: waybill or manual_awb
+      const trackingNumber = (order.waybill || order.manual_awb || '').trim();
+
       // Date & Time: formatted in IST (DD-MM-YYYY HH:mm)
       const dateTime = formatISTDateTime(order.order_date);
 
@@ -683,6 +888,7 @@ export const orderService = {
         pincode: pincode,
         fullAddress: fullAddress,
         price: price,
+        trackingNumber: trackingNumber,
         dateTime: dateTime,
       };
     });

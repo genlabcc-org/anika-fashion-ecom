@@ -112,6 +112,56 @@ export const productService = {
   },
 
   /**
+   * Retrieves a paginated batch of products for scroll-based admin loading.
+   * @param {{ offset?: number, limit?: number }} options
+   * @returns {Promise<{ products: any[], totalCount: number }>}
+   */
+  async getProductsBatch({ offset = 0, limit = 10 } = {}) {
+    const from = Math.max(0, Number(offset) || 0);
+    const size = Math.max(1, Number(limit) || 10);
+    const to = from + size - 1;
+
+    const { data, error, count } = await supabase
+      .from('products')
+      .select(
+        'product_id, name, price, compare_price, stock, sku, image_url, images, is_active, has_variants, category_id, category_ids, subcategory_id, categories!category_id(name), subcategories(name), product_variants(variant_id, price, compare_price, stock, sku, color, size, images)',
+        { count: 'exact' }
+      )
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error) throw error;
+    return {
+      products: data || [],
+      totalCount: typeof count === 'number' ? count : (data || []).length,
+    };
+  },
+
+  /**
+   * Searches products across the entire database by name or SKU for the admin panel.
+   * @param {string} query
+   * @returns {Promise<any[]>}
+   */
+  async searchAdminProducts(query) {
+    const q = String(query || '').trim();
+    if (!q) return [];
+    const safe = q.replace(/[%_,()]/g, '').trim();
+    if (!safe) return [];
+
+    const { data, error } = await supabase
+      .from('products')
+      .select(
+        'product_id, name, price, compare_price, stock, sku, image_url, images, is_active, has_variants, category_id, category_ids, subcategory_id, categories!category_id(name), subcategories(name), product_variants(variant_id, price, compare_price, stock, sku, color, size, images)'
+      )
+      .or(`name.ilike.%${safe}%,sku.ilike.%${safe}%`)
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  /**
    * Deletes a product by product_id.
    * @param {string|number} productId 
    * @returns {Promise<void>}

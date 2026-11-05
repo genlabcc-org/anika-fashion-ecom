@@ -269,7 +269,7 @@ export default function ExportOrdersModal({ isOpen, onClose, onToast }) {
                 <span className="eom__format-badge">UTF-8 with BOM</span>
               </div>
               <p className="eom__format-desc">
-                Columns: <strong>Order ID, Customer Name, Email ID, Phone Number, Address, City, State, Pincode, Full Address, Price, Date &amp; Time (IST)</strong>.
+                Columns: <strong>Order ID, Customer Name, Email ID, Phone Number, Address, City, State, Pincode, Full Address, Price, Tracking Number, Date &amp; Time (IST)</strong>.
                 Formula-injection safe and formatted for Excel / Google Sheets calculation.
               </p>
             </div>

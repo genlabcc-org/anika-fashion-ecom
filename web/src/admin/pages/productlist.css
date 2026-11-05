@@ -1,8 +1,7 @@
 /* ── Product List Container ── */
 .product-list {
   padding: 24px 32px;
-  background: #f5f5f5;
-  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 /* ── Header ── */

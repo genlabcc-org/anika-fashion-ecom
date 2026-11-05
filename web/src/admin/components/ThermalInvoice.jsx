@@ -52,7 +52,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
   const total = Number(o.total_price || o.total || 0);
   const invoiceDate = formatInvoiceDate(o.order_date || o.created_at);
 
-  const rawId = o.invoice_no || o.invoice_number || o.order_number || (o.id ? String(o.id).slice(-8).toUpperCase() : "00000001");
+  const rawId = o.invoice_no || o.invoice_number || o.order_number || (o.id ? String(o.id).slice(-6).toUpperCase() : "000001");
   const invoiceNo = String(rawId).startsWith("#") ? String(rawId) : `#${rawId}`;
 
   // Extract AWB / Waybill number

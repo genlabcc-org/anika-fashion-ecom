@@ -147,6 +147,7 @@ export function generateOrdersCsv(rows = []) {
     'Pincode',
     'Full Address',
     'Price',
+    'Tracking Number',
     'Date & Time',
   ];
   const headerLine = headers.map((h) => escapeCsvField(h)).join(',');
@@ -162,6 +163,7 @@ export function generateOrdersCsv(rows = []) {
     escapeCsvField(r.pincode),
     escapeCsvField(r.fullAddress),
     escapeCsvField(r.price, true),
+    escapeCsvField(r.trackingNumber),
     escapeCsvField(r.dateTime),
   ].join(','));
 

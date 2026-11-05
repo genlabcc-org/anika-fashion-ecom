@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { productService } from "../../services/productService";
 import { useAdminData } from "../../hooks/useAdminData";
@@ -608,6 +608,16 @@ const Dashboard = () => {
   const [notificationOpen, setNotificationOpen] = useState(false);
 
   const [products, setProducts] = useState([]);
+  const [pagedProducts, setPagedProducts] = useState([]);
+  const [searchedProducts, setSearchedProducts] = useState([]);
+  const [searchingProducts, setSearchingProducts] = useState(false);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [loadingMoreProducts, setLoadingMoreProducts] = useState(false);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const [totalProductsCount, setTotalProductsCount] = useState(0);
+  const productOffsetRef = useRef(0);
+  const loadingMoreProductsRef = useRef(false);
+  const hasMoreProductsRef = useRef(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
   const [categories, setCategories] = useState([]);
@@ -626,8 +636,24 @@ const Dashboard = () => {
 
   const {
     orders,
+    allOrders,
+    searchedOrders,
+    searchingOrders,
+    searchOrdersInDb,
     customers,
+    pagedCustomers,
+    searchedCustomers,
+    searchingCustomers,
+    searchCustomersInDb,
+    loadingMoreCustomers,
+    hasMoreCustomers,
+    totalCustomersCount,
+    loadMoreCustomers,
     loading: adminDataLoading,
+    loadingMoreOrders,
+    hasMoreOrders,
+    totalOrdersCount,
+    loadMoreOrders,
     error: adminDataError,
     updateOrderStatus: updateOrderStatusRaw
   } = useAdminData();
@@ -656,8 +682,13 @@ const Dashboard = () => {
 
   const selectedOrderObj = useMemo(() => {
     if (!selectedOrder) return null;
-    return orders.find((o) => o.id === selectedOrder.id) || selectedOrder;
-  }, [selectedOrder, orders]);
+    return (
+      orders.find((o) => o.id === selectedOrder.id) ||
+      (allOrders || []).find((o) => o.id === selectedOrder.id) ||
+      searchedOrders.find((o) => o.id === selectedOrder.id) ||
+      selectedOrder
+    );
+  }, [selectedOrder, orders, allOrders, searchedOrders]);
 
   // Realtime subscription for admin new orders badge
   useEffect(() => {
@@ -747,6 +778,8 @@ const Dashboard = () => {
           }));
           setCategories(catData);
           setProducts((prev) => prev.map((p) => normalizeProductRow(p, catData)));
+          setPagedProducts((prev) => prev.map((p) => normalizeProductRow(p, catData)));
+          setSearchedProducts((prev) => prev.map((p) => normalizeProductRow(p, catData)));
         }
       } catch (error) {
         console.error("Error fetching categories:", error);
@@ -806,21 +839,95 @@ const Dashboard = () => {
     };
   };
 
-  // ── Fetch products on mount ─────────────────────
+  // ── Fetch products on mount (10 initially via batch + background summary) ──
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const data = await productService.getProducts();
-        if (data) {
-          setProducts(data.map((p) => normalizeProductRow(p, categories)));
-        }
+        setProductsLoading(true);
+        const { products: firstBatch, totalCount } = await productService.getProductsBatch({
+          offset: 0,
+          limit: 10,
+        });
+        const normalizedFirst = (firstBatch || []).map((p) => normalizeProductRow(p, categories));
+        productOffsetRef.current = normalizedFirst.length;
+        const more = normalizedFirst.length < totalCount;
+        hasMoreProductsRef.current = more;
+
+        setPagedProducts(normalizedFirst);
+        setTotalProductsCount(totalCount);
+        setHasMoreProducts(more);
+        setProducts(normalizedFirst);
+        setProductsLoading(false);
+
+        // Load full product list in background for dashboard widgets & full-DB filters
+        productService
+          .getProducts()
+          .then((allData) => {
+            if (allData) {
+              setProducts(allData.map((p) => normalizeProductRow(p, categories)));
+              setTotalProductsCount((prevCount) => Math.max(prevCount, allData.length));
+            }
+          })
+          .catch((err) => console.warn("Error fetching full products summary:", err));
       } catch (error) {
         console.error("Error fetching products:", error);
+        setProductsLoading(false);
       }
     };
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadMoreProducts = useCallback(async (batchSize = 20) => {
+    if (loadingMoreProductsRef.current || !hasMoreProductsRef.current) return;
+    loadingMoreProductsRef.current = true;
+    setLoadingMoreProducts(true);
+    try {
+      const currentOffset = productOffsetRef.current;
+      const { products: nextBatch, totalCount } = await productService.getProductsBatch({
+        offset: currentOffset,
+        limit: batchSize,
+      });
+      const normalizedBatch = (nextBatch || []).map((p) => normalizeProductRow(p, categories));
+      const newOffset = currentOffset + normalizedBatch.length;
+      productOffsetRef.current = newOffset;
+      const more = normalizedBatch.length === batchSize && newOffset < totalCount;
+      hasMoreProductsRef.current = more;
+
+      setPagedProducts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const uniqueNew = normalizedBatch.filter((p) => !existingIds.has(p.id));
+        return [...prev, ...uniqueNew];
+      });
+      setTotalProductsCount(totalCount);
+      setHasMoreProducts(more);
+    } catch (error) {
+      console.error("Error loading more products:", error);
+    } finally {
+      loadingMoreProductsRef.current = false;
+      setLoadingMoreProducts(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
+
+  const searchProductsInDb = useCallback(async (query) => {
+    const trimmed = (query || "").trim();
+    if (!trimmed) {
+      setSearchedProducts([]);
+      setSearchingProducts(false);
+      return;
+    }
+    setSearchingProducts(true);
+    try {
+      const results = await productService.searchAdminProducts(trimmed);
+      setSearchedProducts((results || []).map((p) => normalizeProductRow(p, categories)));
+    } catch (error) {
+      console.error("Error searching products in DB:", error);
+    } finally {
+      setSearchingProducts(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories]);
 
   useEffect(() => {
     const handleResize = () => { if (window.innerWidth > 768) setSidebarOpen(false); };
@@ -911,6 +1018,9 @@ const Dashboard = () => {
       await productService.deleteProduct(id);
       useStore.getState().invalidateProductsCache?.();
       setProducts((p) => p.filter((x) => x.id !== id));
+      setPagedProducts((p) => p.filter((x) => x.id !== id));
+      setSearchedProducts((p) => p.filter((x) => x.id !== id));
+      setTotalProductsCount((c) => Math.max(0, c - 1));
     } catch (error) {
       console.error("Error deleting product:", error);
       alert("Failed to delete product: " + error.message);
@@ -925,6 +1035,15 @@ const Dashboard = () => {
         ? p.map((x) => x.id === editingProduct.id ? normalized : x)
         : [normalized, ...p]
     );
+    setPagedProducts((p) =>
+      editingProduct
+        ? p.map((x) => x.id === editingProduct.id ? normalized : x)
+        : [normalized, ...p]
+    );
+    if (!editingProduct) {
+      productOffsetRef.current += 1;
+      setTotalProductsCount((c) => c + 1);
+    }
     setEditingProduct(null);
     navigate("/admin/products");
   };
@@ -937,6 +1056,15 @@ const Dashboard = () => {
         ? p.map((x) => x.id === editingProduct.id ? normalized : x)
         : [normalized, ...p]
     );
+    setPagedProducts((p) =>
+      editingProduct
+        ? p.map((x) => x.id === editingProduct.id ? normalized : x)
+        : [normalized, ...p]
+    );
+    if (!editingProduct) {
+      productOffsetRef.current += 1;
+      setTotalProductsCount((c) => c + 1);
+    }
     setEditingProduct(null);
     navigate("/admin/products");
   };
@@ -991,6 +1119,9 @@ const Dashboard = () => {
       product_variants: variants || [],
     });
     setProducts((p) => [normalized, ...p]);
+    setPagedProducts((p) => [normalized, ...p]);
+    productOffsetRef.current += 1;
+    setTotalProductsCount((c) => c + 1);
     navigate("/admin/products");
   };
 
@@ -1005,6 +1136,7 @@ const Dashboard = () => {
       product_variants: variants || [],
     });
     setProducts((p) => p.map((x) => (x.id === normalized.id ? normalized : x)));
+    setPagedProducts((p) => p.map((x) => (x.id === normalized.id ? normalized : x)));
     navigate("/admin/products");
   };
 
@@ -1353,14 +1485,23 @@ const Dashboard = () => {
         {/* Main Content - React Router Routes */}
         <main className="db__main">
           <Routes>
-            <Route path="/" element={<DashboardHome orders={orders} customers={customers} products={products} loading={adminDataLoading} />} />
-            <Route path="/analytics" element={<Analytics orders={orders} customers={customers} products={products} loading={adminDataLoading} />} />
+            <Route path="/" element={<DashboardHome orders={allOrders?.length ? allOrders : orders} customers={customers} products={products} loading={adminDataLoading} />} />
+            <Route path="/analytics" element={<Analytics orders={allOrders?.length ? allOrders : orders} customers={customers} products={products} loading={adminDataLoading} />} />
 
             {/* Products */}
             <Route path="/products" element={
               <ProductList
-                products={products}
+                products={pagedProducts}
+                allProducts={products}
+                searchedProducts={searchedProducts}
+                searchingProducts={searchingProducts}
+                onSearchDb={searchProductsInDb}
                 categories={categories}
+                loading={productsLoading}
+                loadingMoreProducts={loadingMoreProducts}
+                hasMoreProducts={hasMoreProducts}
+                totalProductsCount={totalProductsCount}
+                onLoadMore={loadMoreProducts}
                 onAddProduct={goToAddProduct}
                 onEditProduct={handleEditProduct}
                 onDeleteProduct={handleDeleteProduct}
@@ -1435,14 +1576,43 @@ const Dashboard = () => {
             <Route path="/categories/add" element={<AddCategory initialData={editingCategory} onBack={() => { setEditingCategory(null); navigate("/admin/categories"); }} onPublish={handlePublishCategory} onSaveDraft={handleSaveDraftCategory} />} />
 
             {/* Orders */}
-            <Route path="/orders" element={<AllOrders orders={orders} products={products} loading={adminDataLoading} onViewDetail={handleViewOrderDetail} />} />
+            <Route path="/orders" element={
+              <AllOrders
+                orders={orders}
+                allOrders={allOrders}
+                searchedOrders={searchedOrders}
+                searchingOrders={searchingOrders}
+                onSearchDb={searchOrdersInDb}
+                products={products}
+                loading={adminDataLoading}
+                loadingMoreOrders={loadingMoreOrders}
+                hasMoreOrders={hasMoreOrders}
+                totalOrdersCount={totalOrdersCount}
+                onLoadMore={loadMoreOrders}
+                onViewDetail={handleViewOrderDetail}
+              />
+            } />
             <Route path="/orders/detail" element={<OrderDetails order={selectedOrderObj} onStatusChange={updateOrderStatus} onBack={() => navigate("/admin/orders")} />} />
 
             {/* Invoices */}
-            <Route path="/invoices" element={<Invoices orders={orders} loading={adminDataLoading} />} />
+            <Route path="/invoices" element={<Invoices orders={allOrders?.length ? allOrders : orders} loading={adminDataLoading} />} />
 
             {/* Customers */}
-            <Route path="/customers" element={<AllCustomers customers={customers} loading={adminDataLoading} onViewDetail={handleViewCustomerDetail} />} />
+            <Route path="/customers" element={
+              <AllCustomers
+                customers={pagedCustomers}
+                allCustomers={customers}
+                searchedCustomers={searchedCustomers}
+                searchingCustomers={searchingCustomers}
+                onSearchDb={searchCustomersInDb}
+                loading={adminDataLoading}
+                loadingMoreCustomers={loadingMoreCustomers}
+                hasMoreCustomers={hasMoreCustomers}
+                totalCustomersCount={totalCustomersCount}
+                onLoadMore={loadMoreCustomers}
+                onViewDetail={handleViewCustomerDetail}
+              />
+            } />
             <Route path="/customers/detail" element={<CustomerDetails customer={selectedCustomerObj} onBack={() => navigate("/admin/customers")} />} />
 
             {/* Banners */}
