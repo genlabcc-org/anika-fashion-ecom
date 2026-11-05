@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { orderService } from "../../services/orderService";
+import { orderService, getTrack123Url } from "../../services/orderService";
 import { whatsappService } from "../../services/whatsappService";
 import { TbBarcode, TbScan } from "react-icons/tb";
 import { FiCamera } from "react-icons/fi";
@@ -51,13 +51,51 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
   }, [order?.manual_courier_name, order?.courier_name, order?.manual_awb, order?.waybill]);
 
   const normStatus = (order?.status || "").toLowerCase();
+  const normDeliveryStatus = (order?.delivery_status || "").toLowerCase();
   const isPaid = normStatus === "paid";
-  const isShipped = normStatus === "shipped";
-  const isDelivered = normStatus === "delivered";
-  const isCancelled = ["cancelled", "canceled"].includes(normStatus);
+  const isDelivered = normStatus === "delivered" || normDeliveryStatus === "delivered";
+  const isCancelled = ["cancelled", "canceled"].includes(normStatus) || ["cancelled", "canceled"].includes(normDeliveryStatus);
   const isRefunded = ["refunded", "refund completed"].includes(normStatus);
   const isPacked = Boolean(order?.is_packed);
   const hasSavedTracking = Boolean(order?.manual_awb || order?.waybill);
+
+  // An order is in-transit/shipped if it has saved tracking or shipped status, provided it is not delivered or cancelled
+  const isShipped =
+    !isDelivered &&
+    !isCancelled &&
+    !isRefunded &&
+    (normStatus === "shipped" ||
+      normDeliveryStatus === "shipped" ||
+      ["in transit", "in-transit", "out for delivery"].includes(normDeliveryStatus) ||
+      Boolean(order?.shipped_at) ||
+      hasSavedTracking);
+
+  // Auto-reconcile status in DB if order has tracking saved but status in DB is still "Paid" or unfulfilled
+  useEffect(() => {
+    if (!order?.id) return;
+    const s = (order.status || "").toLowerCase().trim();
+    const d = (order.delivery_status || "").toLowerCase().trim();
+    const activeAwb = order.manual_awb || order.waybill || "";
+    const hasTracking = Boolean(activeAwb || order.shipped_at || d === "shipped");
+    const isTerminal = ["shipped", "delivered", "cancelled", "canceled", "refund completed", "refunded"].includes(s);
+
+    if (hasTracking && !isTerminal) {
+      const now = order.shipped_at || new Date().toISOString();
+      const updates = {
+        status: "Shipped",
+        delivery_status: order.delivery_status || "Shipped",
+        shipped_at: now,
+      };
+
+      orderService.updateOrderStatus(order.id, "Shipped").then(() => {
+        if (typeof onOrderUpdated === "function") {
+          onOrderUpdated(updates);
+        }
+      }).catch((err) => {
+        console.warn("[ManualShippingCard] Auto-sync to Shipped failed:", err);
+      });
+    }
+  }, [order?.id, order?.status, order?.delivery_status, order?.manual_awb, order?.waybill, order?.shipped_at, onOrderUpdated]);
 
   // Barcode / Scanner input handler: strip spaces immediately
   const handleAwbChange = (e) => {
@@ -171,7 +209,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
 
     const trackingId = validation.value;
     const courier = (manualCourierName || "").trim() || "Franch Express";
-    const trackingUrl = `https://t.17track.net/en#nums=${encodeURIComponent(trackingId)}`;
+    const trackingUrl = getTrack123Url(trackingId, courier);
 
     const confirmed = window.confirm(`Save tracking ID ${trackingId}?`);
     if (!confirmed) return;
@@ -252,7 +290,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
 
     const trackingId = validation.value;
     const courier = (manualCourierName || "").trim() || "Franch Express";
-    const trackingUrl = `https://t.17track.net/en#nums=${encodeURIComponent(trackingId)}`;
+    const trackingUrl = getTrack123Url(trackingId, courier);
 
     const confirmed = window.confirm(`Save tracking ID ${trackingId}?`);
     if (!confirmed) return;
@@ -260,6 +298,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
     setSavingAction("edit");
     try {
       // NOTE: Editing must NOT change shipped_at!
+      const shouldMarkShipped = !isDelivered && !isCancelled && !isRefunded;
       const updates = {
         manual_awb: trackingId,
         manual_courier_name: courier,
@@ -267,12 +306,14 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
         tracking_url: trackingUrl,
         waybill: trackingId,
         courier_name: courier,
+        ...(shouldMarkShipped ? { status: "Shipped", delivery_status: "Shipped" } : {}),
       };
 
       await orderService.updateManualTracking(order.id, {
         manualAwb: trackingId,
         manualCourierName: courier,
         manualTrackingUrl: trackingUrl,
+        ...(shouldMarkShipped ? { status: "Shipped", deliveryStatus: "Shipped" } : {}),
       });
 
       // Dispatch WhatsApp notification on tracking update
@@ -318,10 +359,11 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
     try {
       const courier = order.manual_courier_name || order.courier_name || "Franch Express";
       const awb = order.manual_awb || order.waybill || "";
+      const existingUrl = order.manual_tracking_url || order.tracking_url || "";
       const trackingUrl =
-        order.manual_tracking_url ||
-        order.tracking_url ||
-        (awb ? `https://t.17track.net/en#nums=${encodeURIComponent(awb.trim())}` : "");
+        (existingUrl && !existingUrl.includes("17track.net"))
+          ? existingUrl
+          : (awb ? getTrack123Url(awb, courier) : "");
 
       const waRes = await whatsappService.sendManualOrderShippingNotification({
         order,
@@ -432,7 +474,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
               color: isDelivered ? "#16a34a" : isShipped ? "#a16207" : isPaid ? "#0369a1" : "#475569",
             }}
           >
-            {order?.status || "Pending"}
+            {isDelivered ? "Delivered" : isShipped ? "Shipped" : (order?.status || "Pending")}
           </span>
         </span>
 
@@ -585,12 +627,18 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                       <span className="msc__tracking-pill" id="msc-readonly-awb">{order.manual_awb || order.waybill}</span>
                       {(order?.manual_tracking_url || order?.tracking_url || order?.manual_awb || order?.waybill) && (
                         <a
-                          href={order.manual_tracking_url || order.tracking_url || `https://t.17track.net/en#nums=${encodeURIComponent(order.manual_awb || order.waybill)}`}
+                          href={
+                            (order.manual_tracking_url && !order.manual_tracking_url.includes("17track.net"))
+                              ? order.manual_tracking_url
+                              : (order.tracking_url && !order.tracking_url.includes("17track.net"))
+                                ? order.tracking_url
+                                : getTrack123Url(order.manual_awb || order.waybill, order.manual_courier_name || order.courier_name)
+                          }
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{ fontSize: "12px", color: "#8b0030", textDecoration: "underline" }}
                         >
-                          Track on 17TRACK ↗
+                          Track on Track123 ↗
                         </a>
                       )}
                       <button
@@ -752,14 +800,14 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                     )}
                     {manualAwb.trim().length >= 4 && (
                       <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: "600", color: "#0f172a" }}>Generated 17TRACK link:</span>
+                        <span style={{ fontWeight: "600", color: "#0f172a" }}>Generated Track123 link:</span>
                         <a
-                          href={`https://t.17track.net/en#nums=${encodeURIComponent(manualAwb.trim())}`}
+                          href={getTrack123Url(manualAwb.trim(), manualCourierName)}
                           target="_blank"
                           rel="noopener noreferrer"
                           style={{ color: "#8b0030", textDecoration: "underline", wordBreak: "break-all" }}
                         >
-                          https://t.17track.net/en#nums={manualAwb.trim()} ↗
+                          {getTrack123Url(manualAwb.trim(), manualCourierName)} ↗
                         </a>
                       </div>
                     )}

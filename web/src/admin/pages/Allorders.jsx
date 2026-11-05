@@ -12,6 +12,7 @@ import "./Allorders.css";
 const STATUS_STYLE = {
   "Order Placed": { bg: "#E0F2FE", color: "#0369A1" },
   Pending: { bg: "#FFF4E5", color: "#D97706" },
+  Paid: { bg: "#FEF9C3", color: "#A16207" },
   Shipped: { bg: "#EFF6FF", color: "#2563EB" },
   Delivered: { bg: "#F0FDF4", color: "#16A34A" },
   Confirmed: { bg: "#F5F3FF", color: "#7C3AED" },
@@ -24,6 +25,19 @@ const STATUS_STYLE = {
   "Refund Failed": { bg: "#FEF2F2", color: "#DC2626" },
   "Out for Delivery": { bg: "#FFEDD5", color: "#C2410C" },
   "Out of Delivery": { bg: "#FFEDD5", color: "#C2410C" },
+};
+
+export const getEffectiveOrderStatus = (o) => {
+  if (!o) return "Pending";
+  const s = (o.status || "").trim();
+  const norm = s.toLowerCase();
+  if (["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes(norm)) {
+    return s;
+  }
+  if (norm !== "shipped" && (Boolean(o.manual_awb || o.waybill || o.shipped_at) || (o.delivery_status || "").toLowerCase() === "shipped")) {
+    return "Shipped";
+  }
+  return s || "Pending";
 };
 
 const PAYMENT_STYLE = {
@@ -247,8 +261,8 @@ const AllOrders = ({
 
   const toPackCount = useMemo(() => {
     return statsSource.filter((o) => {
-      const s = (o.status || "").toLowerCase().trim();
-      return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes(s);
+      const s = getEffectiveOrderStatus(o).toLowerCase().trim();
+      return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed", "refunded", "shipped"].includes(s);
     }).length;
   }, [statsSource]);
 
@@ -312,15 +326,16 @@ const AllOrders = ({
     })();
 
     const matchStatus = (() => {
+      const eff = getEffectiveOrderStatus(o);
       if (status === "All Status") return true;
       if (status === "To Pack / Needs Action") {
-        const s = (o.status || "").toLowerCase().trim();
+        const s = eff.toLowerCase().trim();
         return !["shipped", "delivered", "cancelled", "canceled", "returned", "return", "refund completed", "refunded"].includes(s);
       }
       if (status.toLowerCase() === "returned") {
-        return o.status?.toLowerCase() === "return" || o.status?.toLowerCase() === "returned";
+        return eff.toLowerCase() === "return" || eff.toLowerCase() === "returned";
       }
-      return o.status?.toLowerCase() === status.toLowerCase();
+      return eff.toLowerCase() === status.toLowerCase();
     })();
 
     const matchPayment = (() => {
@@ -343,8 +358,8 @@ const AllOrders = ({
     const matchRead = (() => {
       if (readFilter === "unread") return o.admin_read === false;
       if (readFilter === "to_pack") {
-        const s = (o.status || "").toLowerCase().trim();
-        return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes(s);
+        const s = getEffectiveOrderStatus(o).toLowerCase().trim();
+        return !o.is_packed && !["cancelled", "canceled", "delivered", "refund completed", "refunded", "shipped"].includes(s);
       }
       return true;
     })();
@@ -448,9 +463,12 @@ const AllOrders = ({
 
   const count = (s) => {
     if (s.toLowerCase() === "return" || s.toLowerCase() === "returned") {
-      return statsSource.filter((o) => o.status?.toLowerCase() === "return" || o.status?.toLowerCase() === "returned").length;
+      return statsSource.filter((o) => {
+        const eff = getEffectiveOrderStatus(o).toLowerCase();
+        return eff === "return" || eff === "returned";
+      }).length;
     }
-    return statsSource.filter((o) => o.status?.toLowerCase() === s.toLowerCase()).length;
+    return statsSource.filter((o) => getEffectiveOrderStatus(o).toLowerCase() === s.toLowerCase()).length;
   };
 
   /* ── Selection ── */
@@ -505,7 +523,7 @@ const AllOrders = ({
 
   // Unfulfilled orders that need packing/shipping (Pending, Confirmed, Order Placed, Paid, or Pickup Cancelled)
   const actionNeeded = statsSource.filter(o => {
-    const s = (o.status || '').toLowerCase().trim();
+    const s = getEffectiveOrderStatus(o).toLowerCase().trim();
     if (['shipped', 'delivered', 'cancelled', 'canceled', 'returned', 'return', 'refund completed', 'refunded'].includes(s)) {
       return false;
     }
@@ -683,7 +701,8 @@ const AllOrders = ({
     }
 
     return visibleOrders.map((order) => {
-      const ss = STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
+      const displayStatus = getEffectiveOrderStatus(order);
+      const ss = STATUS_STYLE[displayStatus] || STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
       const ps = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
       const sel = selected.includes(order.id);
       const isUnread = order.admin_read === false;
@@ -741,9 +760,9 @@ const AllOrders = ({
           <td>
             <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
               <span className="ao__badge" style={{ background: ss.bg, color: ss.color }}>
-                {order.status}
+                {displayStatus}
               </span>
-              {!["cancelled", "canceled", "delivered"].includes((order.status || "").toLowerCase()) && (
+              {!["cancelled", "canceled", "delivered", "shipped"].includes(displayStatus.toLowerCase()) && (
                 <span className={`ao__pack-chip ${order.is_packed ? "ao__pack-chip--packed" : "ao__pack-chip--topack"}`}>
                   {order.is_packed ? "Packed" : "To pack"}
                 </span>
@@ -869,7 +888,8 @@ const AllOrders = ({
         </div>
         <div className="ao__cards-list">
           {visibleOrders.map((order) => {
-            const ss = STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
+            const displayStatus = getEffectiveOrderStatus(order);
+            const ss = STATUS_STYLE[displayStatus] || STATUS_STYLE[order.status] || { bg: "#FFF4E5", color: "#D97706" };
             const ps = PAYMENT_STYLE[order.payment] || { bg: "#FFF4E5", color: "#D97706" };
             const sel = selected.includes(order.id);
             const isUnread = order.admin_read === false;
@@ -902,9 +922,9 @@ const AllOrders = ({
                       {isUnread ? <EnvelopeOpenIcon /> : <EnvelopeClosedIcon />}
                     </button>
                     <span className="ao__badge" style={{ background: ss.bg, color: ss.color }}>
-                      {order.status}
+                      {displayStatus}
                     </span>
-                    {!["cancelled", "canceled", "delivered"].includes((order.status || "").toLowerCase()) && (
+                    {!["cancelled", "canceled", "delivered", "shipped"].includes(displayStatus.toLowerCase()) && (
                       <span className={`ao__pack-chip ${order.is_packed ? "ao__pack-chip--packed" : "ao__pack-chip--topack"}`}>
                         {order.is_packed ? "Packed" : "To pack"}
                       </span>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "../lib/supabase";
-import { orderService } from "../services/orderService";
+import { orderService, getTrack123Url } from "../services/orderService";
 import { useStore } from "../hooks/useStore";
 import Navbar from "../components/SiteHeader";
 import Footer from "../components/SiteFooter";
@@ -494,9 +494,9 @@ export default function OrderTracking() {
                     const activeAwb = order.manual_awb || order.waybill || "";
                     let activeTrackingUrl = order.manual_tracking_url || order.tracking_url;
 
-                    // Auto-generate 17TRACK link if tracking URL is missing or generic
-                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com')) {
-                      activeTrackingUrl = `https://t.17track.net/en#nums=${encodeURIComponent(activeAwb)}`;
+                    // Auto-generate Track123 link if tracking URL is missing, generic, or legacy 17track
+                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com' || activeTrackingUrl.includes('17track.net'))) {
+                      activeTrackingUrl = getTrack123Url(activeAwb, activeCourier);
                     }
 
                     const statusStr = (order.delivery_status || "").trim();

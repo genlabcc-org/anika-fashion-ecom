@@ -367,7 +367,11 @@ const Invoices = ({ orders = [], loading = false }) => {
     return (
       <div className="inv__cards-list">
         {filtered.map((order) => {
-          const statusCfg = STATUS_COLORS[order.status] || STATUS_COLORS.Pending;
+          const isEffShipped =
+            Boolean(order.manual_awb || order.waybill || order.shipped_at) &&
+            !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes((order.status || "").toLowerCase());
+          const displayStatus = isEffShipped ? "Shipped" : (order.status || "Pending");
+          const statusCfg = STATUS_COLORS[displayStatus] || STATUS_COLORS[order.status] || STATUS_COLORS.Pending;
           const orderShortId = order.id
             ? "#" + String(order.id).slice(-6).toUpperCase()
             : "#UNKNOWN";
@@ -399,7 +403,7 @@ const Invoices = ({ orders = [], loading = false }) => {
                     className="inv__status-badge"
                     style={{ background: statusCfg.bg, color: statusCfg.color }}
                   >
-                    {order.status}
+                    {displayStatus}
                   </span>
                   {isPrinted ? (
                     <button
@@ -656,7 +660,11 @@ const Invoices = ({ orders = [], loading = false }) => {
           </div>
         ) : (
           filtered.map((order) => {
-            const statusCfg = STATUS_COLORS[order.status] || STATUS_COLORS.Pending;
+            const isEffShipped =
+              Boolean(order.manual_awb || order.waybill || order.shipped_at) &&
+              !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes((order.status || "").toLowerCase());
+            const displayStatus = isEffShipped ? "Shipped" : (order.status || "Pending");
+            const statusCfg = STATUS_COLORS[displayStatus] || STATUS_COLORS[order.status] || STATUS_COLORS.Pending;
             const orderShortId = order.id
               ? "#" + String(order.id).slice(-6).toUpperCase()
               : "#UNKNOWN";
@@ -725,7 +733,7 @@ const Invoices = ({ orders = [], loading = false }) => {
                     className="inv__status-badge"
                     style={{ background: statusCfg.bg, color: statusCfg.color }}
                   >
-                    {order.status}
+                    {displayStatus}
                   </span>
                   {isPrinted ? (
                     <button

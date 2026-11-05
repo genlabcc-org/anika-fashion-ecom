@@ -332,7 +332,12 @@ const CustomerDetails = ({ customer, onBack }) => {
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <span style={{ fontSize: '13.5px', fontWeight: '600', color: 'var(--cd-text-primary)' }}>₹{Number(order.total_price).toLocaleString("en-IN")}</span>
                       <span style={{ fontSize: '11px', color: '#888', background: '#f5f5f5', padding: '2px 6px', borderRadius: '4px' }}>{order.payment}</span>
-                      <StatusBadge status={order.status} />
+                      {(() => {
+                        const isEffShipped =
+                          Boolean(order.manual_awb || order.waybill || order.shipped_at) &&
+                          !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes((order.status || "").toLowerCase());
+                        return <StatusBadge status={isEffShipped ? "Shipped" : order.status} />;
+                      })()}
                     </div>
                   </div>
 

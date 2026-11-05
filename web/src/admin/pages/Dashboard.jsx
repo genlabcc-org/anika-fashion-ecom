@@ -400,13 +400,17 @@ const RecentOrders = ({ orders, loading, searchIcon }) => {
       <div className="dc__card-title">Recent orders</div>
       <div className="dc__order-list">
         {recent.map((order) => {
-          const statusClass = `dc__order-status-${order.status?.toLowerCase() || 'pending'}`;
+          const isEffShipped =
+            Boolean(order.manual_awb || order.waybill || order.shipped_at) &&
+            !["cancelled", "canceled", "delivered", "refund completed", "refunded"].includes((order.status || "").toLowerCase());
+          const displayStatus = isEffShipped ? "Shipped" : (order.status || "Pending");
+          const statusClass = `dc__order-status-${displayStatus.toLowerCase()}`;
           return (
             <div key={order.id} className="dc__order-item">
               <div className="dc__order-main">
                 <span className="dc__order-id">#{order.id?.slice(-6) || order.id}</span>
-                <span className={`dc__order-status ${statusClass}`} style={getStatusStyle(order.status)}>
-                  {order.status}
+                <span className={`dc__order-status ${statusClass}`} style={getStatusStyle(displayStatus)}>
+                  {displayStatus}
                 </span>
                 <span className="dc__order-price">₹{Number(order.total_price || 0).toLocaleString('en-IN')}</span>
               </div>

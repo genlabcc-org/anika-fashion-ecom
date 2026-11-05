@@ -122,6 +122,40 @@ const OrderDetails = ({ order, onBack }) => {
     });
   }, [order?.id]);
 
+  // Auto-sync order status in DB if order has tracking/AWB but status is still "Paid" or unfulfilled
+  useEffect(() => {
+    const orderId = o?.id;
+    if (!orderId) return;
+
+    const s = (o.status || "").toLowerCase().trim();
+    const d = (o.delivery_status || "").toLowerCase().trim();
+    const activeAwb = o.manual_awb || o.waybill || "";
+    const hasTracking = Boolean(activeAwb || o.shipped_at || d === "shipped");
+    const isTerminal = ["shipped", "delivered", "cancelled", "canceled", "refund completed", "refunded"].includes(s);
+
+    if (hasTracking && !isTerminal) {
+      console.log(`[OrderDetails] Order ${orderId} has tracking (${activeAwb}) but status is "${o.status}". Syncing to "Shipped"...`);
+      const now = o.shipped_at || new Date().toISOString();
+      const patch = {
+        status: "Shipped",
+        delivery_status: o.delivery_status || "Shipped",
+        shipped_at: now,
+      };
+
+      orderService.updateOrderStatus(orderId, "Shipped").then(() => {
+        setCurrentOrder((prev) => (prev ? { ...prev, ...patch } : prev));
+        if (typeof updateOrderInList === "function") {
+          updateOrderInList(orderId, patch);
+        }
+        if (typeof setSelectedAdminOrder === "function") {
+          setSelectedAdminOrder((prev) => (prev ? { ...prev, ...patch } : prev));
+        }
+      }).catch((err) => {
+        console.warn("[OrderDetails] Failed to auto-sync status to Shipped:", err);
+      });
+    }
+  }, [o?.id, o?.status, o?.delivery_status, o?.manual_awb, o?.waybill, o?.shipped_at, updateOrderInList, setSelectedAdminOrder]);
+
   // Auto-mark order as read ONLY when opened from the list (guarded with sessionStorage).
   // Must NOT re-fire when the details page is refreshed (selectedAdminOrder restored from localStorage).
   useEffect(() => {
@@ -680,7 +714,7 @@ const OrderDetails = ({ order, onBack }) => {
 
     const isShippedDone = [
       "shipped", "delivered", "returned", "rto"
-    ].includes(s) || [
+    ].includes(s) || !!activeAwb || Boolean(o.shipped_at) || [
       "picked up", "shipped", "in transit", "out for delivery", "delivered", "rto", "returned"
     ].some(x => d.includes(x));
 
@@ -758,7 +792,8 @@ const OrderDetails = ({ order, onBack }) => {
 
   const isShippedOrDelivered =
     ["shipped", "delivered"].includes((o?.status || "").toLowerCase()) ||
-    ["shipped", "delivered"].includes((o?.delivery_status || "").toLowerCase());
+    ["shipped", "delivered"].includes((o?.delivery_status || "").toLowerCase()) ||
+    Boolean(o?.manual_awb || o?.waybill || o?.shipped_at);
 
   const isOrderCancelled =
     !isShippedOrDelivered &&
@@ -769,6 +804,8 @@ const OrderDetails = ({ order, onBack }) => {
   const isDelivered =
     (o?.status || "").toLowerCase() === "delivered" ||
     (o?.delivery_status || "").toLowerCase() === "delivered";
+
+  const isShipped = isShippedOrDelivered && !isDelivered;
 
   const isCancelledOrDelivered = isOrderCancelled || isDelivered;
 
@@ -793,7 +830,7 @@ const OrderDetails = ({ order, onBack }) => {
         <div className="od__header-row">
           <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
             <h1 className="od__title">Order Details</h1>
-            <StatusBadge status={isOrderCancelled ? "Cancelled" : o.status} />
+            <StatusBadge status={isOrderCancelled ? "Cancelled" : (isDelivered ? "Delivered" : isShipped ? "Shipped" : o.status)} />
           </div>
           <div className="od__header-actions">
             <div className="od__pack-action-group">

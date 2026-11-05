@@ -2,6 +2,17 @@ import { supabase } from '../lib/supabase';
 import { resolveCustomerName } from '../utils/customerName';
 import { formatISTDateTime } from '../utils/exportUtils';
 
+export const getTrack123Url = (awb, courierName) => {
+  if (!awb) return '';
+  const cleanAwb = String(awb).trim();
+  const courierCode = (courierName || 'franch-express')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'franch-express';
+  return `https://www.track123.com/track?code=${encodeURIComponent(courierCode)}&trackNos=${encodeURIComponent(cleanAwb)}`;
+};
+
 export const orderService = {
   /**
    * Retrieves all orders for a specific user.
@@ -479,7 +490,10 @@ export const orderService = {
   async markManualOrderShipped(orderId, { manualAwb, manualCourierName, manualTrackingUrl, shippedAt = new Date().toISOString() }) {
     if (!orderId) throw new Error('Order ID is required');
     const cleanAwb = (manualAwb || '').trim();
-    const trackingUrl = manualTrackingUrl || (cleanAwb ? `https://t.17track.net/en#nums=${encodeURIComponent(cleanAwb)}` : null);
+    const defaultTrackingUrl = cleanAwb ? getTrack123Url(cleanAwb, manualCourierName) : null;
+    const trackingUrl = (manualTrackingUrl && !manualTrackingUrl.includes('17track.net'))
+      ? manualTrackingUrl
+      : defaultTrackingUrl;
     const updates = {
       manual_awb: cleanAwb,
       manual_courier_name: manualCourierName,
@@ -509,10 +523,13 @@ export const orderService = {
    * @param {object} params - { manualAwb, manualCourierName, manualTrackingUrl }
    * @returns {Promise<any>}
    */
-  async updateManualTracking(orderId, { manualAwb, manualCourierName, manualTrackingUrl }) {
+  async updateManualTracking(orderId, { manualAwb, manualCourierName, manualTrackingUrl, status, deliveryStatus }) {
     if (!orderId) throw new Error('Order ID is required');
     const cleanAwb = (manualAwb || '').trim();
-    const trackingUrl = manualTrackingUrl || (cleanAwb ? `https://t.17track.net/en#nums=${encodeURIComponent(cleanAwb)}` : null);
+    const defaultTrackingUrl = cleanAwb ? getTrack123Url(cleanAwb, manualCourierName) : null;
+    const trackingUrl = (manualTrackingUrl && !manualTrackingUrl.includes('17track.net'))
+      ? manualTrackingUrl
+      : defaultTrackingUrl;
     const updates = {
       manual_awb: cleanAwb,
       manual_courier_name: manualCourierName,
@@ -520,6 +537,8 @@ export const orderService = {
       tracking_url: trackingUrl,
       waybill: cleanAwb,
       courier_name: manualCourierName,
+      ...(status ? { status } : {}),
+      ...(deliveryStatus ? { delivery_status: deliveryStatus } : {}),
     };
     const { data, error } = await supabase
       .from('orders')
