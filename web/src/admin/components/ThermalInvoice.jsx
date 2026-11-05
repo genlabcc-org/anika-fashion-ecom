@@ -1,5 +1,4 @@
-import React, { useEffect, useRef } from "react";
-import JsBarcode from "jsbarcode";
+import React from "react";
 import "./ThermalInvoice.css";
 
 const formatInvoiceDate = (dateVal) => {
@@ -39,7 +38,6 @@ const formatInvoiceDate = (dateVal) => {
 const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, ref) => {
   if (!order) return null;
   const o = order;
-  const barcodeSvgRef = useRef(null);
 
   const orderItems =
     o.order_items && o.order_items.length > 0
@@ -53,24 +51,10 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
   const invoiceDate = formatInvoiceDate(o.order_date || o.created_at);
 
   const rawId = o.invoice_no || o.invoice_number || o.order_number || (o.id ? String(o.id).slice(-6).toUpperCase() : "000001");
-  const invoiceNo = String(rawId).startsWith("#") ? String(rawId) : `#${rawId}`;
+  const cleanId = String(rawId).replace(/^#/, "").replace(/^(ORD|OR)[-_]?/i, "");
+  const invoiceNo = `#${cleanId || rawId}`;
 
-  // Extract AWB / Waybill number
-  const rawAwb =
-    o.waybill ||
-    o.awb ||
-    o.tracking_number ||
-    o.tracking_id ||
-    o.shipping_tracking_number ||
-    o.shipping_waybill ||
-    o.shipment_id ||
-    "";
-  const awbNumber = rawAwb ? String(rawAwb).trim() : "";
-  const hasAwb = Boolean(awbNumber);
-
-  // Barcode string: use AWB if available, otherwise fallback to clean order/invoice reference
-  const barcodeValue = awbNumber || String(rawId).replace(/^#/, "");
-  const carrierName = o.courier_name || o.delivery_provider || o.carrier || "";
+  const carrierName = o.manual_courier_name || o.courier_name || o.delivery_provider || o.carrier || "";
 
   const paymentMode = (() => {
     if (o.payment_mode) return String(o.payment_mode).toUpperCase();
@@ -83,25 +67,6 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
     }
     return "RAZORPAY";
   })();
-
-  // Render Code 128 barcode SVG using AWB value
-  useEffect(() => {
-    if (!barcodeSvgRef.current || !barcodeValue) return;
-    try {
-      JsBarcode(barcodeSvgRef.current, String(barcodeValue), {
-        format: "CODE128",
-        width: 1.6,
-        height: 30,
-        displayValue: false, // We render our own crisp, styled typography
-        margin: 0,
-        background: "transparent",
-        lineColor: "#000000",
-        valid: () => { },
-      });
-    } catch (err) {
-      console.warn("Could not generate barcode for value:", barcodeValue, err);
-    }
-  }, [barcodeValue]);
 
   // Total quantity of items bought
   const totalJewelleryQty = orderItems.reduce((sum, item) => {
@@ -159,23 +124,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
         <div className="ti-store-title">ANIKA FASHION STORE</div>
       </div>
 
-      {/* ── Box 2: AWB Barcode Section (Made from AWB) ── */}
-      <div className="ti-box ti-box--barcode">
-        <div className="ti-barcode-header">
-          <span className="ti-barcode-title">
-            {hasAwb ? "AIR WAYBILL (AWB)" : "ORDER TRACKING REF"}
-          </span>
-          {carrierName && <span className="ti-barcode-carrier">{carrierName}</span>}
-        </div>
-        <div className="ti-barcode-svg-wrap">
-          <svg ref={barcodeSvgRef} className="ti-barcode-svg" />
-        </div>
-        <div className="ti-barcode-code">
-          {hasAwb ? `AWB: ${barcodeValue}` : `REF: ${barcodeValue}`}
-        </div>
-      </div>
-
-      {/* ── Box 3: Invoice Metadata (2 Columns) ── */}
+      {/* ── Box 2: Invoice Metadata (2 Columns) ── */}
       <div className="ti-box ti-box--meta">
         <div className="ti-meta-left">
           <div className="ti-label">INVOICE NO:</div>
@@ -187,10 +136,16 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
         <div className="ti-meta-right">
           <div className="ti-label">PAYMENT MODE:</div>
           <div className="ti-val ti-val--payment">{paymentMode}</div>
+          {carrierName && (
+            <>
+              <div className="ti-label" style={{ marginTop: "3px" }}>CARRIER:</div>
+              <div className="ti-val" style={{ fontSize: "12px", fontWeight: "700" }}>{carrierName}</div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* ── Box 4: Ship To Details ── */}
+      {/* ── Box 3: Ship To Details ── */}
       <div className="ti-box ti-box--shipto">
         <div className="ti-shipto-heading">SHIP TO</div>
         <div className="ti-shipto-divider" />
@@ -204,7 +159,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
         </div>
       </div>
 
-      {/* ── Box 5: Total Items & Total Amount (2 Columns) ── */}
+      {/* ── Box 4: Total Items & Total Amount (2 Columns) ── */}
       <div className="ti-box ti-box--totals">
         <div className="ti-total-left">
           <div className="ti-label">TOTAL ITEMS:</div>
@@ -219,7 +174,7 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
         </div>
       </div>
 
-      {/* ── Box 6: Footer (Dashed Box) ── */}
+      {/* ── Box 5: Footer (Dashed Box) ── */}
       <div className="ti-box ti-box--footer">
         <div className="ti-footer-text">Thank you for shopping with</div>
         <div className="ti-footer-brand">www.AnikaFashion.in</div>

@@ -1072,7 +1072,7 @@ const OrderDetails = ({ order, onBack }) => {
                       gap: '6px'
                     }}
                   >
-                    <span>Order Ref: #{o.id?.slice(-8) || o.id}</span>
+                    <span>Order Ref: #{o.id?.slice(-6) || o.id}</span>
                     <span>·</span>
                     <span>Qty: {item.quantity || 1}</span>
                     {item.size && item.size !== 'N/A' && (
@@ -1647,7 +1647,7 @@ const OrderDetails = ({ order, onBack }) => {
               <div>
                 <h3 className="inv__modal-title">Invoice Preview (4" × 6")</h3>
                 <p className="inv__modal-subtitle">
-                  Order #{String(o.id).slice(-8).toUpperCase()} · 100 × 150 mm
+                  Order #{String(o.id).slice(-6).toUpperCase()} · 100 × 150 mm
                 </p>
               </div>
               <button

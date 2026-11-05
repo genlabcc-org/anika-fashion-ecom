@@ -323,7 +323,7 @@ const CustomerDetails = ({ customer, onBack }) => {
                   {/* Order header information */}
                   <div className="cd__order-header" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                     <div>
-                      <span style={{ fontWeight: '600', color: 'var(--cd-text-primary)', fontSize: '13.5px' }}>Order Ref: #{order.id?.slice(-8) || order.id}</span>
+                      <span style={{ fontWeight: '600', color: 'var(--cd-text-primary)', fontSize: '13.5px' }}>Order Ref: #{order.id?.slice(-6) || order.id}</span>
                       <span style={{ color: '#aaa', margin: '0 8px' }}>·</span>
                       <span style={{ fontSize: '12px', color: 'var(--cd-text-muted)' }}>
                         {order.order_date ? new Date(order.order_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}
