@@ -54,18 +54,22 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
   const cleanId = String(rawId).replace(/^#/, "").replace(/^(ORD|OR)[-_]?/i, "");
   const invoiceNo = `#${cleanId || rawId}`;
 
-  const carrierName = o.manual_courier_name || o.courier_name || o.delivery_provider || o.carrier || "";
+  const isPaid = (() => {
+    if (o.razorpay_payment_id || o.payment_id) return true;
+    const p = String(o.payment || o.payment_method || o.payment_mode || "").toUpperCase();
+    if (p === "PAID" || p === "ONLINE" || p === "RAZORPAY" || p === "PREPAID") return true;
+    const s = String(o.status || "").toUpperCase();
+    if (s === "PAID") return true;
+    const ps = String(o.payment_status || "").toUpperCase();
+    if (ps === "PAID" || ps === "SUCCESS" || ps === "CAPTURED") return true;
+    return false;
+  })();
 
-  const paymentMode = (() => {
-    if (o.payment_mode) return String(o.payment_mode).toUpperCase();
-    if (o.payment_method) return String(o.payment_method).toUpperCase();
-    if (o.razorpay_payment_id || o.payment_id) return "RAZORPAY";
-    if (o.payment) {
-      const p = String(o.payment).toUpperCase();
-      if (p === "PAID" || p === "ONLINE" || p === "RAZORPAY") return "RAZORPAY";
-      return p;
-    }
-    return "RAZORPAY";
+  const paidStatus = (() => {
+    if (isPaid) return "PAID";
+    const p = String(o.payment || o.payment_method || o.payment_mode || "").toUpperCase();
+    if (p === "COD") return "COD";
+    return p || "UNPAID";
   })();
 
   // Total quantity of items bought
@@ -134,14 +138,8 @@ const ThermalInvoice = React.forwardRef(({ order, address, isPreview = false }, 
         </div>
         <div className="ti-divider-v" />
         <div className="ti-meta-right">
-          <div className="ti-label">PAYMENT MODE:</div>
-          <div className="ti-val ti-val--payment">{paymentMode}</div>
-          {carrierName && (
-            <>
-              <div className="ti-label" style={{ marginTop: "3px" }}>CARRIER:</div>
-              <div className="ti-val" style={{ fontSize: "12px", fontWeight: "700" }}>{carrierName}</div>
-            </>
-          )}
+          <div className="ti-label">PAID STATUS:</div>
+          <div className="ti-val ti-val--payment">{paidStatus}</div>
         </div>
       </div>
 
