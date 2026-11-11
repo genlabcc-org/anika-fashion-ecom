@@ -711,3 +711,33 @@ CREATE POLICY "Admins can manage banner images"
       WHERE public.admin_users.id = auth.uid() AND public.admin_users.role = 'admin'
     )
   );
+
+
+-- =============================================================================
+-- 16. STORE SETTINGS TABLE
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.store_settings (
+  key        text PRIMARY KEY,
+  value      jsonb NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access to store_settings"
+  ON public.store_settings FOR SELECT
+  USING (true);
+
+CREATE POLICY "Admins can manage store_settings"
+  ON public.store_settings FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.admin_users
+      WHERE public.admin_users.id = auth.uid() AND public.admin_users.role = 'admin'
+    )
+  );
+
+INSERT INTO public.store_settings (key, value)
+VALUES ('show_out_of_stock', 'true'::jsonb)
+ON CONFLICT (key) DO NOTHING;
+
