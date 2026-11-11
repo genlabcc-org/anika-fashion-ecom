@@ -567,9 +567,9 @@ const Invoices = ({ orders = [], loading = false }) => {
       {/* Status banner */}
       <div className="inv__status-banner">
         <div className="inv__status-banner-left">
-          <span className="inv__status-banner-indicator">
+          {/* <span className="inv__status-banner-indicator">
             {autoPrint ? "🟢" : "⚪"}
-          </span>
+          </span> */}
           <div>
             <strong>
               {autoPrint

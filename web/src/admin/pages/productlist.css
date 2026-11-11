@@ -34,6 +34,149 @@
   font-weight: 500;
 }
 
+.pl-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Out of Stock website toggle widget */
+.pl-stock-toggle-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.pl-stock-toggle-box--active {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.pl-stock-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pl-stock-toggle-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
+}
+
+.pl-stock-toggle-status {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pl-stock-toggle-status--on {
+  color: #16a34a;
+}
+
+.pl-stock-toggle-status--off {
+  color: #6b7280;
+}
+
+/* Toggle switch button */
+.pl-toggle-btn {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: #d1d5db;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+  outline: none;
+}
+
+.pl-toggle-btn:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+}
+
+.pl-toggle-btn--on {
+  background: #22c55e;
+}
+
+.pl-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pl-toggle-btn--on .pl-toggle-thumb {
+  transform: translateX(20px);
+}
+
+/* Toast Notification */
+.pl-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e293b;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  animation: plToastIn 0.2s ease-out;
+}
+
+@keyframes plToastIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pl-toast--success {
+  background: #065f46;
+  border-left: 4px solid #34d399;
+}
+
+.pl-toast--error {
+  background: #991b1b;
+  border-left: 4px solid #f87171;
+}
+
+.pl-toast-icon {
+  font-size: 14px;
+}
+
+.pl-toast-msg {
+  flex: 1;
+  font-weight: 500;
+}
+
+.pl-toast-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.pl-toast-close:hover {
+  color: #fff;
+}
+
 .pl-add-btn {
   display: flex;
   align-items: center;
@@ -540,6 +683,28 @@
   white-space: nowrap;
 }
 
+.pl-stock-out {
+  display: inline-block;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.pl-stock-ok {
+  display: inline-block;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
 /* ── Status ── */
 .pl-status-col {
   width: 100px;
@@ -954,6 +1119,18 @@
   .pl-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
+  }
+
+  .pl-header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .pl-stock-toggle-box {
+    justify-content: space-between;
   }
 
   .pl-add-btn {

@@ -1063,7 +1063,9 @@ export default function ProductPage({ onBack }) {
               </button>
             </div>
 
-            <button className="pp-buy-btn" onClick={handleBuyNow}>Buy Now</button>
+            <button className="pp-buy-btn" disabled={isOutOfStock} onClick={handleBuyNow}>
+              {isOutOfStock ? "Out of Stock" : "Buy Now"}
+            </button>
 
             <div className='pp-opay'>
               <p>Guaranteed Safe Checkout</p>

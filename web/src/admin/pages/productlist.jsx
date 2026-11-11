@@ -4,6 +4,7 @@ import searchEmpty from "../../assets/admin/search.png";
 import editIcon from "../../assets/admin/Edit.png";
 import trashIcon from "../../assets/admin/Trash.png";
 import { SkeletonTable } from "../../components/ui/Skeleton";
+import { useStore } from "../../hooks/useStore";
 
 const getFinalPrice = (product) => {
   return parseFloat(product.price) || 0;
@@ -98,7 +99,13 @@ const MobileProductCard = ({ product, onEdit, onDelete, selectedRows, toggleSele
         {product.subcategory && (
           <span className="pl-subcategory-badge">{product.subcategory}</span>
         )}
-        <span className="pl-stock-low">{product.stock} left</span>
+        {product.stock === 0 ? (
+          <span className="pl-stock-out">Out of stock</span>
+        ) : product.stock <= 5 ? (
+          <span className="pl-stock-low">{product.stock} left</span>
+        ) : (
+          <span className="pl-stock-ok">{product.stock} left</span>
+        )}
         <span className={`pl-status-badge ${product.status === "Visible" ? "pl-status-visible" : product.status === "Draft" ? "pl-status-draft" : ""}`}>{product.status}</span>
         <span className="pl-mobile-card__price">{"Rs." + getFinalPrice(product).toLocaleString()}</span>
       </div>
@@ -196,6 +203,48 @@ const ProductList = ({
   const [sortOpen, setSortOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [expandedRows, setExpandedRows] = useState([]);
+
+  // Store-wide out of stock visibility setting
+  const showOutOfStock = useStore((state) => state.showOutOfStock);
+  const setShowOutOfStock = useStore((state) => state.setShowOutOfStock);
+  const [isSavingSetting, setIsSavingSetting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+
+  const showToast = (message, type = "success") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3500);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  const handleToggleShowOutOfStock = async () => {
+    if (isSavingSetting) return;
+    const nextVal = !showOutOfStock;
+    setIsSavingSetting(true);
+    try {
+      await setShowOutOfStock(nextVal);
+      showToast(
+        nextVal
+          ? "Out of stock products will now be displayed on the website."
+          : "Out of stock products are now hidden from the website.",
+        "success"
+      );
+    } catch (err) {
+      console.error("Failed to update out of stock setting:", err);
+      showToast("Failed to update setting. Please try again.", "error");
+    } finally {
+      setIsSavingSetting(false);
+    }
+  };
 
   const statsSource = allProducts.length > 0 ? allProducts : products;
 
@@ -400,19 +449,57 @@ const ProductList = ({
   return (
     <div className="product-list">
 
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`pl-toast pl-toast--${toast.type}`}>
+          <span className="pl-toast-icon">
+            {toast.type === "success" ? "✅" : toast.type === "error" ? "⚠️" : "🔔"}
+          </span>
+          <span className="pl-toast-msg">{toast.message}</span>
+          <button className="pl-toast-close" onClick={() => setToast(null)} aria-label="Close notification">✕</button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="pl-header">
         <div className="pl-title">
           <h1>All products</h1>
           <span className="pl-count">{realTotalProducts} Items</span>
         </div>
-        <button className="pl-add-btn" onClick={onAddProduct}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add product
-        </button>
+
+        <div className="pl-header-actions">
+          {/* Out of Stock website visibility switch */}
+          <div
+            className={`pl-stock-toggle-box ${showOutOfStock ? "pl-stock-toggle-box--active" : ""}`}
+            title="Choose whether out-of-stock products are displayed on the website"
+          >
+            <div className="pl-stock-toggle-info">
+              <span className="pl-stock-toggle-label">Show Out of Stock on Website</span>
+              <span className={`pl-stock-toggle-status ${showOutOfStock ? "pl-stock-toggle-status--on" : "pl-stock-toggle-status--off"}`}>
+                {showOutOfStock ? "Visible to customers" : "Hidden from customers"}
+              </span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showOutOfStock}
+              disabled={isSavingSetting}
+              onClick={handleToggleShowOutOfStock}
+              className={`pl-toggle-btn ${showOutOfStock ? "pl-toggle-btn--on" : ""}`}
+              aria-label="Toggle showing out of stock products on website"
+            >
+              <span className="pl-toggle-thumb" />
+            </button>
+          </div>
+
+          <button className="pl-add-btn" onClick={onAddProduct}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add product
+          </button>
+        </div>
       </div>
 
       {/* Filters + Search */}
@@ -731,7 +818,13 @@ const ProductList = ({
                         </span>
                       </td>
                       <td className="pl-stock-col">
-                        <span className="pl-stock-low">{product.stock} left</span>
+                        {product.stock === 0 ? (
+                          <span className="pl-stock-out">Out of stock</span>
+                        ) : product.stock <= 5 ? (
+                          <span className="pl-stock-low">{product.stock} left</span>
+                        ) : (
+                          <span className="pl-stock-ok">{product.stock} left</span>
+                        )}
                       </td>
                       <td className="pl-status-col">
                         <span className={

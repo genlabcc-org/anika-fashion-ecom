@@ -4,6 +4,7 @@ import './ProductSection.css';
 import RingHandImg from '../assets/RingHand.webp';
 import { supabase } from '../lib/supabase';
 import { productService } from '../services/productService';
+import { useStore } from '../hooks/useStore';
 import { Skeleton } from './ui/Skeleton';
 
 const VISIBLE = 5;
@@ -12,6 +13,7 @@ export default function ProductSection({ onProductClick }) {
   const [startIndex, setStartIndex] = useState(0);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const showOutOfStock = useStore((state) => state.showOutOfStock);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -22,6 +24,12 @@ export default function ProductSection({ onProductClick }) {
         const mapped = sliced.map(p => {
           const variants = p.product_variants || [];
           const hasVariants = !!p.has_variants && variants.length > 0;
+
+          const totalStock = hasVariants
+            ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+            : (Number(p.stock) || 0);
+
+          const isOutOfStock = totalStock <= 0;
 
           const sellingPrice = hasVariants
             ? Math.min(...variants.map(v => Number(v.price) || Infinity).filter(isFinite))
@@ -40,6 +48,8 @@ export default function ProductSection({ onProductClick }) {
             category: 'Bangles',
             price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',
             original: mrp && mrp > sellingPrice ? `₹${mrp.toLocaleString('en-IN')}` : '',
+            stock: totalStock,
+            isOutOfStock,
           };
         });
 
@@ -55,13 +65,14 @@ export default function ProductSection({ onProductClick }) {
     fetchProducts();
   }, []);
 
+  const displayedProducts = showOutOfStock ? products : products.filter((p) => !p.isOutOfStock);
   const canPrev = startIndex > 0;
-  const canNext = startIndex + VISIBLE < products.length;
+  const canNext = startIndex + VISIBLE < displayedProducts.length;
 
   const prev = () => { if (canPrev) setStartIndex(i => i - 1); };
   const next = () => { if (canNext) setStartIndex(i => i + 1); };
 
-  const visible = products.slice(startIndex, startIndex + VISIBLE);
+  const visible = displayedProducts.slice(startIndex, startIndex + VISIBLE);
 
   if (loading) return (
     <section className="product-section">
@@ -105,12 +116,15 @@ export default function ProductSection({ onProductClick }) {
           {visible.map((product) => (
             <div
               key={product.id}
-              className="product-card"
+              className={`product-card ${product.isOutOfStock ? "product-card--out-of-stock" : ""}`}
               onClick={() => onProductClick(product)}
               style={{ cursor: 'pointer' }}
             >
               <div className="product-img-wrapper">
                 <img src={product.img} alt={product.name} className="product-img" loading="lazy" decoding="async" />
+                {product.isOutOfStock && (
+                  <span className="product-out-of-stock-badge">Out of Stock</span>
+                )}
               </div>
               <div className="product-details">
                 <div className="product-info">

@@ -11,6 +11,7 @@ export default function BestSellers({ onProductClick }) {
 
   const wishlistItems = useStore((state) => state.wishlistItems);
   const toggleWishlist = useStore((state) => state.toggleWishlist);
+  const showOutOfStock = useStore((state) => state.showOutOfStock);
 
   const wishlistProductIds = wishlistItems.map((w) => w.id || w.productId);
 
@@ -38,6 +39,7 @@ export default function BestSellers({ onProductClick }) {
             price,
             compare_price,
             discount_price,
+            stock,
             images,
             image_url,
             has_variants,
@@ -73,6 +75,7 @@ export default function BestSellers({ onProductClick }) {
               price,
               compare_price,
               discount_price,
+              stock,
               images,
               image_url,
               has_variants,
@@ -90,6 +93,12 @@ export default function BestSellers({ onProductClick }) {
         const mapped = finalProducts.map((p) => {
           const variants = p.product_variants || [];
           const hasVariants = !!p.has_variants && variants.length > 0;
+
+          const totalStock = hasVariants
+            ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+            : (Number(p.stock) || 0);
+
+          const isOutOfStock = totalStock <= 0;
 
           const sellingPrice = hasVariants
             ? Math.min(...variants.map((v) => Number(v.price) || Infinity).filter(isFinite))
@@ -127,6 +136,8 @@ export default function BestSellers({ onProductClick }) {
             rawMrp: mrp,
             discountPct,
             has_variants: hasVariants,
+            stock: totalStock,
+            isOutOfStock,
           };
         });
 
@@ -181,20 +192,24 @@ export default function BestSellers({ onProductClick }) {
         </div>
       ) : (
         <div className="best-sellers-grid">
-          {products.map((product) => {
+          {(showOutOfStock ? products : products.filter((p) => !p.isOutOfStock)).map((product) => {
             const isWishlisted = wishlistProductIds.includes(product.id);
             return (
               <article
                 key={product.id}
-                className="best-seller-card"
+                className={`best-seller-card ${product.isOutOfStock ? "best-seller-card--out-of-stock" : ""}`}
                 onClick={() => onProductClick && onProductClick(product)}
               >
                 <div className="best-seller-img-box">
-                  {product.discountPct > 0 && (
+                  {product.isOutOfStock ? (
+                    <span className="best-seller-out-of-stock-badge">
+                      Out of Stock
+                    </span>
+                  ) : product.discountPct > 0 ? (
                     <span className="best-seller-offer-badge">
                       {product.discountPct}% Off
                     </span>
-                  )}
+                  ) : null}
 
                   <button
                     type="button"

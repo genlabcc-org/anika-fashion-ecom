@@ -691,6 +691,14 @@ button {
   transform: translateY(-1px);
 }
 
+.pp-buy-btn:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .pp-opay {
   border: 1px solid #e4e4e4;
   border-radius: 8px;

@@ -39,10 +39,24 @@ export default function CategoryPage({ category }) {
 
   const itemsPerPage = isMobile ? MOBILE_ITEMS_PER_PAGE : DESKTOP_ITEMS_PER_PAGE;
 
+  // Zustand Store Hooks
+  const showOutOfStock = useStore(state => state.showOutOfStock);
+  const products = useStore(state => state.products[category] || EMPTY_PRODUCTS);
+  const loading = useStore(state => state.loadingProducts);
+  const fetchProductsByCategory = useStore(state => state.fetchProductsByCategory);
+  const wishlistItems = useStore(state => state.wishlistItems);
+  const toggleWishlist = useStore(state => state.toggleWishlist);
+  const addToCart = useStore(state => state.addToCart);
+  const setSelectedProduct = useStore(state => state.setSelectedProduct);
+
+  const allCategories = useStore(state => state.categories)
+  const fetchCategories = useStore(state => state.fetchCategories);
+  const wishlistProductIds = useMemo(() => wishlistItems.map(w => w.id), [wishlistItems]);
+
   // Search and filter states
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [stockStatus, setStockStatus] = useState({ inStock: true, outOfStock: false });
+  const [stockStatus, setStockStatus] = useState({ inStock: true, outOfStock: showOutOfStock });
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [priceFrom, setPriceFrom] = useState("");
   const [priceTo, setPriceTo] = useState("");
@@ -55,18 +69,13 @@ export default function CategoryPage({ category }) {
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState("success");
 
-  // Zustand Store Hooks
-  const products = useStore(state => state.products[category] || EMPTY_PRODUCTS);
-  const loading = useStore(state => state.loadingProducts);
-  const fetchProductsByCategory = useStore(state => state.fetchProductsByCategory);
-  const wishlistItems = useStore(state => state.wishlistItems);
-  const toggleWishlist = useStore(state => state.toggleWishlist);
-  const addToCart = useStore(state => state.addToCart);
-  const setSelectedProduct = useStore(state => state.setSelectedProduct);
-
-  const allCategories = useStore(state => state.categories)
-  const fetchCategories = useStore(state => state.fetchCategories);
-  const wishlistProductIds = useMemo(() => wishlistItems.map(w => w.id), [wishlistItems]);
+  // Keep stockStatus in sync if admin toggles showOutOfStock
+  useEffect(() => {
+    setStockStatus(prev => ({
+      ...prev,
+      outOfStock: showOutOfStock ? prev.outOfStock : false,
+    }));
+  }, [showOutOfStock]);
 
   // Fetch products from database through store (cached automatically)
   useEffect(() => {
@@ -190,8 +199,17 @@ export default function CategoryPage({ category }) {
         if (!matchesName && !matchesDesc) return false;
       }
 
-      const inStockMatch = stockStatus.inStock && (product.stock === "in-stock" || (typeof product.stock === "number" && product.stock > 0));
-      const outOfStockMatch = stockStatus.outOfStock && (product.stock === "out-of-stock" || (typeof product.stock === "number" && product.stock === 0));
+      const isProdOutOfStock =
+        product.isOutOfStock ||
+        product.stock === "out-of-stock" ||
+        (typeof product.stock === "number" && product.stock <= 0) ||
+        (product.stockQty !== undefined && product.stockQty <= 0);
+
+      // If admin disabled displaying out-of-stock products, exclude them from website
+      if (!showOutOfStock && isProdOutOfStock) return false;
+
+      const inStockMatch = stockStatus.inStock && !isProdOutOfStock;
+      const outOfStockMatch = stockStatus.outOfStock && isProdOutOfStock;
       if (!stockStatus.inStock && !stockStatus.outOfStock) return false;
       if (stockStatus.inStock && !stockStatus.outOfStock && !inStockMatch) return false;
       if (!stockStatus.inStock && stockStatus.outOfStock && !outOfStockMatch) return false;
@@ -225,7 +243,7 @@ export default function CategoryPage({ category }) {
     }
 
     return result;
-  }, [products, searchQuery, stockStatus, selectedSizes, subcategoryParam, priceFrom, priceTo, sortBy]);
+  }, [products, searchQuery, stockStatus, showOutOfStock, selectedSizes, subcategoryParam, priceFrom, priceTo, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage));
 
@@ -285,9 +303,8 @@ export default function CategoryPage({ category }) {
   const seoTitle = subcategoryParam
     ? `${subcategoryParam} - ${category} Collection`
     : `${category} Collection`;
-  const seoDescription = `Explore our handcrafted ${category.toLowerCase()}${
-    subcategoryParam ? ' in ' + subcategoryParam : ''
-  } collection at ANIKA. Premium finish, bridal & festive designs with fast delivery across India.`;
+  const seoDescription = `Explore our handcrafted ${category.toLowerCase()}${subcategoryParam ? ' in ' + subcategoryParam : ''
+    } collection at ANIKA. Premium finish, bridal & festive designs with fast delivery across India.`;
   const seoBreadcrumbs = [
     { name: 'Home', path: '/' },
     { name: category, path: navCategoryPath },
@@ -471,11 +488,13 @@ export default function CategoryPage({ category }) {
                     <span className="checkbox-custom-box"></span>
                     <span className="checkbox-item-text">In Stock</span>
                   </label>
-                  <label className="checkbox-item-label">
-                    <input type="checkbox" className="filter-checkbox-input" checked={stockStatus.outOfStock} onChange={() => handleStockToggle("outOfStock")} />
-                    <span className="checkbox-custom-box"></span>
-                    <span className="checkbox-item-text">Out of Stock</span>
-                  </label>
+                  {showOutOfStock && (
+                    <label className="checkbox-item-label">
+                      <input type="checkbox" className="filter-checkbox-input" checked={stockStatus.outOfStock} onChange={() => handleStockToggle("outOfStock")} />
+                      <span className="checkbox-custom-box"></span>
+                      <span className="checkbox-item-text">Out of Stock</span>
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -555,7 +574,7 @@ export default function CategoryPage({ category }) {
                   setSearchInput("");
                   setSearchQuery("");
                   setSelectedSizes([]);
-                  setStockStatus({ inStock: true, outOfStock: false });
+                  setStockStatus({ inStock: true, outOfStock: showOutOfStock });
                   setPriceFrom("");
                   setPriceTo("");
                   setSortBy("featured");
@@ -568,33 +587,56 @@ export default function CategoryPage({ category }) {
             // ─── Product Grid ──────────────────────────────────────
             <>
               <div className="product-results-grid">
-                {currentItems.map(product => (
-                  <article key={product.id} onClick={() => handleProductCardClick(product)} className="grid-product-card">
-                    <div className="product-card-image-wrapper">
-                      <img src={productService.getResizedImageUrl(product.img, 'card')} alt={product.name} className="product-card-image-display" loading="lazy" />
-                      <button
-                        type="button"
-                        onClick={(e) => handleWishlistToggle(e, product)}
-                        className={`product-card-wishlist-toggle-btn ${wishlistProductIds.includes(product.id) ? "active" : ""}`}
-                      >
-                        <svg viewBox="0 0 24 24" fill={wishlistProductIds.includes(product.id) ? "#C42049" : "none"} stroke={wishlistProductIds.includes(product.id) ? "#C42049" : "#ffffff"} strokeWidth="2">
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                      </button>
-                    </div>
+                {currentItems.map(product => {
+                  const isProdOutOfStock =
+                    product.isOutOfStock ||
+                    product.stock === "out-of-stock" ||
+                    (typeof product.stock === "number" && product.stock <= 0) ||
+                    (product.stockQty !== undefined && product.stockQty <= 0);
 
-                    <div className="product-card-body-details">
-                      <h3 className="product-card-title-text">{product.name}</h3>
-                      {/* <p className="product-card-subtitle-desc">{product.desc}</p> */}
-                      <div className="product-card-price-row">
-                        <span className="price-tag-now">₹{product.price}</span>
-                        {Number(product.compare_price) > Number(product.price) && (
-                          <span className="price-tag-was">₹{product.compare_price}</span>
+                  return (
+                    <article
+                      key={product.id}
+                      onClick={() => handleProductCardClick(product)}
+                      className={`grid-product-card ${isProdOutOfStock ? "grid-product-card--out-of-stock" : ""}`}
+                    >
+                      <div className="product-card-image-wrapper">
+                        <img
+                          src={productService.getResizedImageUrl(product.img, 'card')}
+                          alt={product.name}
+                          className="product-card-image-display"
+                          loading="lazy"
+                        />
+                        {isProdOutOfStock && (
+                          <span className="product-card-out-of-stock-badge">Out of Stock</span>
                         )}
+                        <button
+                          type="button"
+                          onClick={(e) => handleWishlistToggle(e, product)}
+                          className={`product-card-wishlist-toggle-btn ${wishlistProductIds.includes(product.id) ? "active" : ""}`}
+                        >
+                          <svg viewBox="0 0 24 24" fill={wishlistProductIds.includes(product.id) ? "#C42049" : "none"} stroke={wishlistProductIds.includes(product.id) ? "#C42049" : "#ffffff"} strokeWidth="2">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                          </svg>
+                        </button>
                       </div>
-                    </div>
-                  </article>
-                ))}
+
+                      <div className="product-card-body-details">
+                        <h3 className="product-card-title-text">{product.name}</h3>
+                        {/* <p className="product-card-subtitle-desc">{product.desc}</p> */}
+                        <div className="product-card-price-row">
+                          <span className="price-tag-now">₹{product.price}</span>
+                          {Number(product.compare_price) > Number(product.price) && (
+                            <span className="price-tag-was">₹{product.compare_price}</span>
+                          )}
+                          {/* {isProdOutOfStock && (
+                            <span className="product-card-stock-tag">Out of stock</span>
+                          )} */}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
 
               <div className="pagination-bar-wrapper">

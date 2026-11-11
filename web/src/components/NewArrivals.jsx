@@ -11,6 +11,7 @@ export default function NewArrivals({ onProductClick }) {
 
   const wishlistItems = useStore((state) => state.wishlistItems);
   const toggleWishlist = useStore((state) => state.toggleWishlist);
+  const showOutOfStock = useStore((state) => state.showOutOfStock);
 
   const wishlistProductIds = wishlistItems.map((w) => w.id || w.productId);
 
@@ -26,6 +27,7 @@ export default function NewArrivals({ onProductClick }) {
             price,
             compare_price,
             discount_price,
+            stock,
             images,
             image_url,
             has_variants,
@@ -49,6 +51,12 @@ export default function NewArrivals({ onProductClick }) {
         const mapped = (data || []).map((p) => {
           const variants = p.product_variants || [];
           const hasVariants = !!p.has_variants && variants.length > 0;
+
+          const totalStock = hasVariants
+            ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+            : (Number(p.stock) || 0);
+
+          const isOutOfStock = totalStock <= 0;
 
           const sellingPrice = hasVariants
             ? Math.min(...variants.map((v) => Number(v.price) || Infinity).filter(isFinite))
@@ -86,6 +94,8 @@ export default function NewArrivals({ onProductClick }) {
             rawMrp: mrp,
             discountPct,
             has_variants: hasVariants,
+            stock: totalStock,
+            isOutOfStock,
           };
         });
 
@@ -140,20 +150,24 @@ export default function NewArrivals({ onProductClick }) {
         </div>
       ) : (
         <div className="new-arrivals-grid">
-          {products.map((product) => {
+          {(showOutOfStock ? products : products.filter((p) => !p.isOutOfStock)).map((product) => {
             const isWishlisted = wishlistProductIds.includes(product.id);
             return (
               <article
                 key={product.id}
-                className="new-arrival-card"
+                className={`new-arrival-card ${product.isOutOfStock ? "new-arrival-card--out-of-stock" : ""}`}
                 onClick={() => onProductClick && onProductClick(product)}
               >
                 <div className="new-arrival-img-box">
-                  {product.discountPct > 0 && (
+                  {product.isOutOfStock ? (
+                    <span className="new-arrival-out-of-stock-badge">
+                      Out of Stock
+                    </span>
+                  ) : product.discountPct > 0 ? (
                     <span className="new-arrival-offer-badge">
                       {product.discountPct}% Off
                     </span>
-                  )}
+                  ) : null}
 
                   <button
                     type="button"

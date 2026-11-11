@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './ProductSection.css';
 import { supabase } from '../lib/supabase';
 import { productService } from '../services/productService';
+import { useStore } from '../hooks/useStore';
 import { Skeleton } from './ui/Skeleton';
 
 const VISIBLE = 10;
@@ -11,6 +12,7 @@ export default function NecklaceSection({ onProductClick }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
+  const showOutOfStock = useStore((state) => state.showOutOfStock);
   const scrollRef = useRef(null);
   const navigate = useNavigate();
 
@@ -22,6 +24,12 @@ export default function NecklaceSection({ onProductClick }) {
         const mapped = sliced.map(p => {
           const variants = p.product_variants || [];
           const hasVariants = !!p.has_variants && variants.length > 0;
+
+          const totalStock = hasVariants
+            ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+            : (Number(p.stock) || 0);
+
+          const isOutOfStock = totalStock <= 0;
 
           const sellingPrice = hasVariants
             ? Math.min(...variants.map(v => Number(v.price) || Infinity).filter(isFinite))
@@ -40,6 +48,8 @@ export default function NecklaceSection({ onProductClick }) {
             category: 'Necklaces',
             price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',
             original: mrp && mrp > sellingPrice ? `₹${mrp.toLocaleString('en-IN')}` : '',
+            stock: totalStock,
+            isOutOfStock,
           };
         });
 
@@ -122,15 +132,18 @@ export default function NecklaceSection({ onProductClick }) {
             onTouchStart={() => setIsHovered(true)}
             onTouchEnd={() => setIsHovered(false)}
           >
-            {products.map((product) => (
+            {(showOutOfStock ? products : products.filter((p) => !p.isOutOfStock)).map((product) => (
               <div
                 key={product.id}
-                className="product-card"
+                className={`product-card ${product.isOutOfStock ? "product-card--out-of-stock" : ""}`}
                 onClick={() => onProductClick(product)}
                 style={{ cursor: 'pointer' }}
               >
                 <div className="product-img-wrapper">
                   <img src={product.img} alt={product.name} className="product-img" loading="lazy" decoding="async" />
+                  {product.isOutOfStock && (
+                    <span className="product-out-of-stock-badge">Out of Stock</span>
+                  )}
                 </div>
                 <div className="product-details">
                   <div className="product-info">

@@ -6,6 +6,7 @@ import { cartService } from '../services/cartService';
 import { wishlistService } from '../services/wishlistService';
 import { authService } from '../services/authService';
 import { orderService } from '../services/orderService';
+import { settingsService } from '../services/settingsService';
 import { clean } from '../utils/customerName';
 
 /** Strip currency symbols & commas so */
@@ -52,6 +53,7 @@ export const useStore = create((set, get) => ({
   productDetails: loadPdCache(), // { productId: { cachedAt, images, base, variants } } (session cache, 5-min TTL)
   loadingCategories: false,
   loadingProducts: false,
+  showOutOfStock: settingsService.getShowOutOfStockSync(),
 
   // --- Cart and Wishlist ---
   cartItems: [],
@@ -100,6 +102,7 @@ export const useStore = create((set, get) => ({
   // Initialize Auth & Session
   initAuth: async () => {
     try {
+      get().fetchStoreSettings();
       const session = await authService.getSession();
       if (session) {
         set({ session, user: session.user });
@@ -271,6 +274,8 @@ export const useStore = create((set, get) => ({
           compare_price: mrp,
           sizes: p.sizes || variants.map(v => v.size).filter(Boolean),
           stock: totalStock > 0 ? 'in-stock' : 'out-of-stock',
+          stockQty: totalStock,
+          isOutOfStock: totalStock <= 0,
           subcategory: p.subcategory || p.subcategories?.name || null,
           subcategory_id: p.subcategory_id || null,
           category_id: p.category_id,
@@ -293,6 +298,26 @@ export const useStore = create((set, get) => ({
   },
 
   invalidateProductsCache: () => set({ products: {} }),
+
+  fetchStoreSettings: async () => {
+    try {
+      const showOutOfStock = await settingsService.getShowOutOfStock();
+      set({ showOutOfStock });
+      return showOutOfStock;
+    } catch (e) {
+      console.warn('Failed to load store settings:', e);
+      return get().showOutOfStock;
+    }
+  },
+
+  setShowOutOfStock: async (val) => {
+    const boolVal = Boolean(val);
+    set(state => ({
+      showOutOfStock: boolVal,
+      products: {}, // Invalidate category products cache to reflect stock filter immediately
+    }));
+    await settingsService.setShowOutOfStock(boolVal);
+  },
 
   loadProductById: async (productId) => {
     // If we have fresh productDetails AND already have name/desc, skip DB query
@@ -981,3 +1006,14 @@ export const useStore = create((set, get) => ({
     }
   },
 }));
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('anika_setting_changed', (e) => {
+    if (e.detail?.key === 'show_out_of_stock') {
+      useStore.setState({
+        showOutOfStock: Boolean(e.detail.value),
+        products: {},
+      });
+    }
+  });
+}

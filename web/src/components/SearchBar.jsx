@@ -87,6 +87,8 @@ export function mapSearchProduct(p) {
     has_variants: hasVariants,
     sizes: p.sizes || variants.map((v) => v.size).filter(Boolean),
     stock: totalStock > 0 ? "in-stock" : "out-of-stock",
+    stockQty: totalStock,
+    isOutOfStock: totalStock <= 0,
   };
 }
 
@@ -107,6 +109,7 @@ export default function SearchBar({
 
   const navigate = useNavigate();
   const setSelectedProduct = useStore((s) => s.setSelectedProduct);
+  const showOutOfStock = useStore((s) => s.showOutOfStock);
 
   // Auto-focus when requested
   useEffect(() => {
@@ -155,7 +158,8 @@ export default function SearchBar({
         const rawResults = await productService.searchProductsByName(trimmed, 6);
         if (currentReqId !== requestIdRef.current) return;
         const mapped = (rawResults || []).map(mapSearchProduct);
-        setResults(mapped);
+        const filtered = showOutOfStock ? mapped : mapped.filter((p) => !p.isOutOfStock);
+        setResults(filtered);
       } catch (err) {
         if (currentReqId !== requestIdRef.current) return;
         console.error("Product search error:", err);
@@ -304,6 +308,21 @@ export default function SearchBar({
                           </span>
                         )}
                         <span className="sb-item-price">{formattedPrice}</span>
+                        {product.isOutOfStock && (
+                          <span className="sb-item-stock-tag" style={{
+                            fontSize: "10px",
+                            fontWeight: 600,
+                            color: "#b91c1c",
+                            background: "#fee2e2",
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.3px",
+                            marginLeft: "auto",
+                          }}>
+                            Out of Stock
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

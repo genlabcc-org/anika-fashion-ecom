@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './Offers.css';
 import FestiveImg from '../assets/offers/image-5.webp';
 import { supabase } from '../lib/supabase';
+import { useStore } from '../hooks/useStore';
 
 const VISIBLE = 5;
 
@@ -10,6 +11,7 @@ export default function Offers({ onProductClick }) {
   const [startIndex, setStartIndex] = useState(0);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const showOutOfStock = useStore((state) => state.showOutOfStock);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function Offers({ onProductClick }) {
               price,
               compare_price,
               discount_price,
+              stock,
               images,
               has_variants,
               product_variants(price, compare_price, stock),
@@ -57,6 +60,7 @@ export default function Offers({ onProductClick }) {
               price,
               compare_price,
               discount_price,
+              stock,
               images,
               has_variants,
               product_variants(price, compare_price, stock),
@@ -73,6 +77,12 @@ export default function Offers({ onProductClick }) {
         const mapped = productsData.map(p => {
           const variants = p.product_variants || [];
           const hasVariants = !!p.has_variants && variants.length > 0;
+
+          const totalStock = hasVariants
+            ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+            : (Number(p.stock) || 0);
+
+          const isOutOfStock = totalStock <= 0;
 
           const sellingPrice = hasVariants
             ? Math.min(...variants.map(v => Number(v.price) || Infinity).filter(isFinite))
@@ -91,6 +101,8 @@ export default function Offers({ onProductClick }) {
             category: p.categories?.name || 'Toe Rings',
             price: sellingPrice ? `₹${sellingPrice.toLocaleString('en-IN')}` : '',
             original: mrp && mrp > sellingPrice ? `₹${mrp.toLocaleString('en-IN')}` : '',
+            stock: totalStock,
+            isOutOfStock,
           };
         });
 
@@ -106,8 +118,9 @@ export default function Offers({ onProductClick }) {
     fetchProducts();
   }, []);
 
+  const displayedProducts = showOutOfStock ? products : products.filter((p) => !p.isOutOfStock);
   const canPrev = startIndex > 0;
-  const canNext = startIndex + VISIBLE < products.length;
+  const canNext = startIndex + VISIBLE < displayedProducts.length;
 
   const prev = () => {
     if (canPrev) setStartIndex((i) => i - 1);
@@ -117,7 +130,7 @@ export default function Offers({ onProductClick }) {
     if (canNext) setStartIndex((i) => i + 1);
   };
 
-  const visible = products.slice(startIndex, startIndex + VISIBLE);
+  const visible = displayedProducts.slice(startIndex, startIndex + VISIBLE);
 
   if (loading) {
     return (
@@ -161,12 +174,15 @@ export default function Offers({ onProductClick }) {
           {visible.map((product) => (
             <div
               key={product.id}
-              className="product-card"
+              className={`product-card ${product.isOutOfStock ? "product-card--out-of-stock" : ""}`}
               onClick={() => onProductClick && onProductClick(product)}
               style={{ cursor: 'pointer' }}
             >
               <div className="product-img-wrapper">
                 <img src={product.img} alt={product.name} className="product-img" loading="lazy" decoding="async" />
+                {product.isOutOfStock && (
+                  <span className="product-out-of-stock-badge">Out of Stock</span>
+                )}
               </div>
 
               <div className="product-details">
