@@ -2,16 +2,27 @@ import { supabase } from '../lib/supabase';
 import { resolveCustomerName } from '../utils/customerName';
 import { formatISTDateTime } from '../utils/exportUtils';
 
-export const getTrack123Url = (awb, courierName) => {
+export const getCourierTrackingUrl = (awb, courierName) => {
   if (!awb) return '';
   const cleanAwb = String(awb).trim();
-  const courierCode = (courierName || 'franch-express')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'franch-express';
-  return `https://www.track123.com/track?code=${encodeURIComponent(courierCode)}&trackNos=${encodeURIComponent(cleanAwb)}`;
+  const rawCourier = String(courierName || 'franch-express').toLowerCase().trim();
+
+  // 1. ST Courier -> official direct ST Courier tracking link
+  if (rawCourier.includes('st courier') || rawCourier.includes('stcourier') || /(^|\s|[^a-z])st(\s|$|[^a-z])/i.test(rawCourier)) {
+    return `https://stcourier.com/track/shipment?awb=${encodeURIComponent(cleanAwb)}`;
+  }
+
+  // 2. India Post / Indian Post -> Track123 tracking link (avoids official portal 502 Bad Gateway / captchas)
+  if (rawCourier.includes('india') || rawCourier.includes('indian') || rawCourier.includes('speed post') || rawCourier === 'post') {
+    return `https://www.track123.com/track?code=india-post&trackNos=${encodeURIComponent(cleanAwb)}`;
+  }
+
+  // 3. Franch Express (and default) -> keep Track123 link
+  return `https://www.track123.com/track?code=franch-express&trackNos=${encodeURIComponent(cleanAwb)}`;
 };
+
+// Backwards-compatible alias
+export const getTrack123Url = getCourierTrackingUrl;
 
 export const orderService = {
   /**

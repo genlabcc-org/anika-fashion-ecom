@@ -484,6 +484,49 @@ export const productService = {
   },
 
   /**
+   * Retrieves best selling products for the storefront.
+   * Prioritizes featured active products, followed by the latest active items.
+   * @param {number} [limit=8]
+   * @returns {Promise<any[]>}
+   */
+  async getBestSellers(limit = 8) {
+    const SELECT_FIELDS = `
+      product_id,
+      name,
+      price,
+      compare_price,
+      discount_price,
+      stock,
+      images,
+      image_url,
+      has_variants,
+      is_featured,
+      product_variants(price, compare_price, stock),
+      categories!category_id(name, slug)
+    `;
+
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(SELECT_FIELDS)
+        .eq('is_active', true)
+        .order('is_featured', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error('Error fetching best sellers:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (err) {
+      console.error('Failed to load best sellers:', err);
+      return [];
+    }
+  },
+
+  /**
    * Retrieves specific products by their IDs (lean columns only).
    * @param {Array<string|number>} productIds
    * @returns {Promise<any[]>}

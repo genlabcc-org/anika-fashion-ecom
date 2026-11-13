@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import { useStore } from '../hooks/useStore';
 import { productService } from '../services/productService';
 import { SkeletonProductCard } from './ui/Skeleton';
@@ -20,77 +19,9 @@ export default function BestSellers({ onProductClick }) {
 
     const fetchBestSellers = async () => {
       try {
-        // 1. Fetch the newest 8 active product IDs that are shown in New Arrivals
-        const { data: newArrivalsData } = await supabase
-          .from('products')
-          .select('product_id')
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(8);
+        const data = await productService.getBestSellers(8);
 
-        const newArrivalIds = (newArrivalsData || []).map((p) => p.product_id).filter(Boolean);
-
-        // 2. Fetch distinct active products for Best Sellers, strictly EXCLUDING New Arrivals
-        let query = supabase
-          .from('products')
-          .select(`
-            product_id,
-            name,
-            price,
-            compare_price,
-            discount_price,
-            stock,
-            images,
-            image_url,
-            has_variants,
-            is_featured,
-            product_variants(price, compare_price, stock),
-            categories!category_id(name, slug)
-          `)
-          .eq('is_active', true);
-
-        if (newArrivalIds.length > 0) {
-          query = query.not('product_id', 'in', `(${newArrivalIds.join(',')})`);
-        }
-
-        // Prioritize featured products or older established classics
-        let { data: distinctData, error: bsError } = await query
-          .order('is_featured', { ascending: false })
-          .order('created_at', { ascending: true })
-          .limit(8);
-
-        if (bsError) {
-          console.error('Error fetching best sellers:', bsError);
-        }
-
-        let finalProducts = distinctData || [];
-
-        // Fallback only if the catalog has very few products and no other products exist
-        if (finalProducts.length === 0 && newArrivalIds.length > 0) {
-          const { data: fallbackData } = await supabase
-            .from('products')
-            .select(`
-              product_id,
-              name,
-              price,
-              compare_price,
-              discount_price,
-              stock,
-              images,
-              image_url,
-              has_variants,
-              is_featured,
-              product_variants(price, compare_price, stock),
-              categories!category_id(name, slug)
-            `)
-            .eq('is_active', true)
-            .order('name', { ascending: true })
-            .limit(8);
-
-          finalProducts = fallbackData || [];
-        }
-
-        const mapped = finalProducts.map((p) => {
+        const mapped = (data || []).map((p) => {
           const variants = p.product_variants || [];
           const hasVariants = !!p.has_variants && variants.length > 0;
 
@@ -138,6 +69,7 @@ export default function BestSellers({ onProductClick }) {
             has_variants: hasVariants,
             stock: totalStock,
             isOutOfStock,
+            show_out_of_stock: p.show_out_of_stock !== false,
           };
         });
 
@@ -192,7 +124,9 @@ export default function BestSellers({ onProductClick }) {
         </div>
       ) : (
         <div className="best-sellers-grid">
-          {(showOutOfStock ? products : products.filter((p) => !p.isOutOfStock)).map((product) => {
+          {products
+            .filter((p) => !p.isOutOfStock || (showOutOfStock && p.show_out_of_stock !== false))
+            .map((product) => {
             const isWishlisted = wishlistProductIds.includes(product.id);
             return (
               <article

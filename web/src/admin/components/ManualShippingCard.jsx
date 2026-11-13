@@ -24,10 +24,66 @@ const formatDateTime = (dateStr) => {
   }
 };
 
+export const COURIER_OPTIONS = [
+  {
+    id: "st-courier",
+    label: "St courier",
+    code: "stcourier",
+    trackingUrl: (awb) => `https://stcourier.com/track/shipment?awb=${encodeURIComponent(awb || "")}`,
+    track123Url: (awb) => `https://stcourier.com/track/shipment?awb=${encodeURIComponent(awb || "")}`,
+    officialUrl: "https://stcourier.com/",
+    placeholder: "e.g. 22611923666",
+  },
+  {
+    id: "indian-post",
+    label: "Indian Post",
+    code: "india-post",
+    trackingUrl: (awb) => `https://www.track123.com/track?code=india-post&trackNos=${encodeURIComponent(awb || "")}`,
+    track123Url: (awb) => `https://www.track123.com/track?code=india-post&trackNos=${encodeURIComponent(awb || "")}`,
+    officialUrl: "https://www.indiapost.gov.in/_layouts/15/dop.portal.tracking/trackconsignment.aspx",
+    placeholder: "e.g. EX123456789IN",
+  },
+  {
+    id: "franch-express",
+    label: "Franch Express",
+    code: "franch-express",
+    trackingUrl: (awb) => `https://www.track123.com/track?code=franch-express&trackNos=${encodeURIComponent(awb || "")}`,
+    track123Url: (awb) => `https://www.track123.com/track?code=franch-express&trackNos=${encodeURIComponent(awb || "")}`,
+    officialUrl: "https://franchexpress.com/",
+    placeholder: "e.g. 22611921496",
+  },
+];
+
+export const getCourierConfig = (name) => {
+  const norm = String(name || "").toLowerCase().trim();
+
+  // 1. Check Indian Post / India Post / Speed Post first (before "st", because "post" contains "st")
+  if (norm.includes("india") || norm.includes("indian") || norm.includes("speed post") || norm === "post" || norm === "indian-post") {
+    return COURIER_OPTIONS.find((c) => c.id === "indian-post") || COURIER_OPTIONS[1];
+  }
+
+  // 2. Check ST Courier (exact check for ST, ST Courier, STCourier - avoid false match on "post")
+  if (norm.includes("st courier") || norm.includes("stcourier") || /(^|\s|[^a-z])st(\s|$|[^a-z])/i.test(norm)) {
+    return COURIER_OPTIONS.find((c) => c.id === "st-courier") || COURIER_OPTIONS[0];
+  }
+
+  // 3. Check Franch Express
+  if (norm.includes("franch")) {
+    return COURIER_OPTIONS.find((c) => c.id === "franch-express") || COURIER_OPTIONS[2];
+  }
+
+  // 4. Exact match by label or id
+  const exact = COURIER_OPTIONS.find((c) => c.label.toLowerCase() === norm || c.id.toLowerCase() === norm);
+  if (exact) return exact;
+
+  return COURIER_OPTIONS.find((c) => c.id === "franch-express") || COURIER_OPTIONS[2];
+};
+
 export default function ManualShippingCard({ order, address, onOrderUpdated, showToast }) {
-  const [manualCourierName, setManualCourierName] = useState(
-    order?.manual_courier_name || order?.courier_name || "Franch Express"
-  );
+  const [manualCourierName, setManualCourierName] = useState(() => {
+    const raw = order?.manual_courier_name || order?.courier_name || "Franch Express";
+    return getCourierConfig(raw).label;
+  });
   const [manualAwb, setManualAwb] = useState(order?.manual_awb || order?.waybill || "");
   const [isEditingTracking, setIsEditingTracking] = useState(false);
   const [savingAction, setSavingAction] = useState(null); // 'pack' | 'ship' | 'edit' | 'deliver' | null
@@ -39,6 +95,8 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [lastScanSource, setLastScanSource] = useState("");
 
+  const selectedCourier = getCourierConfig(manualCourierName);
+
   const isMobile = typeof window !== "undefined" && (
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
     (window.innerWidth <= 768 && navigator.maxTouchPoints > 0)
@@ -46,7 +104,8 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
 
   // Sync state when order prop changes
   useEffect(() => {
-    setManualCourierName(order?.manual_courier_name || order?.courier_name || "Franch Express");
+    const raw = order?.manual_courier_name || order?.courier_name || "Franch Express";
+    setManualCourierName(getCourierConfig(raw).label);
     setManualAwb(order?.manual_awb || order?.waybill || "");
   }, [order?.manual_courier_name, order?.courier_name, order?.manual_awb, order?.waybill]);
 
@@ -360,10 +419,11 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
       const courier = order.manual_courier_name || order.courier_name || "Franch Express";
       const awb = order.manual_awb || order.waybill || "";
       const existingUrl = order.manual_tracking_url || order.tracking_url || "";
-      const trackingUrl =
-        (existingUrl && !existingUrl.includes("17track.net"))
-          ? existingUrl
-          : (awb ? getTrack123Url(awb, courier) : "");
+      const isStCourier = String(courier).toLowerCase().includes("st");
+      const shouldRegenerate = !existingUrl || existingUrl === "https://stcourier.com" || existingUrl.includes("17track.net") || existingUrl.includes("indiapost.gov.in") || (isStCourier && existingUrl.includes("track123.com"));
+      const trackingUrl = !shouldRegenerate && existingUrl
+        ? existingUrl
+        : (awb ? getTrack123Url(awb, courier) : "");
 
       const waRes = await whatsappService.sendManualOrderShippingNotification({
         order,
@@ -625,22 +685,31 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                       <span className="msc__tracking-pill" id="msc-readonly-awb">{order.manual_awb || order.waybill}</span>
-                      {(order?.manual_tracking_url || order?.tracking_url || order?.manual_awb || order?.waybill) && (
-                        <a
-                          href={
-                            (order.manual_tracking_url && !order.manual_tracking_url.includes("17track.net"))
-                              ? order.manual_tracking_url
-                              : (order.tracking_url && !order.tracking_url.includes("17track.net"))
-                                ? order.tracking_url
-                                : getTrack123Url(order.manual_awb || order.waybill, order.manual_courier_name || order.courier_name)
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ fontSize: "12px", color: "#8b0030", textDecoration: "underline" }}
-                        >
-                          Track on Track123 ↗
-                        </a>
-                      )}
+                      {(order?.manual_tracking_url || order?.tracking_url || order?.manual_awb || order?.waybill) && (() => {
+                        const savedCourierName = order.manual_courier_name || order.courier_name || "Franch Express";
+                        const savedCourierConfig = getCourierConfig(savedCourierName);
+                        const awb = order.manual_awb || order.waybill;
+                        const existingUrl = order.manual_tracking_url || order.tracking_url || "";
+                        const isStCourier = savedCourierConfig.id === "st-courier";
+                        const displayUrl = (existingUrl && !existingUrl.includes("17track.net") && !existingUrl.includes("indiapost.gov.in") && !(isStCourier && existingUrl.includes("track123.com")))
+                          ? existingUrl
+                          : getTrack123Url(awb, savedCourierName);
+                        const linkLabel = savedCourierConfig.id === "st-courier"
+                          ? `Track on ${savedCourierConfig.label} ↗`
+                          : "Track on Track123 ↗";
+
+                        return (
+                          <a
+                            href={displayUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: "12px", color: "#8b0030", textDecoration: "underline" }}
+                            id="msc-readonly-track-link"
+                          >
+                            {linkLabel}
+                          </a>
+                        );
+                      })()}
                       <button
                         type="button"
                         onClick={handleResendWhatsApp}
@@ -692,7 +761,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                       onClick={() => {
                         setIsEditingTracking(true);
                         setManualAwb(order.manual_awb || order.waybill || "");
-                        setManualCourierName(order.manual_courier_name || order.courier_name || "Franch Express");
+                        setManualCourierName(getCourierConfig(order.manual_courier_name || order.courier_name).label);
                         setAwbError("");
                       }}
                       disabled={isSaving || isCancelled || isRefunded}
@@ -715,17 +784,36 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                 <div className="msc__form-grid">
                   <div className="msc__form-group">
                     <label className="msc__label" htmlFor="msc-courier-input">
-                      Courier Name
+                      Courier Partner <span style={{ color: "#dc2626" }}>*</span>
                     </label>
-                    <input
+                    <select
                       id="msc-courier-input"
-                      type="text"
-                      className="msc__input"
-                      value={manualCourierName}
-                      onChange={(e) => setManualCourierName(e.target.value)}
+                      className="msc__input msc__select"
+                      value={selectedCourier.label}
+                      onChange={(e) => {
+                        setManualCourierName(e.target.value);
+                        if (awbError) setAwbError("");
+                      }}
                       disabled={!isPacked || isSaving}
-                      placeholder="e.g. Franch Express"
-                    />
+                    >
+                      {COURIER_OPTIONS.map((c) => (
+                        <option key={c.id} value={c.label}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="msc__courier-meta">
+                      <span className="msc__courier-meta-title">Official Portal:</span>
+                      <a
+                        href={selectedCourier.officialUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="msc__courier-portal-link"
+                      >
+                        {selectedCourier.label} Website ↗
+                      </a>
+                    </div>
                   </div>
 
                   <div className="msc__form-group">
@@ -754,7 +842,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                         value={manualAwb}
                         onChange={handleAwbChange}
                         disabled={!isPacked || isSaving}
-                        placeholder={isMobile ? "Enter or tap scan button" : "e.g. 48066065272 (or scan with barcode gun)"}
+                        placeholder={isMobile ? `Enter or scan ${selectedCourier.label} AWB` : selectedCourier.placeholder}
                         maxLength={30}
                         autoComplete="off"
                       />
@@ -798,17 +886,25 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                         )}
                       </div>
                     )}
-                    {manualAwb.trim().length >= 4 && (
-                      <div style={{ marginTop: "6px", fontSize: "12px", color: "#64748b", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: "600", color: "#0f172a" }}>Generated Track123 link:</span>
+                    {manualAwb.trim().length >= 4 ? (
+                      <div className="msc__tracking-preview-box">
+                        <span className="msc__tracking-preview-title">
+                          {selectedCourier.id === "st-courier"
+                            ? `${selectedCourier.label} Tracking Link:`
+                            : `Track123 Tracking Link (${selectedCourier.label}):`}
+                        </span>
                         <a
-                          href={getTrack123Url(manualAwb.trim(), manualCourierName)}
+                          href={(selectedCourier.trackingUrl || selectedCourier.track123Url)(manualAwb.trim())}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ color: "#8b0030", textDecoration: "underline", wordBreak: "break-all" }}
+                          className="msc__tracking-preview-link"
                         >
-                          {getTrack123Url(manualAwb.trim(), manualCourierName)} ↗
+                          {(selectedCourier.trackingUrl || selectedCourier.track123Url)(manualAwb.trim())} ↗
                         </a>
+                      </div>
+                    ) : (
+                      <div className="msc__tracking-preview-hint">
+                        <span>Select courier above and enter tracking ID to generate live tracking link.</span>
                       </div>
                     )}
                   </div>
@@ -846,7 +942,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                       onClick={() => {
                         setIsEditingTracking(false);
                         setManualAwb(order.manual_awb || order.waybill || "");
-                        setManualCourierName(order.manual_courier_name || order.courier_name || "Franch Express");
+                        setManualCourierName(getCourierConfig(order.manual_courier_name || order.courier_name).label);
                         setAwbError("");
                       }}
                       disabled={isSaving}

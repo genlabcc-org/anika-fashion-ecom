@@ -827,7 +827,7 @@ const CreateMultipleProduct = ({
           <Toggle checked={showOnStore} onChange={setShowOnStore} />
         </div>
 
-        {/* <div className="cmp-visibility-row">
+        <div className="cmp-visibility-row">
           <div>
             <div className="cmp-visibility-title">Featured product</div>
             <div className="cmp-visibility-desc">
@@ -835,7 +835,7 @@ const CreateMultipleProduct = ({
             </div>
           </div>
           <Toggle checked={featuredProduct} onChange={setFeaturedProduct} />
-        </div> */}
+        </div>
       </div>
 
       {/* Bottom Footer Actions */}

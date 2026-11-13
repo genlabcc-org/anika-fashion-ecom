@@ -494,8 +494,9 @@ export default function OrderTracking() {
                     const activeAwb = order.manual_awb || order.waybill || "";
                     let activeTrackingUrl = order.manual_tracking_url || order.tracking_url;
 
-                    // Auto-generate Track123 link if tracking URL is missing, generic, or legacy 17track
-                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com' || activeTrackingUrl.includes('17track.net'))) {
+                    // Auto-generate tracking link if missing, generic, or legacy
+                    const isStCourier = String(activeCourier).toLowerCase().includes('st');
+                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com' || activeTrackingUrl.includes('17track.net') || activeTrackingUrl.includes('indiapost.gov.in') || (isStCourier && activeTrackingUrl.includes('track123.com')))) {
                       activeTrackingUrl = getTrack123Url(activeAwb, activeCourier);
                     }
 
