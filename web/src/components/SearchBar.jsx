@@ -74,10 +74,14 @@ export function mapSearchProduct(p) {
     ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
     : Number(p.stock) || 0;
 
+  const matchedVariantSku = variants.find((v) => v.sku)?.sku;
+  const productSku = p.sku || matchedVariantSku || "";
+
   return {
     id: p.product_id || p.id,
     productId: p.product_id || p.id,
     name: p.name,
+    sku: productSku,
     desc: p.description || "",
     price: sellingPrice,
     compare_price: comparePrice,
@@ -237,7 +241,7 @@ export default function SearchBar({
           ref={inputRef}
           type="text"
           className="sb-input"
-          placeholder="Search bangles, anklets, necklaces..."
+          placeholder="Search by product name or SKU ID..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
@@ -247,7 +251,7 @@ export default function SearchBar({
           autoComplete="off"
           autoCorrect="off"
           spellCheck="false"
-          aria-label="Search products"
+          aria-label="Search products by name or SKU"
         />
 
         {query.length > 0 && (
@@ -300,7 +304,14 @@ export default function SearchBar({
                       }}
                     />
                     <div className="sb-item-info">
-                      <span className="sb-item-name">{product.name}</span>
+                      <div className="sb-item-title-row">
+                        <span className="sb-item-name">{product.name}</span>
+                        {product.sku && (
+                          <span className="sb-item-sku">
+                            {product.sku}
+                          </span>
+                        )}
+                      </div>
                       <div className="sb-item-meta">
                         {product.category && (
                           <span className="sb-item-category">

@@ -543,25 +543,70 @@ export const productService = {
   },
 
   /**
-   * Searches active products by name.
+   * Searches active products by name or SKU ID.
    * @param {string} query
    * @param {number} limit
    * @returns {Promise<any[]>}
    */
   async searchProductsByName(query, limit = 6) {
-    const normalizedQuery = String(query || '').trim();
-    if (!normalizedQuery) return [];
+    const q = String(query || '').trim();
+    if (!q) return [];
+    const safe = q.replace(/[%_,()]/g, '').trim();
+    if (!safe) return [];
 
+    // 1. Search products table by name OR product-level SKU
     const { data, error } = await supabase
       .from('products')
-      .select('*, categories!category_id(name), product_variants(price, compare_price, stock, images)')
+      .select('*, categories!category_id(name), product_variants(price, compare_price, stock, sku, images)')
       .eq('is_active', true)
-      .ilike('name', `%${normalizedQuery}%`)
+      .or(`name.ilike.%${safe}%,sku.ilike.%${safe}%`)
       .order('created_at', { ascending: false })
       .limit(limit);
 
     if (error) throw error;
-    return data || [];
+
+    let results = data || [];
+
+    // 2. Also search product_variants by SKU if limit is not reached
+    if (results.length < limit) {
+      try {
+        const existingIds = new Set(results.map((p) => p.product_id));
+        const { data: variantMatches } = await supabase
+          .from('product_variants')
+          .select('product_id')
+          .eq('is_active', true)
+          .ilike('sku', `%${safe}%`)
+          .limit(limit);
+
+        const newIds = (variantMatches || [])
+          .map((v) => v.product_id)
+          .filter((id) => id && !existingIds.has(id));
+
+        if (newIds.length > 0) {
+          const { data: extraProducts } = await supabase
+            .from('products')
+            .select('*, categories!category_id(name), product_variants(price, compare_price, stock, sku, images)')
+            .eq('is_active', true)
+            .in('product_id', newIds)
+            .limit(limit - results.length);
+
+          if (extraProducts && extraProducts.length > 0) {
+            results = [...results, ...extraProducts];
+          }
+        }
+      } catch (varErr) {
+        console.warn('Variant SKU search warning:', varErr);
+      }
+    }
+
+    return results;
+  },
+
+  /**
+   * Alias for searchProductsByName.
+   */
+  async searchProducts(query, limit = 6) {
+    return this.searchProductsByName(query, limit);
   },
 
   async uploadSubcategoryImage(filePath, file, cacheControl = '31536000') {

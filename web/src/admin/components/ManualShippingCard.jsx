@@ -268,7 +268,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
 
     const trackingId = validation.value;
     const courier = (manualCourierName || "").trim() || "Franch Express";
-    const trackingUrl = getTrack123Url(trackingId, courier);
+    const trackingUrl = getTrack123Url(trackingId, courier).replace(/indian-post/g, "india-post");
 
     const confirmed = window.confirm(`Save tracking ID ${trackingId}?`);
     if (!confirmed) return;
@@ -349,7 +349,7 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
 
     const trackingId = validation.value;
     const courier = (manualCourierName || "").trim() || "Franch Express";
-    const trackingUrl = getTrack123Url(trackingId, courier);
+    const trackingUrl = getTrack123Url(trackingId, courier).replace(/indian-post/g, "india-post");
 
     const confirmed = window.confirm(`Save tracking ID ${trackingId}?`);
     if (!confirmed) return;
@@ -420,10 +420,13 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
       const awb = order.manual_awb || order.waybill || "";
       const existingUrl = order.manual_tracking_url || order.tracking_url || "";
       const isStCourier = String(courier).toLowerCase().includes("st");
-      const shouldRegenerate = !existingUrl || existingUrl === "https://stcourier.com" || existingUrl.includes("17track.net") || existingUrl.includes("indiapost.gov.in") || (isStCourier && existingUrl.includes("track123.com"));
-      const trackingUrl = !shouldRegenerate && existingUrl
+      const shouldRegenerate = !existingUrl || existingUrl === "https://stcourier.com" || existingUrl.includes("17track.net") || existingUrl.includes("indiapost.gov.in") || existingUrl.includes("indian-post") || (isStCourier && existingUrl.includes("track123.com"));
+      let trackingUrl = !shouldRegenerate && existingUrl
         ? existingUrl
         : (awb ? getTrack123Url(awb, courier) : "");
+      if (trackingUrl) {
+        trackingUrl = trackingUrl.replace(/indian-post/g, "india-post");
+      }
 
       const waRes = await whatsappService.sendManualOrderShippingNotification({
         order,
@@ -691,9 +694,12 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                         const awb = order.manual_awb || order.waybill;
                         const existingUrl = order.manual_tracking_url || order.tracking_url || "";
                         const isStCourier = savedCourierConfig.id === "st-courier";
-                        const displayUrl = (existingUrl && !existingUrl.includes("17track.net") && !existingUrl.includes("indiapost.gov.in") && !(isStCourier && existingUrl.includes("track123.com")))
+                        let displayUrl = (existingUrl && !existingUrl.includes("17track.net") && !existingUrl.includes("indiapost.gov.in") && !existingUrl.includes("indian-post") && !(isStCourier && existingUrl.includes("track123.com")))
                           ? existingUrl
                           : getTrack123Url(awb, savedCourierName);
+                        if (displayUrl) {
+                          displayUrl = displayUrl.replace(/indian-post/g, "india-post");
+                        }
                         const linkLabel = savedCourierConfig.id === "st-courier"
                           ? `Track on ${savedCourierConfig.label} ↗`
                           : "Track on Track123 ↗";
@@ -894,12 +900,12 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                             : `Track123 Tracking Link (${selectedCourier.label}):`}
                         </span>
                         <a
-                          href={(selectedCourier.trackingUrl || selectedCourier.track123Url)(manualAwb.trim())}
+                          href={(selectedCourier.trackingUrl || selectedCourier.track123Url)(manualAwb.trim()).replace(/indian-post/g, "india-post")}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="msc__tracking-preview-link"
                         >
-                          {(selectedCourier.trackingUrl || selectedCourier.track123Url)(manualAwb.trim())} ↗
+                          {(selectedCourier.trackingUrl || selectedCourier.track123Url)(manualAwb.trim()).replace(/indian-post/g, "india-post")} ↗
                         </a>
                       </div>
                     ) : (

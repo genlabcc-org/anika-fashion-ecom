@@ -502,9 +502,12 @@ export const orderService = {
     if (!orderId) throw new Error('Order ID is required');
     const cleanAwb = (manualAwb || '').trim();
     const defaultTrackingUrl = cleanAwb ? getTrack123Url(cleanAwb, manualCourierName) : null;
-    const trackingUrl = (manualTrackingUrl && !manualTrackingUrl.includes('17track.net'))
+    let trackingUrl = (manualTrackingUrl && !manualTrackingUrl.includes('17track.net') && !manualTrackingUrl.includes('indiapost.gov.in') && !manualTrackingUrl.includes('indian-post'))
       ? manualTrackingUrl
       : defaultTrackingUrl;
+    if (trackingUrl) {
+      trackingUrl = trackingUrl.replace(/indian-post/g, 'india-post');
+    }
     const updates = {
       manual_awb: cleanAwb,
       manual_courier_name: manualCourierName,
@@ -538,9 +541,12 @@ export const orderService = {
     if (!orderId) throw new Error('Order ID is required');
     const cleanAwb = (manualAwb || '').trim();
     const defaultTrackingUrl = cleanAwb ? getTrack123Url(cleanAwb, manualCourierName) : null;
-    const trackingUrl = (manualTrackingUrl && !manualTrackingUrl.includes('17track.net'))
+    let trackingUrl = (manualTrackingUrl && !manualTrackingUrl.includes('17track.net') && !manualTrackingUrl.includes('indiapost.gov.in') && !manualTrackingUrl.includes('indian-post'))
       ? manualTrackingUrl
       : defaultTrackingUrl;
+    if (trackingUrl) {
+      trackingUrl = trackingUrl.replace(/indian-post/g, 'india-post');
+    }
     const updates = {
       manual_awb: cleanAwb,
       manual_courier_name: manualCourierName,

@@ -496,8 +496,11 @@ export default function OrderTracking() {
 
                     // Auto-generate tracking link if missing, generic, or legacy
                     const isStCourier = String(activeCourier).toLowerCase().includes('st');
-                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com' || activeTrackingUrl.includes('17track.net') || activeTrackingUrl.includes('indiapost.gov.in') || (isStCourier && activeTrackingUrl.includes('track123.com')))) {
+                    if (activeAwb && (!activeTrackingUrl || activeTrackingUrl === 'https://stcourier.com' || activeTrackingUrl.includes('17track.net') || activeTrackingUrl.includes('indiapost.gov.in') || activeTrackingUrl.includes('indian-post') || (isStCourier && activeTrackingUrl.includes('track123.com')))) {
                       activeTrackingUrl = getTrack123Url(activeAwb, activeCourier);
+                    }
+                    if (activeTrackingUrl) {
+                      activeTrackingUrl = activeTrackingUrl.replace(/indian-post/g, 'india-post');
                     }
 
                     const statusStr = (order.delivery_status || "").trim();
