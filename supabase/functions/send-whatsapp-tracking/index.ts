@@ -7,7 +7,7 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-const API_VERSION = Deno.env.get("WHATSAPP_API_VERSION") ?? "v21.0";
+const API_VERSION = Deno.env.get("WHATSAPP_API_VERSION") ?? "v27.0";
 
 function formatPhone(phone?: string | null): string | null {
   if (!phone) return null;
