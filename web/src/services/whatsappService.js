@@ -46,9 +46,19 @@ export const whatsappService = {
       });
 
       if (error) {
+        let errorMsg = error.message || "Failed to invoke WhatsApp edge function";
+        try {
+          if (error.context && typeof error.context.json === "function") {
+            const errBody = await error.context.json();
+            if (errBody?.error) {
+              errorMsg = errBody.error + (errBody.code ? ` (Code: ${errBody.code})` : "");
+            }
+          }
+        } catch (_) {}
+        console.error("[whatsappService] Edge function invocation error:", error, errorMsg);
         return {
           success: false,
-          error: error.message || "Failed to invoke WhatsApp edge function",
+          error: errorMsg,
         };
       }
 
