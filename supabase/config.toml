@@ -477,4 +477,10 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/whatsapp-webhook/index.ts"
 
+[functions.send-whatsapp-tracking]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-whatsapp-tracking/index.ts"
+
+
 

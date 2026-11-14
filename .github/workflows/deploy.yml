@@ -280,6 +280,8 @@ jobs:
           supabase functions deploy send-order-email --no-verify-jwt --project-ref "$supabase_ref"
           echo "Deploying whatsapp-webhook function..."
           supabase functions deploy whatsapp-webhook --no-verify-jwt --project-ref "$supabase_ref"
+          echo "Deploying send-whatsapp-tracking function..."
+          supabase functions deploy send-whatsapp-tracking --no-verify-jwt --project-ref "$supabase_ref"
 
   # deploy_storefront:
   #   name: Deploy Storefront Portal

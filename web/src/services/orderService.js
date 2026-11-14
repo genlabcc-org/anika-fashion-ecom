@@ -38,7 +38,7 @@ export const orderService = {
         'shipping_fee, address_id, razorpay_order_id, razorpay_payment_id, ' +
         'delivery_provider, courier_name, waybill, shipment_id, delivery_status, tracking_url, ' +
         'estimated_delivery_date, shipped_at, delivered_at, ' +
-        'fulfillment_type, manual_courier_name, manual_awb, manual_tracking_url'
+        'fulfillment_type, manual_courier_name, manual_awb, manual_tracking_url, whatsapp_tracking_sent_at'
       )
       .eq('user_id', userId)
       .order('order_date', { ascending: false })

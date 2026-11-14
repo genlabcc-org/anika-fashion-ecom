@@ -308,7 +308,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
   tracking_url            text,
   shipment_error          text,
   shipped_at              timestamptz,
-  delivered_at            timestamptz
+  delivered_at            timestamptz,
+  whatsapp_tracking_sent_at timestamptz
 );
 
 COMMENT ON COLUMN public.orders.invoice_printed IS

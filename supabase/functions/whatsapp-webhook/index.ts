@@ -1,7 +1,19 @@
-const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN");
+const VERIFY_TOKEN = Deno.env.get("WHATSAPP_VERIFY_TOKEN") || "anika_whatsapp_verify_token_2026";
 const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET");
 
 Deno.serve(async (req) => {
+  // CORS / Preflight handling
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, x-hub-signature-256",
+      },
+    });
+  }
+
   const url = new URL(req.url);
 
   // Meta's one-time verification handshake
@@ -9,9 +21,16 @@ Deno.serve(async (req) => {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
     const challenge = url.searchParams.get("hub.challenge");
+
     if (mode === "subscribe" && token && token === VERIFY_TOKEN) {
-      return new Response(challenge, { status: 200 });
+      console.log("[whatsapp-webhook] Meta verification handshake succeeded!");
+      return new Response(challenge ?? "", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
     }
+
+    console.warn("[whatsapp-webhook] Verification failed. Token mismatch or bad mode:", { mode, token });
     return new Response("Forbidden", { status: 403 });
   }
 

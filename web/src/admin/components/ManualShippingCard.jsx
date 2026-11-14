@@ -297,22 +297,26 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
         shippedAt: now,
       });
 
-      // Dispatch WhatsApp notification to customer for manual order
-      let waNotice = "";
+      // Dispatch WhatsApp notification only after tracking save succeeds
+      let waSuccess = false;
+      let waError = "";
       try {
         const waRes = await whatsappService.sendManualOrderShippingNotification({
           order: { ...order, ...updates },
-          address,
           courierName: courier,
           trackingId,
           trackingUrl,
+          force: false,
         });
         if (waRes?.success) {
-          waNotice = " • WhatsApp notification sent!";
+          waSuccess = !waRes.skipped;
+          updates.whatsapp_tracking_sent_at = new Date().toISOString();
         } else if (waRes?.error) {
+          waError = waRes.error;
           console.warn("[ManualShippingCard] WhatsApp notification warning:", waRes.error);
         }
       } catch (waErr) {
+        waError = waErr?.message || String(waErr);
         console.warn("[ManualShippingCard] WhatsApp notification error:", waErr);
       }
 
@@ -321,7 +325,13 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
       }
       setIsEditingTracking(false);
       if (typeof showToast === "function") {
-        showToast(`Tracking ID saved! Order marked as Shipped (${courier})${waNotice}.`, "success");
+        if (waError) {
+          showToast(`Tracking saved, but WhatsApp notification failed: ${waError}`, "error");
+        } else if (waSuccess) {
+          showToast(`Tracking ID saved! Order marked as Shipped (${courier}) • WhatsApp notification sent!`, "success");
+        } else {
+          showToast(`Tracking ID saved! Order marked as Shipped (${courier}).`, "success");
+        }
       }
     } catch (err) {
       console.error("Failed to save tracking:", err);
@@ -376,21 +386,25 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
       });
 
       // Dispatch WhatsApp notification on tracking update
-      let waNotice = "";
+      let waSuccess = false;
+      let waError = "";
       try {
         const waRes = await whatsappService.sendManualOrderShippingNotification({
           order: { ...order, ...updates },
-          address,
           courierName: courier,
           trackingId,
           trackingUrl,
+          force: false,
         });
         if (waRes?.success) {
-          waNotice = " • WhatsApp notification sent!";
+          waSuccess = !waRes.skipped;
+          updates.whatsapp_tracking_sent_at = new Date().toISOString();
         } else if (waRes?.error) {
+          waError = waRes.error;
           console.warn("[ManualShippingCard] WhatsApp notification warning:", waRes.error);
         }
       } catch (waErr) {
+        waError = waErr?.message || String(waErr);
         console.warn("[ManualShippingCard] WhatsApp notification error:", waErr);
       }
 
@@ -399,7 +413,13 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
       }
       setIsEditingTracking(false);
       if (typeof showToast === "function") {
-        showToast(`Tracking ID updated successfully!${waNotice}`, "success");
+        if (waError) {
+          showToast(`Tracking updated, but WhatsApp notification failed: ${waError}`, "error");
+        } else if (waSuccess) {
+          showToast("Tracking ID updated and WhatsApp notification sent!", "success");
+        } else {
+          showToast("Tracking ID updated successfully!", "success");
+        }
       }
     } catch (err) {
       console.error("Failed to update tracking:", err);
@@ -430,15 +450,19 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
 
       const waRes = await whatsappService.sendManualOrderShippingNotification({
         order,
-        address,
         courierName: courier,
         trackingId: awb,
         trackingUrl,
+        force: true, // Bypass duplicate guard on manual click
       });
 
       if (waRes?.success) {
+        const sentAt = new Date().toISOString();
+        if (typeof onOrderUpdated === "function") {
+          onOrderUpdated({ whatsapp_tracking_sent_at: sentAt });
+        }
         if (typeof showToast === "function") {
-          showToast(`WhatsApp message delivered to ${waRes.recipient}!`, "success");
+          showToast("WhatsApp message delivered to customer!", "success");
         }
       } else {
         if (typeof showToast === "function") {
@@ -564,6 +588,18 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
             <span className="msc__info-label">Delivered At:</span>
             <span className="msc__info-value" id="msc-info-delivered-at">
               {formatDateTime(order.delivered_at)}
+            </span>
+          </>
+        )}
+
+        {order?.whatsapp_tracking_sent_at && (
+          <>
+            <span className="msc__info-label">WhatsApp Status:</span>
+            <span className="msc__info-value" id="msc-info-whatsapp-sent">
+              <span style={{ color: "#16a34a", fontWeight: 600 }}>Sent ✓</span>{" "}
+              <span style={{ fontSize: "11.5px", color: "#64748b" }}>
+                ({formatDateTime(order.whatsapp_tracking_sent_at)})
+              </span>
             </span>
           </>
         )}
@@ -734,10 +770,30 @@ export default function ManualShippingCard({ order, address, onOrderUpdated, sho
                           cursor: sendingWa ? "not-allowed" : "pointer",
                           opacity: sendingWa ? 0.7 : 1,
                         }}
-                        title="Send / resend WhatsApp shipping notification to customer"
+                        title={
+                          order?.whatsapp_tracking_sent_at
+                            ? `Resend WhatsApp notification (last sent: ${formatDateTime(order.whatsapp_tracking_sent_at)})`
+                            : "Send WhatsApp shipping notification to customer"
+                        }
                       >
-                        {sendingWa ? "Sending WA..." : "Send WhatsApp"}
+                        {sendingWa
+                          ? "Sending WA..."
+                          : order?.whatsapp_tracking_sent_at
+                            ? "Resend WhatsApp"
+                            : "Send WhatsApp"}
                       </button>
+                      {order?.whatsapp_tracking_sent_at && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "#16a34a",
+                            fontWeight: 500,
+                          }}
+                          title={`WhatsApp sent at ${formatDateTime(order.whatsapp_tracking_sent_at)}`}
+                        >
+                          ✓ WA Sent
+                        </span>
+                      )}
                     </div>
                     {order?.shipped_at && (
                       <span className="msc__shipped-time">
