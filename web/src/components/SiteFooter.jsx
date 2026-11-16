@@ -63,9 +63,9 @@ const SiteFooter = () => {
                 121A, Kottar-Parvathipuram Rd, Chetti Kulam,<br />
                 Simon Nagar, Nagercoil, Tamil Nadu 629001
               </p>
-              <p className="phone-text">+91 9363131636</p>
+              <p className="phone-text">+91 9363631636</p>
 
-              <p className='phone-time'>Mon - Sat: 9:30 AM - 6:30 PM IST <br/> Closed on Sunday and Public Holidays </p>
+              <p className='phone-time'>Mon - Sat: 9:30 AM - 6:30 PM IST <br /> Closed on Sunday and Public Holidays </p>
             </div>
           </div>
 
